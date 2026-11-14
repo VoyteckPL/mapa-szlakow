@@ -357,7 +357,8 @@ function infraClasses(t) {
   // przejazd przez jezdnię: czerwony z białymi kwadratami jak malowany P-11
   if (t.cycleway === 'crossing' || (hw === 'cycleway' && (t.crossing || t.footway === 'crossing')) ||
       (t.footway === 'crossing' && t.bicycle === 'designated') || (t.path === 'crossing' && t.bicycle === 'designated')) {
-    out.push({ cls: 'przejazd', side: 0, dir: 0 });
+    // przejazd połączony z przejściem dla pieszych (foot=designated / footway=crossing) dostaje obok „zebrę”
+    out.push({ cls: 'przejazd', side: 0, dir: 0, zebra: t.foot === 'designated' || t.footway === 'crossing' || t.highway === 'footway' });
     return out;
   }
   if (hw === 'cycleway' || (t.bicycle === 'designated' && /^(path|footway|pedestrian|track|service|living_street|bridleway)$/.test(hw))) {
@@ -455,12 +456,13 @@ function rebuild() {
     for (const c of classes) {
       infraFeatures.push({ type: 'Feature',
         geometry: { type: 'LineString', coordinates: c.side ? offsetLine(coords, c.side * (c.cls === 'sharrow' ? Math.max(1.4, laneOffsetM(w.tags) - 1.9) : laneOffsetM(w.tags))) : coords },
-        properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags) } });
+        properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags), zebra: c.zebra ? 1 : 0 } });
     }
     infraLen += lineLength(coords);
   }
 
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
+  connectLooseEnds(infraFeatures);
   map.getSource('infra').setData({ type: 'FeatureCollection', features: infraFeatures });
   stats = {
     bicycle: ordered.filter(r => KIND[r.tags.route] === 'bicycle').length,
@@ -502,6 +504,49 @@ function offsetLine(coords, d) {
     out.push([(P[i][0] + n[0] * d / cos) / kx, (P[i][1] + n[1] * d / cos) / ky]);
   }
   return out;
+}
+
+// Płynne połączenia: pas rysowany z przesunięciem kończy się „w powietrzu”, bo w OSM droga dla rowerów
+// zaczyna się w innym miejscu (często w osi jezdni albo obok). Każdy luźny koniec przesuniętej linii
+// dociągamy do najbliższego punktu innej infrastruktury w promieniu ~22 m, leżącego „przed” tym końcem.
+const CONNECT_M = 22;
+function connectLooseEnds(features) {
+  const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540, cell = CONNECT_M;
+  const grid = new Map(), key = (x, y) => Math.floor(x / cell) + ':' + Math.floor(y / cell);
+  const skip = new Set(['sharrow', 'kontraruch']);
+  features.forEach((f, fi) => {
+    if (skip.has(f.properties.cls)) return;
+    for (const [lon, lat] of f.geometry.coordinates) {
+      const x = lon * kx, y = lat * ky, k = key(x, y);
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push({ x, y, lon, lat, fi, way: f.properties.way });
+    }
+  });
+  features.forEach((f, fi) => {
+    if (!f.properties.side || skip.has(f.properties.cls)) return;
+    const c = f.geometry.coordinates;
+    for (const atStart of [true, false]) {
+      const [plon, plat] = atStart ? c[0] : c[c.length - 1], [qlon, qlat] = atStart ? c[1] : c[c.length - 2];
+      const px = plon * kx, py = plat * ky;
+      let dx = px - qlon * kx, dy = py - qlat * ky; const dl = Math.hypot(dx, dy) || 1; dx /= dl; dy /= dl;
+      let best = null, bestScore = Infinity, connected = false;
+      const cx = Math.floor(px / cell), cy = Math.floor(py / cell);
+      for (let i = -1; i <= 1 && !connected; i++) for (let j = -1; j <= 1; j++) {
+        for (const v of grid.get((cx + i) + ':' + (cy + j)) || []) {
+          if (v.fi === fi || v.way === f.properties.way) continue;
+          const vx = v.x - px, vy = v.y - py, d = Math.hypot(vx, vy);
+          if (d < 0.4) { connected = true; break; }
+          if (d > CONNECT_M) continue;
+          const ahead = (vx * dx + vy * dy) / d; // cos kąta względem kierunku „na zewnątrz” końca
+          if (ahead < 0.1) continue;
+          const score = d / ahead;
+          if (score < bestScore) { bestScore = score; best = v; }
+        }
+      }
+      if (connected || !best) continue;
+      if (atStart) c.unshift([best.lon, best.lat]); else c.push([best.lon, best.lat]);
+    }
+  });
 }
 
 function lineLength(c) {
@@ -580,6 +625,10 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   const CROSS_W = INFRA_WIDTH();
   map.addLayer({ id: 'infra-przejazd', type: 'line', source: 'infra', minzoom: 14, filter: isCls('przejazd'),
     layout: { 'line-cap': 'butt' }, paint: { 'line-color': INFRA.przejazd.color, 'line-width': CROSS_W } });
+  // zebra obok przejazdu: białe pasy ~0,5 m (wzór przerywania liczony w szerokościach linii)
+  map.addLayer({ id: 'infra-zebra', type: 'line', source: 'infra', minzoom: 16, filter: ['all', isCls('przejazd'), ['==', ['get', 'zebra'], 1]],
+    layout: { 'line-cap': 'butt' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.95, 'line-width': INFRA_WIDTH(1.5), 'line-offset': INFRA_WIDTH(1.3), 'line-dasharray': [0.17, 0.17] } }, 'infra-przejazd');
   for (const sgn of [1, -1]) {
     map.addLayer({ id: 'infra-przejazd-sq' + (sgn > 0 ? 'R' : 'L'), type: 'line', source: 'infra', minzoom: 15.5, filter: isCls('przejazd'),
       layout: { 'line-cap': 'butt' },
@@ -639,7 +688,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;

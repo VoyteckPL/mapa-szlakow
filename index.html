@@ -478,9 +478,9 @@ function rebuild() {
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
   // Schemat znaków: dla całego ciągu (kilka odcinków OSM połączonych bez rozgałęzień) znak na początku,
   // na końcu i – gdy ciąg ma ponad 110 m – w równych odstępach pośrodku (nie gęściej niż co ~55 m).
-  const signAt = len => {
+  const signAt = (len, step = 110) => { // step: największy odstęp między znakami (C-13: 110 m, pasy/sierżanty: 80 m)
     if (len < 20) return [len / 2];
-    const k = Math.max(0, Math.ceil(len / 110) - 1), out = [3]; // odstępy między znakami ok. 55–110 m
+    const k = Math.max(0, Math.ceil(len / step) - 1), out = [3];
     for (let i = 1; i <= k; i++) out.push(len * i / (k + 1));
     out.push(len - 3);
     return out;
@@ -525,7 +525,7 @@ function rebuild() {
     if (!/^(pas|kontrapas|sharrow)$/.test(f.properties.cls) || !f.properties.dir || f.properties.sign) continue;
     const c = f.geometry.coordinates, len = lineLength(c);
     if (len < 12) continue;
-    for (const m0 of signAt(len)) {
+    for (const m0 of signAt(len, 80)) {
       const m = Math.min(len - 4, Math.max(4, m0));
       const pf = pointAlong(c, m, f.properties.cls), q = pointAlong(c, Math.min(len, m + 1), f.properties.cls).geometry.coordinates, p0 = pointAlong(c, Math.max(0, m - 1), f.properties.cls).geometry.coordinates;
       const ang = Math.atan2(-(q[1] - p0[1]) * 110540, (q[0] - p0[0]) * 64650) * 180 / Math.PI + (f.properties.dir === -1 ? 180 : 0);

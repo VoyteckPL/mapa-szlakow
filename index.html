@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mapa Szlaków</title>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="js/config.js"></script>
 <style>
 :root {
   --bg: #ffffff; --fg: #1d2125; --muted: #5f6b76; --line: #dde2e7; --panel: rgba(255,255,255,.96);
@@ -130,22 +131,15 @@ details summary { cursor: pointer; font-size: 12.5px; color: var(--muted); margi
    Region jest tylko prostokątem + flagą, czy ładować całość od razu.
    Rozszerzenie na Polskę: ?region=polska (dociąga kafle widoku od zoom 10).
    ========================================================================= */
-const REGIONS = {
-  gdynia: { name: 'Gdynia', bbox: [54.42, 18.36, 54.61, 18.60], center: [18.49, 54.51], zoom: 12, preload: true },
-  trojmiasto: { name: 'Trójmiasto', bbox: [54.27, 18.33, 54.62, 18.80], center: [18.57, 54.43], zoom: 11, preload: false },
-  polska: { name: 'Polska', bbox: [49.0, 14.1, 54.9, 24.2], center: [19.4, 52.0], zoom: 6, preload: false },
-};
+const { REGIONS, OVERPASS, buildQuery } = window.MS_CONFIG;
 const params = new URLSearchParams(location.search);
-const REGION = REGIONS[params.get('region')] || REGIONS.gdynia;
+const REGION_ID = REGIONS[params.get('region')] ? params.get('region') : 'gdynia';
+const REGION = REGIONS[REGION_ID];
 
 const TILE_Z = 10;               // siatka kafli zapytań Overpass (z10 ≈ 25×40 km)
 const MIN_DATA_ZOOM = 10;        // poniżej nie dociągamy danych (dla dużych regionów)
 const REFRESH_MS = 5 * 60 * 1000; // co ile odświeżać widoczne kafle
 const MAX_PARALLEL = 2;          // grzeczność wobec publicznego Overpass
-const OVERPASS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.private.coffee/api/interpreter',
-];
 
 /* --- podkłady --- */
 // WMS Geoportalu przez protokół „retry://”: limit równoległych żądań + ponawianie przy 503
@@ -221,22 +215,6 @@ function tilesFor(bbox) {
   return out;
 }
 
-function buildQuery(b) {
-  const bb = b.map(v => v.toFixed(5)).join(',');
-  return `[out:json][timeout:120];
-rel[type=route][route~"^(bicycle|mtb|hiking|foot|walking)$"](${bb})->.r;
-.r out body;
-way(r.r)(${bb})->.rw;
-(
-  way[highway=cycleway](${bb});
-  way[highway][cycleway=crossing](${bb});
-  way[highway~"^(path|footway|pedestrian|track|service|living_street|bridleway)$"][bicycle=designated](${bb});
-  way[highway][~"^cycleway(:both|:left|:right)?$"~"^(lane|opposite_lane|track|opposite_track|share_busway|opposite_share_busway|shared_lane|opposite)$"](${bb});
-  way[highway]["oneway:bicycle"=no][oneway~"^(yes|-1|1|true)$"](${bb});
-)->.inf;
-(.rw; .inf;);
-out geom;`;
-}
 
 let endpointIdx = 0;
 const MAX_STALENESS_MS = 60 * 60 * 1000; // serwer z danymi starszymi niż 1 h odrzucamy (niektóre mirrory potrafią stać tygodniami)
@@ -279,6 +257,15 @@ async function cachePut(key, val) {
   return new Promise((res, rej) => { const tx = d.transaction('tiles', 'readwrite'); tx.objectStore('tiles').put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); });
 }
 
+async function fetchSnapshot() {
+  try {
+    const res = await fetch(`data/${REGION_ID}.json`, { cache: 'no-cache' });
+    if (!res.ok) return null;
+    const j = await res.json();
+    return { elements: j.elements, osmBase: j.osmBase, loadedAt: Date.parse(j.osmBase) };
+  } catch { return null; }
+}
+
 const tiles = new Map();  // key → { bbox, status, loadedAt, osmBase, elements }
 let running = 0; const queue = [];
 function enqueue(key) {
@@ -311,11 +298,13 @@ function requestTiles(force = false) {
   for (const { key, bbox } of wantedTiles()) {
     if (!tiles.has(key)) {
       tiles.set(key, { bbox, status: 'new' });
-      // najpierw pokaż ostatnią kopię z przeglądarki (IndexedDB), potem odśwież w tle
-      cacheGet(key).then(c => {
+      // najpierw pokaż najnowszą kopię: z przeglądarki (IndexedDB) albo snapshot z repo (data/<region>.json,
+      // odświeżany co ~15 min przez GitHub Actions), potem odśwież na żywo z Overpass w tle
+      Promise.all([cacheGet(key).catch(() => null), REGION.preload ? fetchSnapshot() : null]).then(([c, snap]) => {
+        if (snap && (!c || Date.parse(snap.osmBase) > Date.parse(c.osmBase))) c = snap;
         const t = tiles.get(key);
         if (!c || t.elements) return;
-        Object.assign(t, { elements: c.elements, osmBase: c.osmBase, loadedAt: c.loadedAt, fromCache: true });
+        Object.assign(t, { elements: c.elements, osmBase: c.osmBase, loadedAt: c.loadedAt, fromCache: c === snap ? 'snapshot' : 'browser' });
         if (t.status === 'new') t.status = 'ok';
         scheduleRebuild();
         if (Date.now() - c.loadedAt > REFRESH_MS) enqueue(key);
@@ -788,7 +777,7 @@ function renderStatus() {
   const fmt = iso => new Date(iso).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' });
   let s = '';
   if (stats) s += `<b>${stats.bicycle}</b> szlaków rowerowych · <b>${stats.hiking}</b> pieszych<br><b>${stats.infraKm.toFixed(0)} km</b> dróg z infrastrukturą rowerową<br>`;
-  if (bases.length) s += `Stan bazy OSM: <b>${fmt(bases[0])}</b>${all.some(t => t.fromCache) ? ' (z pamięci podręcznej)' : ''}<br>`;
+  if (bases.length) s += `Stan bazy OSM: <b>${fmt(bases[0])}</b>${all.some(t => t.fromCache === 'snapshot') ? ' (kopia z serwera mapy)' : all.some(t => t.fromCache) ? ' (z pamięci przeglądarki)' : ''}<br>`;
   const active = all.filter(t => t.status === 'loading');
   if (loading) {
     const t = active[0], secs = t ? Math.round((Date.now() - t.startedAt) / 1000) : 0, a = t && t.attemptInfo;

@@ -477,10 +477,10 @@ function rebuild() {
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
   // Schemat znaków: dla całego ciągu (kilka odcinków OSM połączonych bez rozgałęzień) znak na początku,
-  // na końcu i – gdy ciąg jest długi – w równych odstępach pośrodku (ok. co 100 m).
+  // na końcu i – gdy ciąg ma ponad 110 m – w równych odstępach pośrodku (nie gęściej niż co ~55 m).
   const signAt = len => {
     if (len < 20) return [len / 2];
-    const k = Math.max(0, Math.round(len / 100) - 1), out = [3];
+    const k = Math.max(0, Math.ceil(len / 110) - 1), out = [3]; // odstępy między znakami ok. 55–110 m
     for (let i = 1; i <= k; i++) out.push(len * i / (k + 1));
     out.push(len - 3);
     return out;

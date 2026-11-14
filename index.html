@@ -816,6 +816,37 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
     }
   }
   // (ogólne łuki do dowolnego punktu DDR wyłączone: łączyły pasy przez skrzyżowania; pas bez DDR w węźle kończy się płasko)
+  // 2) Pas ↔ sierżant w tym samym węźle osi: szerokość zmienia się płynnie na ostatnich ~4 m pasa
+  const axisEnds = new Map();
+  for (const f of lanes) if (f._axis && f.geometry.coordinates.length > 1) for (const atStart of [true, false]) {
+    const k = nk(f._axis[atStart ? 0 : 1][0]);
+    if (!axisEnds.has(k)) axisEnds.set(k, []);
+    axisEnds.get(k).push({ f, atStart });
+  }
+  for (const list of axisEnds.values()) for (const a of list) {
+    if (!/^(pas|kontrapas|buspas)$/.test(a.f.properties.cls)) continue;
+    const ca = a.f.geometry.coordinates, Ea = xy(a.atStart ? ca[0] : ca[ca.length - 1]);
+    const b = list.find(o => o.f.properties.cls === 'sharrow' && (() => {
+      const cb = o.f.geometry.coordinates, Eb = xy(o.atStart ? cb[0] : cb[cb.length - 1]);
+      return Math.hypot(Eb[0] - Ea[0], Eb[1] - Ea[1]) < 2;
+    })());
+    if (!b) continue;
+    const L = ca.map(xy); if (a.atStart) L.reverse();               // L kończy się na styku z sierżantem
+    let back = 0, k = L.length - 1;
+    while (k > 1 && back < 5) { back += Math.hypot(L[k][0] - L[k - 1][0], L[k][1] - L[k - 1][1]); k--; }
+    const seg = L.slice(k);                                          // ostatnie ~5 m pasa
+    if (seg.length < 2) continue;
+    const lp = a.f.properties, sp = b.f.properties, n = 6, S = [0];
+    for (let i = 1; i < seg.length; i++) S.push(S[i - 1] + Math.hypot(seg[i][0] - seg[i - 1][0], seg[i][1] - seg[i - 1][1]));
+    const tot = S[S.length - 1], at = d => { let i = 1; while (i < S.length - 1 && S[i] < d) i++; const t = (d - S[i - 1]) / ((S[i] - S[i - 1]) || 1); return [seg[i - 1][0] + (seg[i][0] - seg[i - 1][0]) * t, seg[i - 1][1] + (seg[i][1] - seg[i - 1][1]) * t]; };
+    for (let i = 0; i < n; i++) {
+      const d0 = tot * i / n, d1 = tot * (i + 1) / n, e = (i + 0.5) / n;
+      extra.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [at(d0), ...seg.filter((_, j) => S[j] > d0 && S[j] < d1), at(d1)].map(ll) },
+        properties: { ...lp, cls: 'przejscie', side: 0, dir: 0, w: lp.w + (sp.w - lp.w) * e, wm: lp.wm + (sp.wm - lp.wm) * e } });
+    }
+    const keep = L.slice(0, k + 1).map(ll);
+    a.f.geometry.coordinates = a.atStart ? keep.reverse() : keep;
+  }
   for (const f of lanes) { delete f._axis; delete f._flat; }
   lanes.push(...extra);
 }
@@ -1165,9 +1196,10 @@ const ICONS = {
   sharrowsign: canvasIcon(34, 16, (g) => {
     g.fillStyle = 'rgba(88,96,108,0.92)'; g.strokeStyle = '#fff'; g.lineWidth = 1;
     g.beginPath(); g.roundRect ? g.roundRect(1, 1, 32, 14, 2.5) : g.rect(1, 1, 32, 14); g.fill(); g.stroke();
-    drawBike(g, 12, 8.4, 13.5, '#fff');
+    // rower „stoi” w kierunku jazdy (jak malowany znak oglądany z jezdni): obrót o 90°
+    g.save(); g.translate(11, 8); g.rotate(Math.PI / 2); drawBike(g, 0, 0.3, 12.5, '#fff'); g.restore();
     g.strokeStyle = '#fff'; g.lineWidth = 1.6;
-    for (const x of [22.5, 27]) { g.beginPath(); g.moveTo(x, 3.5); g.lineTo(x + 3.5, 8); g.lineTo(x, 12.5); g.stroke(); }
+    for (const x of [21, 26]) { g.beginPath(); g.moveTo(x, 3.5); g.lineTo(x + 3.5, 8); g.lineTo(x, 12.5); g.stroke(); }
   }),
   c13: canvasIcon(22, 22, (g) => {
     g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
@@ -1180,7 +1212,7 @@ const ICONS = {
   }),
   // malowany symbol roweru ze strzałką (jak na jezdni), patrzy w prawo = w kierunku linii
   lanebike: canvasIcon(40, 14, (g) => {
-    drawBike(g, 13, 7.2, 20, '#fff');
+    g.save(); g.translate(12, 7); g.rotate(Math.PI / 2); drawBike(g, 0, 0.3, 13, '#fff'); g.restore();
     g.strokeStyle = '#fff'; g.lineWidth = 1.6;
     g.beginPath(); g.moveTo(27, 7); g.lineTo(37, 7); g.stroke();
     g.beginPath(); g.moveTo(38.5, 7); g.lineTo(34, 4); g.lineTo(34, 10); g.closePath(); g.fillStyle = '#fff'; g.fill();

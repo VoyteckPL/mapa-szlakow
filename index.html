@@ -453,7 +453,8 @@ function rebuild() {
     if (!classes.length) continue;
     const coords = w.geometry.map(p => [p.lon, p.lat]);
     for (const c of classes) {
-      infraFeatures.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords },
+      infraFeatures.push({ type: 'Feature',
+        geometry: { type: 'LineString', coordinates: c.side ? offsetLine(coords, c.side * laneOffsetM(w.tags)) : coords },
         properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width } });
     }
     infraLen += lineLength(coords);
@@ -468,6 +469,33 @@ function rebuild() {
   };
   if (selectedRel) select(selectedRel, false);
   renderStatus();
+}
+
+// Pas rowerowy leży przy krawędzi jezdni, więc przesuwamy go w metrach od osi drogi:
+// pół szerokości jezdni (z tagu width, z liczby pasów albo typowej dla klasy drogi) + pół szerokości pasa rowerowego.
+const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3.3, tertiary: 3.1, unclassified: 2.8,
+  residential: 2.8, living_street: 2.5, service: 2.2 };
+function laneOffsetM(t) {
+  const width = parseFloat(t.width);
+  if (width > 3 && width < 40) return width / 2 - 0.75;
+  const lanes = parseInt(t.lanes, 10);
+  const half = lanes > 0 && lanes < 10 ? lanes * 1.55 : (HALF_CARRIAGEWAY[(t.highway || '').replace('_link', '')] || 2.8);
+  return half + 0.8;
+}
+// Równoległe przesunięcie linii o d metrów (d > 0 w prawo od kierunku narysowania), z ograniczonym ścięciem narożników.
+function offsetLine(coords, d) {
+  const lat0 = coords[0][1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
+  const P = coords.map(([x, y]) => [x * kx, y * ky]);
+  const out = [];
+  for (let i = 0; i < P.length; i++) {
+    const nrm = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dy / l, -dx / l]; };
+    const n1 = i > 0 ? nrm(P[i - 1], P[i]) : null, n2 = i < P.length - 1 ? nrm(P[i], P[i + 1]) : null;
+    let n = n1 && n2 ? [n1[0] + n2[0], n1[1] + n2[1]] : (n1 || n2);
+    const l = Math.hypot(n[0], n[1]) || 1; n = [n[0] / l, n[1] / l];
+    const cos = n1 && n2 ? Math.max(0.35, n[0] * n1[0] + n[1] * n1[1]) : 1;
+    out.push([(P[i][0] + n[0] * d / cos) / kx, (P[i][1] + n[1] * d / cos) / ky]);
+  }
+  return out;
 }
 
 function lineLength(c) {
@@ -518,7 +546,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 
   // infrastruktura (pod szlakami); pasy po stronie jezdni wg tagów left/right
   addInfraImages();
-  const INFRA_OFFSET = ['interpolate', ['linear'], ['zoom'], 13, ['*', ['get', 'side'], 1], 16, ['*', ['get', 'side'], 3.5], 19, ['*', ['get', 'side'], 9]];
+  const INFRA_OFFSET = 0; // pasy przy jezdni są już przesunięte w geometrii (w metrach, patrz offsetLine)
   const INFRA_WIDTH = (k = 1, add = 0) => ['interpolate', ['linear'], ['zoom'],
     11, ['+', ['*', ['get', 'w'], 0.5 * k], add * 0.5], 15, ['+', ['*', ['get', 'w'], k], add], 18, ['+', ['*', ['get', 'w'], 1.8 * k], add * 1.6]];
   const isCls = (...c) => ['in', ['get', 'cls'], ['literal', c]];
@@ -546,14 +574,12 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
         'line-offset': ['interpolate', ['exponential', 1.6], ['zoom'], 15.5, sgn * 2.8, 18, sgn * 5.2, 20, sgn * 12] } });
   }
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
-  const ICON_SIDE = (px) => ['case', ['==', ['get', 'side'], 1], ['literal', [0, px]], ['==', ['get', 'side'], -1], ['literal', [0, -px]], ['literal', [0, 0]]];
   map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')]],
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'icon-image': ['case', ['==', ['get', 'dir'], 2], 'arrow2', 'arrow'],
       'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
-      'icon-offset': ['interpolate', ['linear'], ['zoom'], 15, ICON_SIDE(3), 16, ICON_SIDE(4.6), 19, ICON_SIDE(8.2)],
     } });
   // sierżanty: podwójny chevron w kierunku jazdy
   map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 14, filter: isCls('sharrow'),
@@ -561,7 +587,6 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
       'symbol-placement': 'line', 'symbol-spacing': 90, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
       'icon-image': 'chevron2', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.65, 18, 1.1],
-      'icon-offset': ['interpolate', ['linear'], ['zoom'], 15, ICON_SIDE(3), 16, ICON_SIDE(4.6), 19, ICON_SIDE(8.2)],
     } });
   // znaki C-13 / C-13/16 co jakiś czas na drogach dla rowerów i ciągach
   map.addLayer({ id: 'infra-signs', type: 'symbol', source: 'infra', minzoom: 14.5, filter: isCls('droga', 'ciag'),

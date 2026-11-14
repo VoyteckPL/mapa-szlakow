@@ -469,8 +469,13 @@ function rebuild() {
       const props = { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags), zebra: c.zebra ? 1 : 0 };
       if (c.side) sideItems.push({ coords, props, offM: laneOffsetM(w.tags) /* sierżant w tym samym miejscu co pas, bez skoku */, name: w.tags.name || w.tags.ref || '' });
       else infraFeatures.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: props });
-      // jeden znak C-13 / C-13/16 na drogę: ok. 20 m od jej początku (tylko na dłuższych odcinkach)
-      if ((c.cls === 'droga' || c.cls === 'ciag') && lineLength(coords) >= 40) signFeatures.push(pointAlong(coords, 20, c.cls));
+      // znaki C-13 / C-13/16 przy końcach każdego odcinka DDR (tam, gdzie się na nią wjeżdża: za przejazdem,
+      // na skrzyżowaniu, na łączeniu odcinków), 3 m od węzła; znaki bliżej niż 15 m od siebie scalamy niżej
+      if (c.cls === 'droga' || c.cls === 'ciag') {
+        const len = lineLength(coords);
+        if (len >= 8) signFeatures.push(pointAlong(coords, 3, c.cls), pointAlong(coords.slice().reverse(), 3, c.cls));
+        else if (len >= 4) signFeatures.push(pointAlong(coords, len / 2, c.cls));
+      }
     }
     infraLen += lineLength(coords);
   }
@@ -478,7 +483,17 @@ function rebuild() {
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
-  map.getSource('infra').setData({ type: 'FeatureCollection', features: infraFeatures.concat(signFeatures) });
+  const signs = [], sgrid = new Map(), cell = c => Math.floor(c[0] / 0.0004) + ':' + Math.floor(c[1] / 0.00025);
+  for (const f of signFeatures) {
+    const p = f.geometry.coordinates, [cx, cy] = cell(p).split(':').map(Number);
+    let dup = false;
+    for (let i = -1; i <= 1 && !dup; i++) for (let j = -1; j <= 1 && !dup; j++)
+      dup = (sgrid.get((cx + i) + ':' + (cy + j)) || []).some(g => g.properties.cls === f.properties.cls && lineLength([g.geometry.coordinates, p]) < 15);
+    if (dup) continue;
+    signs.push(f);
+    const k = cell(p); if (!sgrid.has(k)) sgrid.set(k, []); sgrid.get(k).push(f);
+  }
+  map.getSource('infra').setData({ type: 'FeatureCollection', features: infraFeatures.concat(signs) });
   stats = {
     bicycle: ordered.filter(r => KIND[r.tags.route] === 'bicycle').length,
     hiking: ordered.filter(r => KIND[r.tags.route] === 'hiking').length,

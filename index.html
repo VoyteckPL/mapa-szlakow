@@ -483,12 +483,26 @@ function rebuild() {
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
+  // etykiety pasów i sierżantów: przy połączeniach odcinków OSM (początek, koniec, łączenia), jak znaki C-13
+  for (const f of infraFeatures) {
+    const j = f._joints; delete f._joints;
+    if (!j || !/^(pas|kontrapas|sharrow)$/.test(f.properties.cls) || !f.properties.dir) continue;
+    const c = f.geometry.coordinates, len = lineLength(c);
+    if (len < 12) continue;
+    for (const t of j) {
+      const m = Math.min(len - 4, Math.max(4, t * len));
+      const pf = pointAlong(c, m, f.properties.cls), q = pointAlong(c, Math.min(len, m + 1), f.properties.cls).geometry.coordinates, p0 = pointAlong(c, Math.max(0, m - 1), f.properties.cls).geometry.coordinates;
+      const ang = Math.atan2(-(q[1] - p0[1]) * 110540, (q[0] - p0[0]) * 64650) * 180 / Math.PI + (f.properties.dir === -1 ? 180 : 0);
+      pf.properties = { cls: f.properties.cls, sign: 2, side: 0, dir: 0, rot: ang };
+      signFeatures.push(pf);
+    }
+  }
   const signs = [], sgrid = new Map(), cell = c => Math.floor(c[0] / 0.0004) + ':' + Math.floor(c[1] / 0.00025);
   for (const f of signFeatures) {
     const p = f.geometry.coordinates, [cx, cy] = cell(p).split(':').map(Number);
     let dup = false;
     for (let i = -1; i <= 1 && !dup; i++) for (let j = -1; j <= 1 && !dup; j++)
-      dup = (sgrid.get((cx + i) + ':' + (cy + j)) || []).some(g => g.properties.cls === f.properties.cls && lineLength([g.geometry.coordinates, p]) < 15);
+      dup = (sgrid.get((cx + i) + ':' + (cy + j)) || []).some(g => g.properties.cls === f.properties.cls && lineLength([g.geometry.coordinates, p]) < (f.properties.sign === 2 ? 25 : 15));
     if (dup) continue;
     signs.push(f);
     const k = cell(p); if (!sgrid.has(k)) sgrid.set(k, []); sgrid.get(k).push(f);
@@ -577,6 +591,16 @@ function buildLaneChains(items, centerFeatures) {
 
   const crossNodes = new Set(); // węzły leżące na przejazdach dla rowerów
   for (const f of centerFeatures) if (f.properties.cls === 'przejazd') for (const c of f.geometry.coordinates) crossNodes.add(nodeKey(c));
+  // położenia (ułamek długości) połączeń odcinków OSM w ciągu – tam stawiamy etykiety pasa / sierżanta
+  const jointFractions = (chain, pts) => {
+    const keys = new Set(chain.slice(1).map(c => { const cp = items[c.i].coords; return nodeKey(c.rev ? cp[cp.length - 1] : cp[0]); }));
+    const d = [0];
+    for (let j = 1; j < pts.length; j++) d.push(d[j - 1] + Math.hypot((pts[j][0] - pts[j - 1][0]) * kx, (pts[j][1] - pts[j - 1][1]) * ky));
+    const tot = d[d.length - 1] || 1, fr = [0];
+    for (let j = 1; j < pts.length - 1; j++) if (keys.has(nodeKey(pts[j]))) fr.push(d[j] / tot);
+    fr.push(1);
+    return fr;
+  };
   const used = new Set(), out = [];
   const segDir = (a, b) => { const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * ky, l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
   // przedłużanie ciągu: na końcu `tip` (ostatni wierzchołek w orientacji ciągu) szukamy odcinka zgodnego
@@ -701,7 +725,7 @@ function buildLaneChains(items, centerFeatures) {
     const dir = first.dir === 2 || !first.dir ? first.dir : first.dir * (chain[0].rev ? -1 : 1);
     out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: offsetLine(P, D) },
       properties: { ...first, side, dir, ways: chain.map(c => items[c.i].props.way).join(',') },
-      _axis: [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]], _flat: flat }); // oś jezdni na końcach (do lejka pas → DDR)
+      _axis: [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]], _flat: flat, _joints: jointFractions(chain, pts) }); // oś jezdni na końcach (do lejka pas → DDR)
   });
   joinLanesToPaths(out, centerFeatures, kx, ky);
   return out;
@@ -1011,10 +1035,10 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addLayer({ id: 'infra-lane-out', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': DASH_W, 'line-offset': sideTimes(0.5), 'line-dasharray': [6, 6] } }); // przerywana po obu stronach pasa
-  map.addLayer({ id: 'infra-lane-sym', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', LANE, ['!=', ['get', 'dir'], 0]],
+  map.addLayer({ id: 'infra-lane-sym', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['==', ['get', 'sign'], 2], LANE],
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 160, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
-      'icon-image': 'lanebike', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'symbol-placement': 'point', 'icon-rotation-alignment': 'map', 'icon-padding': 1,
+      'icon-image': 'lanebike', 'icon-rotate': ['get', 'rot'],
       'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 15, 0.55, 18, 0.9, 22, 2.6 * PX_PER_M(22) / 34],
     } });
   // zwykłe strzałki: na pasach tylko do zoomu 17 (wyżej jest malowany rower ze strzałką)
@@ -1035,10 +1059,10 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
       'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
     } });
   // sierżanty: podwójny chevron w kierunku jazdy
-  map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 15, filter: isCls('sharrow'),
+  map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['==', ['get', 'sign'], 2], isCls('sharrow')],
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 160, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
-      'icon-image': 'sharrowsign', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'symbol-placement': 'point', 'icon-rotation-alignment': 'map', 'icon-padding': 1,
+      'icon-image': 'sharrowsign', 'icon-rotate': ['get', 'rot'],
       'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 15, 0.55, 18, 0.9, 22, 2.6 * PX_PER_M(22) / 34],
     } });
   // znaki C-13 / C-13/16 co jakiś czas na drogach dla rowerów i ciągach

@@ -238,11 +238,12 @@ out geom;`;
 
 let endpointIdx = 0;
 const MAX_STALENESS_MS = 60 * 60 * 1000; // serwer z danymi starszymi niż 1 h odrzucamy (niektóre mirrory potrafią stać tygodniami)
-async function overpass(query) {
+async function overpass(query, onAttempt = () => {}) {
   let lastErr;
   for (let attempt = 0; attempt < OVERPASS.length * 2; attempt++) {
     const url = OVERPASS[endpointIdx % OVERPASS.length];
-    const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 100 * 1000);
+    onAttempt({ server: new URL(url).hostname, attempt: attempt + 1, lastErr });
+    const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 90 * 1000);
     try {
       const res = await fetch(url, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal });
       if (res.ok) {
@@ -251,7 +252,7 @@ async function overpass(query) {
         if (base && Date.now() - base < MAX_STALENESS_MS) return json;
         lastErr = new Error(`${url} → nieaktualne dane (${json.osm3s && json.osm3s.timestamp_osm_base})`);
       } else lastErr = new Error(`${url} → HTTP ${res.status}`);
-    } catch (e) { lastErr = e; } finally { clearTimeout(timer); }
+    } catch (e) { lastErr = e.name === 'AbortError' ? new Error(`${url} → brak odpowiedzi w 90 s`) : e; } finally { clearTimeout(timer); }
     endpointIdx++;
     await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
   }
@@ -286,8 +287,8 @@ function enqueue(key) {
 function pump() {
   while (running < MAX_PARALLEL && queue.length) {
     const key = queue.shift(); const t = tiles.get(key);
-    running++; t.status = 'loading'; renderStatus();
-    overpass(buildQuery(t.bbox)).then(json => {
+    running++; t.status = 'loading'; t.startedAt = Date.now(); t.error = null; renderStatus();
+    overpass(buildQuery(t.bbox), info => { t.attemptInfo = info; renderStatus(); }).then(json => {
       t.elements = json.elements; t.osmBase = json.osm3s && json.osm3s.timestamp_osm_base;
       t.loadedAt = Date.now(); t.status = 'ok'; t.fromCache = false; scheduleRebuild();
       cachePut(key, { elements: t.elements, osmBase: t.osmBase, loadedAt: t.loadedAt }).catch(() => {});
@@ -646,6 +647,7 @@ document.getElementById('legend-infra').innerHTML = Object.values(INFRA).map(i =
     `<div class="legend-row">${svgDash(PTTK.red)}${svgDash(PTTK.green)}</div>`);
 })();
 
+setInterval(() => { if (queue.length || running) renderStatus(); }, 1000); // licznik sekund przy ładowaniu
 function renderStatus() {
   const all = [...tiles.values()];
   const loading = all.filter(t => t.status === 'loading' || t.status === 'queued').length;
@@ -655,8 +657,16 @@ function renderStatus() {
   let s = '';
   if (stats) s += `<b>${stats.bicycle}</b> szlaków rowerowych · <b>${stats.hiking}</b> pieszych<br><b>${stats.infraKm.toFixed(0)} km</b> dróg z infrastrukturą rowerową<br>`;
   if (bases.length) s += `Stan bazy OSM: <b>${fmt(bases[0])}</b>${all.some(t => t.fromCache) ? ' (z pamięci podręcznej)' : ''}<br>`;
-  if (loading) s += `Pobieranie z Overpass… (${loading} ${loading === 1 ? 'kafel' : 'kafle'})<br>`;
-  if (errors.length) s += `<span style="color:#d33">Błąd pobierania ${errors.length} kafli – spróbuj „Odśwież teraz”.</span><br>`;
+  const active = all.filter(t => t.status === 'loading');
+  if (loading) {
+    const t = active[0], secs = t ? Math.round((Date.now() - t.startedAt) / 1000) : 0, a = t && t.attemptInfo;
+    s += `<span class="busy">${stats ? 'Odświeżanie' : 'Pobieranie'} danych z Overpass… <b>${secs} s</b>`;
+    if (a) s += `<br>serwer: ${esc(a.server)}${a.attempt > 1 ? `, próba ${a.attempt}` : ''}`;
+    if (a && a.lastErr) s += `<br><span style="color:#c60">poprzednia próba: ${esc(String(a.lastErr.message || a.lastErr).replace(/^https?:\/\/[^ ]+ → /, ''))}</span>`;
+    if (secs > 15) s += `<br>Publiczne serwery Overpass bywają przeciążone, pierwsze ładowanie może potrwać do 1–2 min.${stats ? ' Do tego czasu widać poprzednie dane.' : ''}`;
+    s += '</span><br>';
+  }
+  if (errors.length) s += `<span style="color:#d33">Nie udało się pobrać danych: ${esc(errors[0].error || '')}. Kolejna próba za chwilę automatycznie albo kliknij „Odśwież teraz”.</span><br>`;
   if (!REGION.preload && map.getZoom() < MIN_DATA_ZOOM) s += `Przybliż mapę (zoom ≥ ${MIN_DATA_ZOOM}), aby wczytać szlaki.<br>`;
   s += `Auto-odświeżanie co ${REFRESH_MS / 60000} min.`;
   document.getElementById('status').innerHTML = s;

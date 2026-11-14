@@ -508,8 +508,10 @@ function offsetLine(coords, d) {
 
 // Płynne połączenia: pas rysowany z przesunięciem kończy się „w powietrzu”, bo w OSM droga dla rowerów
 // zaczyna się w innym miejscu (często w osi jezdni albo obok). Każdy luźny koniec przesuniętej linii
-// dociągamy do najbliższego punktu innej infrastruktury w promieniu ~22 m, leżącego „przed” tym końcem.
-const CONNECT_M = 22;
+// dociągamy tylko w dwóch bezpiecznych przypadkach (inaczej koniec zostaje, jak jest):
+//  a) ciąg dalszy tego samego pasa na kolejnym odcinku ulicy (ten sam kierunek jazdy, do 4 m),
+//  b) koniec drogi dla rowerów / ciągu / przejazdu do 12 m, leżący prawie na wprost (odchylenie < ~35°).
+const CONNECT_M = 12;
 function connectLooseEnds(features) {
   const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540, cell = CONNECT_M;
   const grid = new Map(), key = (x, y) => Math.floor(x / cell) + ':' + Math.floor(y / cell);
@@ -521,6 +523,7 @@ function connectLooseEnds(features) {
       if (!grid.has(k)) grid.set(k, []);
       grid.get(k).push({ x, y, lon, lat, fi, way: f.properties.way });
     }
+    f._ends = [f.geometry.coordinates[0], f.geometry.coordinates[f.geometry.coordinates.length - 1]];
   });
   features.forEach((f, fi) => {
     if (!f.properties.side || skip.has(f.properties.cls)) return;
@@ -535,11 +538,14 @@ function connectLooseEnds(features) {
         for (const v of grid.get((cx + i) + ':' + (cy + j)) || []) {
           if (v.fi === fi || v.way === f.properties.way) continue;
           const vx = v.x - px, vy = v.y - py, d = Math.hypot(vx, vy);
-          if (d < 0.4) { connected = true; break; }
-          if (d > CONNECT_M) continue;
+          const g = features[v.fi].properties;
+          if (d < 0.4 && (g.side === 0 || g.dir === f.properties.dir)) { connected = true; break; }
           const ahead = (vx * dx + vy * dy) / d; // cos kąta względem kierunku „na zewnątrz” końca
-          if (ahead < 0.1) continue;
-          const score = d / ahead;
+          const isEnd = features[v.fi]._ends.some(e => e[0] === v.lon && e[1] === v.lat);
+          const sameLane = g.side !== 0 && g.dir === f.properties.dir && d <= 4 && ahead > 0;
+          const toPath = g.side === 0 && /^(droga|ciag|przejazd)$/.test(g.cls) && isEnd && d <= CONNECT_M && ahead > 0.82;
+          if (!sameLane && !toPath) continue;
+          const score = d / Math.max(ahead, 0.1);
           if (score < bestScore) { bestScore = score; best = v; }
         }
       }
@@ -547,6 +553,7 @@ function connectLooseEnds(features) {
       if (atStart) c.unshift([best.lon, best.lat]); else c.push([best.lon, best.lat]);
     }
   });
+  features.forEach(f => delete f._ends);
 }
 
 function lineLength(c) {

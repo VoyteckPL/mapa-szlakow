@@ -454,7 +454,7 @@ function rebuild() {
     const coords = w.geometry.map(p => [p.lon, p.lat]);
     for (const c of classes) {
       infraFeatures.push({ type: 'Feature',
-        geometry: { type: 'LineString', coordinates: c.side ? offsetLine(coords, c.side * laneOffsetM(w.tags)) : coords },
+        geometry: { type: 'LineString', coordinates: c.side ? offsetLine(coords, c.side * (c.cls === 'sharrow' ? Math.max(1.4, laneOffsetM(w.tags) - 1.9) : laneOffsetM(w.tags))) : coords },
         properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width } });
     }
     infraLen += lineLength(coords);
@@ -576,15 +576,15 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
   map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')]],
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
       'icon-image': ['case', ['==', ['get', 'dir'], 2], 'arrow2', 'arrow'],
       'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
     } });
   // sierżanty: podwójny chevron w kierunku jazdy
-  map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 14, filter: isCls('sharrow'),
+  map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 15, filter: isCls('sharrow'),
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 90, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'symbol-placement': 'line', 'symbol-spacing': 90, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
       'icon-image': 'chevron2', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.65, 18, 1.1],
     } });

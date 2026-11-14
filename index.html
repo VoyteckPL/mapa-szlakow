@@ -193,15 +193,15 @@ const HILLSHADE_TILES = [wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/NM
 const PTTK = { red: '#e0262b', blue: '#1f5fd1', green: '#1f9a3c', yellow: '#e8b800', black: '#222222',
   orange: '#f07d00', purple: '#8e3bb8', white: '#9aa0a6', brown: '#8a5a2b' };
 const BIKE_FALLBACK = { icn: '#0b3d91', ncn: '#c2185b', rcn: '#6a1b9a', lcn: '#00838f' };
+// Infrastruktura rowerowa: paleta niebieska. dash = wzór przerywania (inny niż kreski szlaków pieszych).
 const INFRA = {
-  droga:       { label: 'Droga dla rowerów',          color: '#c4007a', width: 2.6 },
-  ciag:        { label: 'Ciąg pieszo-rowerowy',       color: '#e46fb3', width: 2.2 },
-  przy_jezdni: { label: 'Droga rowerowa przy jezdni', color: '#c4007a', width: 2.2 },
-  pas:         { label: 'Pas rowerowy',               color: '#ff7a00', width: 2.4 },
-  kontrapas:   { label: 'Kontrapas',                  color: '#009e8f', width: 2.4 },
-  kontraruch:  { label: 'Kontraruch (bez pasa)',      color: '#7cb342', width: 1.6 },
-  buspas:      { label: 'Buspas dla rowerów',         color: '#3f51b5', width: 2.0 },
-  sharrow:     { label: 'Sierżant rowerowy (P-27)',   color: '#8d8d8d', width: 1.6 },
+  droga:      { label: 'Droga dla rowerów (C-13)',    color: '#0b3d91', width: 3.0, casing: true, icon: 'c13' },
+  ciag:       { label: 'Ciąg pieszo-rowerowy (C-13/16)', color: '#5fa8e8', width: 2.6, icon: 'c13c16' },
+  pas:        { label: 'Pas rowerowy',                color: '#1e7be0', width: 2.4 },
+  kontrapas:  { label: 'Kontrapas',                   color: '#1e7be0', width: 2.6, dash: [1.1, 0.7] },
+  kontraruch: { label: 'Kontraruch (bez pasa)',       color: '#3d9be9', width: 1.8, dash: [0.4, 1.0] },
+  buspas:     { label: 'Buspas dla rowerów',          color: '#5b5fc7', width: 2.4 },
+  sharrow:    { label: 'Sierżant rowerowy (P-27)',    color: '#8fc3f2', width: 1.8 },
 };
 
 /* =========================================================================
@@ -356,23 +356,37 @@ function normalize(coords) {
   return (ang > 100 || ang <= -80) ? coords.slice().reverse() : coords;
 }
 
+// Zwraca listę elementów infrastruktury na drodze:
+//   side: -1 lewa / 0 oś / 1 prawa (względem kierunku narysowania drogi w OSM)
+//   dir:  kierunek dozwolonej jazdy rowerem: 1 zgodnie z drogą, -1 pod prąd, 2 oba (kontraruch), 0 brak strzałek (dwukierunkowa)
 function infraClasses(t) {
   const out = []; const hw = t.highway; if (!hw) return out;
-  const oneway = ['yes', '1', 'true', '-1'].includes(t.oneway);
-  if (hw === 'cycleway') {
-    out.push({ cls: (t.foot === 'designated' && t.segregated !== 'yes') ? 'ciag' : 'droga', side: 0 });
+  const carDir = ['yes', '1', 'true'].includes(t.oneway) ? 1 : t.oneway === '-1' ? -1 : 0;
+  const ow = v => v === 'yes' || v === '1' || v === 'true' ? 1 : v === '-1' ? -1 : v === 'no' ? 0 : null;
+  if (hw === 'cycleway' || (t.bicycle === 'designated' && /^(path|footway|pedestrian|track|service|living_street|bridleway)$/.test(hw))) {
+    const shared = hw === 'cycleway' ? (t.foot === 'designated' && t.segregated !== 'yes')
+      : ((t.foot === 'designated' || hw === 'footway' || hw === 'pedestrian') && t.segregated !== 'yes');
+    const d = ow(t['oneway:bicycle']) ?? ow(t.oneway) ?? 0;
+    out.push({ cls: shared ? 'ciag' : 'droga', side: 0, dir: d });
     return out;
   }
-  if (t.bicycle === 'designated' && /^(path|footway|pedestrian|track|service|living_street|bridleway)$/.test(hw)) {
-    out.push({ cls: (t.foot === 'designated' || hw === 'footway' || hw === 'pedestrian') && t.segregated !== 'yes' ? 'ciag' : 'droga', side: 0 });
-    return out;
-  }
-  const map1 = v => ({ lane: 'pas', opposite_lane: 'kontrapas', track: 'przy_jezdni', opposite_track: 'przy_jezdni',
+  // cycleway=track (droga dla rowerów wzdłuż jezdni, zmapowana jako tag ulicy) = zwykła droga dla rowerów
+  const map1 = v => ({ lane: 'pas', opposite_lane: 'kontrapas', track: 'droga', opposite_track: 'droga',
     share_busway: 'buspas', opposite_share_busway: 'buspas', shared_lane: 'sharrow', opposite: 'kontraruch' })[v];
+  const push = (cls, sideNum, explicit) => {
+    let dir;
+    if (cls === 'kontraruch') dir = 2;
+    else if (explicit !== null && explicit !== undefined) dir = explicit === 0 ? 0 : explicit; // tag cycleway:*:oneway
+    else if (cls === 'kontrapas') dir = carDir ? -carDir : -1;
+    else if (carDir) dir = carDir;
+    else dir = sideNum < 0 ? -1 : sideNum > 0 ? 1 : 0; // ulica dwukierunkowa: ruch prawostronny
+    out.push({ cls, side: sideNum, dir });
+  };
   const sideVal = (side, v) => {
     let cls = map1(v); if (!cls) return;
-    if (cls === 'pas' && oneway && (t[`cycleway:${side}:oneway`] === '-1' || (side === 'left' && t['oneway:bicycle'] === 'no'))) cls = 'kontrapas';
-    out.push({ cls, side: side === 'left' ? -1 : 1 });
+    const explicit = ow(t[`cycleway:${side}:oneway`]);
+    if (cls === 'pas' && carDir && (explicit === -carDir || (side === 'left' && t['oneway:bicycle'] === 'no' && explicit === null))) cls = 'kontrapas';
+    push(cls, side === 'left' ? -1 : 1, cls === 'kontrapas' && explicit === null ? null : explicit);
   };
   if (t['cycleway:left']) sideVal('left', t['cycleway:left']);
   if (t['cycleway:right']) sideVal('right', t['cycleway:right']);
@@ -380,12 +394,12 @@ function infraClasses(t) {
   if (t.cycleway && !out.length) {
     const cls = map1(t.cycleway);
     if (cls) {
-      if (/^opposite/.test(t.cycleway)) out.push({ cls: cls === 'pas' ? 'kontrapas' : cls, side: cls === 'kontraruch' ? 0 : -1 });
-      else if (oneway) out.push({ cls, side: 1 });
-      else { out.push({ cls, side: -1 }); out.push({ cls, side: 1 }); }
+      if (/^opposite/.test(t.cycleway)) push(cls === 'pas' ? 'kontrapas' : cls, cls === 'kontraruch' ? 0 : -1, null);
+      else if (carDir) push(cls, 1, null);
+      else { push(cls, -1, null); push(cls, 1, null); }
     }
   }
-  if (!out.length && oneway && t['oneway:bicycle'] === 'no') out.push({ cls: 'kontraruch', side: 0 });
+  if (!out.length && carDir && t['oneway:bicycle'] === 'no') push('kontraruch', 0, null);
   return out;
 }
 
@@ -443,7 +457,7 @@ function rebuild() {
     const coords = w.geometry.map(p => [p.lon, p.lat]);
     for (const c of classes) {
       infraFeatures.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords },
-        properties: { way: wayId, cls: c.cls, side: c.side, color: INFRA[c.cls].color, w: INFRA[c.cls].width } });
+        properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width } });
     }
     infraLen += lineLength(coords);
   }
@@ -506,13 +520,47 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addSource('infra', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
 
   // infrastruktura (pod szlakami); pasy po stronie jezdni wg tagów left/right
+  addInfraImages();
+  const INFRA_OFFSET = ['interpolate', ['linear'], ['zoom'], 13, ['*', ['get', 'side'], 1], 16, ['*', ['get', 'side'], 3.5], 19, ['*', ['get', 'side'], 9]];
+  const INFRA_WIDTH = (k = 1, add = 0) => ['interpolate', ['linear'], ['zoom'],
+    11, ['+', ['*', ['get', 'w'], 0.5 * k], add * 0.5], 15, ['+', ['*', ['get', 'w'], k], add], 18, ['+', ['*', ['get', 'w'], 1.8 * k], add * 1.6]];
+  const isCls = (...c) => ['in', ['get', 'cls'], ['literal', c]];
+  map.addLayer({ id: 'infra-casing', type: 'line', source: 'infra', minzoom: 11, filter: isCls('droga'),
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': INFRA_WIDTH(1, 2.4), 'line-offset': INFRA_OFFSET, 'line-opacity': 0.95 } });
   map.addLayer({ id: 'infra', type: 'line', source: 'infra', minzoom: 11,
-    layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: {
-      'line-color': ['get', 'color'],
-      'line-width': ['interpolate', ['linear'], ['zoom'], 11, ['*', ['get', 'w'], 0.5], 15, ['get', 'w'], 18, ['*', ['get', 'w'], 1.8]],
-      'line-offset': ['interpolate', ['linear'], ['zoom'], 13, ['*', ['get', 'side'], 1], 16, ['*', ['get', 'side'], 3.5], 19, ['*', ['get', 'side'], 9]],
-      'line-opacity': 0.9,
+    filter: ['!', isCls(...Object.keys(INFRA).filter(k => INFRA[k].dash))],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET } });
+  for (const k of Object.keys(INFRA).filter(k => INFRA[k].dash)) {
+    map.addLayer({ id: 'infra-' + k, type: 'line', source: 'infra', minzoom: 12, filter: isCls(k),
+      layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET, 'line-dasharray': INFRA[k].dash } });
+  }
+  // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
+  const ICON_SIDE = (px) => ['case', ['==', ['get', 'side'], 1], ['literal', [0, px]], ['==', ['get', 'side'], -1], ['literal', [0, -px]], ['literal', [0, 0]]];
+  map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')]],
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-image': ['case', ['==', ['get', 'dir'], 2], 'arrow2', 'arrow'],
+      'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
+      'icon-offset': ['interpolate', ['linear'], ['zoom'], 15, ICON_SIDE(3), 16, ICON_SIDE(4.6), 19, ICON_SIDE(8.2)],
+    } });
+  // sierżanty: podwójny chevron w kierunku jazdy
+  map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 14, filter: isCls('sharrow'),
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 90, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-image': 'chevron2', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.65, 18, 1.1],
+      'icon-offset': ['interpolate', ['linear'], ['zoom'], 15, ICON_SIDE(3), 16, ICON_SIDE(4.6), 19, ICON_SIDE(8.2)],
+    } });
+  // znaki C-13 / C-13/16 co jakiś czas na drogach dla rowerów i ciągach
+  map.addLayer({ id: 'infra-signs', type: 'symbol', source: 'infra', minzoom: 14.5, filter: isCls('droga', 'ciag'),
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 320, 'icon-rotation-alignment': 'viewport', 'icon-padding': 4,
+      'icon-image': ['match', ['get', 'cls'], 'ciag', 'c13c16', 'c13'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 14.5, 0.7, 18, 1],
     } });
 
   // podświetlenie wybranego szlaku
@@ -545,13 +593,14 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const CLICK_LAYERS = ['bicycle', 'hiking', 'infra'];
+const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
+const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-kontrapas', 'infra-kontraruch'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
   const feats = map.queryRenderedFeatures([[p.x - r, p.y - r], [p.x + r, p.y + r]], { layers: CLICK_LAYERS.filter(l => map.getLayer(l)) });
   if (!feats.length) { closeInfo(); return; }
-  const rels = [...new Set(feats.filter(f => f.layer.id !== 'infra').map(f => f.properties.rel))];
-  const infraWays = [...new Set(feats.filter(f => f.layer.id === 'infra').map(f => f.properties.way))];
+  const rels = [...new Set(feats.filter(f => !f.layer.id.startsWith('infra')).map(f => f.properties.rel))];
+  const infraWays = [...new Set(feats.filter(f => f.layer.id.startsWith('infra')).map(f => f.properties.way))];
   showInfo(rels, infraWays);
 });
 for (const l of CLICK_LAYERS) {
@@ -587,7 +636,7 @@ function showInfo(rels, infraWays) {
     html += `<div class="route-card"><h3>Infrastruktura rowerowa</h3>`;
     for (const wid of infraWays) {
       const w = waysById.get(wid); if (!w) continue;
-      const cls = infraClasses(w.tags).map(c => INFRA[c.cls].label + (c.side ? (c.side < 0 ? ' (lewa)' : ' (prawa)') : ''));
+      const cls = infraClasses(w.tags).map(c => INFRA[c.cls].label + (c.side ? (c.side < 0 ? ' (lewa strona)' : ' (prawa strona)') : '') + (c.dir === 2 ? ', w obie strony' : c.dir ? ', jednokierunkowo' : ''));
       html += `<details ${rels.length ? '' : 'open'}><summary>${esc([...new Set(cls)].join(', '))} — <a href="https://www.openstreetmap.org/way/${wid}" target="_blank" rel="noopener">droga ${wid}</a></summary>${tagTable(w.tags)}</details>`;
     }
     html += '</div>';
@@ -630,13 +679,76 @@ const toggle = (id, layers) => document.getElementById(id).onchange = (e) =>
   layers.forEach(l => map.getLayer(l) && map.setLayoutProperty(l, 'visibility', e.target.checked ? 'visible' : 'none'));
 toggle('lyr-bicycle', ['bicycle', 'bicycle-casing']);
 toggle('lyr-hiking', ['hiking', 'hiking-casing']);
-toggle('lyr-infra', ['infra']);
+toggle('lyr-infra', INFRA_LAYERS);
 document.getElementById('refresh').onclick = () => requestTiles(true);
 document.getElementById('toggle-controls').onclick = () => document.getElementById('controls').classList.toggle('collapsed');
 if (matchMedia('(max-width: 640px)').matches) document.getElementById('controls').classList.add('collapsed');
 
-document.getElementById('legend-infra').innerHTML = Object.values(INFRA).map(i =>
-  `<div class="legend-row"><span class="swatch" style="background:${i.color};height:${Math.max(3, i.width * 1.5)}px"></span>${esc(i.label)}</div>`).join('');
+// --- ikony rysowane na canvasie (bez zewnętrznych plików) ---
+const PR = 2; // gęstość pikseli ikon
+function canvasIcon(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w * PR; c.height = h * PR;
+  const g = c.getContext('2d'); g.scale(PR, PR); g.lineJoin = 'round'; g.lineCap = 'round'; draw(g, w, h); return c;
+}
+function drawBike(g, cx, cy, s, col) {
+  // prosty rower: dwa koła, rama, kierownica, siodełko (s = szerokość)
+  const r = s * 0.2, lx = cx - s * 0.28, rx = cx + s * 0.28, wy = cy + s * 0.1;
+  g.strokeStyle = col; g.lineWidth = Math.max(1, s * 0.07);
+  g.beginPath(); g.arc(lx, wy, r, 0, 7); g.moveTo(rx + r, wy); g.arc(rx, wy, r, 0, 7); g.stroke();
+  g.beginPath(); g.moveTo(lx, wy); g.lineTo(cx - s * 0.02, wy); g.lineTo(cx + s * 0.16, cy - s * 0.16); g.lineTo(cx - s * 0.12, cy - s * 0.16);
+  g.lineTo(lx, wy); g.moveTo(cx - s * 0.02, wy); g.lineTo(cx - s * 0.15, cy - s * 0.24); g.moveTo(cx - s * 0.21, cy - s * 0.24); g.lineTo(cx - s * 0.08, cy - s * 0.24);
+  g.moveTo(rx, wy); g.lineTo(cx + s * 0.14, cy - s * 0.27); g.lineTo(cx + s * 0.23, cy - s * 0.29); g.stroke();
+}
+function drawWalker(g, cx, cy, s, col) {
+  g.fillStyle = col; g.strokeStyle = col; g.lineWidth = Math.max(1, s * 0.11);
+  g.beginPath(); g.arc(cx + s * 0.04, cy - s * 0.36, s * 0.12, 0, 7); g.fill();
+  g.beginPath(); g.moveTo(cx, cy - s * 0.2); g.lineTo(cx - s * 0.04, cy + s * 0.1); g.lineTo(cx - s * 0.2, cy + s * 0.4);
+  g.moveTo(cx - s * 0.04, cy + s * 0.1); g.lineTo(cx + s * 0.16, cy + s * 0.4);
+  g.moveTo(cx - s * 0.2, cy - s * 0.02); g.lineTo(cx, cy - s * 0.16); g.lineTo(cx + s * 0.18, cy); g.stroke();
+}
+const SIGN_BLUE = '#1659c7';
+const ICONS = {
+  arrow: canvasIcon(16, 12, (g) => {
+    g.beginPath(); g.moveTo(2, 4.2); g.lineTo(8, 4.2); g.lineTo(8, 1.5); g.lineTo(14.5, 6); g.lineTo(8, 10.5); g.lineTo(8, 7.8); g.lineTo(2, 7.8); g.closePath();
+    g.fillStyle = '#0b3d91'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
+  }),
+  arrow2: canvasIcon(20, 12, (g) => {
+    g.beginPath(); g.moveTo(1.5, 6); g.lineTo(6.5, 1.5); g.lineTo(6.5, 4.2); g.lineTo(13.5, 4.2); g.lineTo(13.5, 1.5); g.lineTo(18.5, 6);
+    g.lineTo(13.5, 10.5); g.lineTo(13.5, 7.8); g.lineTo(6.5, 7.8); g.lineTo(6.5, 10.5); g.closePath();
+    g.fillStyle = '#0b3d91'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
+  }),
+  chevron2: canvasIcon(18, 14, (g) => {
+    const ch = (x) => { g.beginPath(); g.moveTo(x, 2); g.lineTo(x + 5, 7); g.lineTo(x, 12); };
+    for (const [col, w] of [['#fff', 4.6], ['#0b3d91', 2.4]]) { g.strokeStyle = col; g.lineWidth = w; ch(3); g.stroke(); ch(9); g.stroke(); }
+  }),
+  c13: canvasIcon(22, 22, (g) => {
+    g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
+    drawBike(g, 11, 11.5, 14, '#fff');
+  }),
+  c13c16: canvasIcon(22, 22, (g) => {
+    g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
+    g.beginPath(); g.moveTo(2.5, 11); g.lineTo(19.5, 11); g.lineWidth = 1.2; g.stroke();
+    drawWalker(g, 11, 6.8, 7, '#fff'); drawBike(g, 11, 15.2, 10, '#fff');
+  }),
+};
+function addInfraImages() {
+  for (const [name, c] of Object.entries(ICONS)) if (!map.hasImage(name))
+    map.addImage(name, c.getContext('2d').getImageData(0, 0, c.width, c.height), { pixelRatio: PR });
+}
+
+// --- legenda infrastruktury ---
+(function () {
+  const img = (n, h = 14) => `<img src="${ICONS[n].toDataURL()}" height="${h}" alt="">`;
+  const line = (i, extra = '') => {
+    const dash = i.dash ? `stroke-dasharray="${i.dash.map(v => v * i.width * 1.6).join(' ')}"` : '';
+    const cas = i.casing ? `<line x1="2" y1="6" x2="32" y2="6" stroke="#9db7dc" stroke-width="${i.width * 1.2 + 5}" stroke-linecap="round"/><line x1="2" y1="6" x2="32" y2="6" stroke="#fff" stroke-width="${i.width * 1.2 + 3}" stroke-linecap="round"/>` : '';
+    return `<svg width="34" height="12" style="flex:none">${cas}<line x1="2" y1="6" x2="32" y2="6" stroke="${i.color}" stroke-width="${i.width * 1.2}" ${dash} stroke-linecap="${i.dash ? 'butt' : 'round'}"/></svg>${extra}`;
+  };
+  const extra = { droga: img('c13'), ciag: img('c13c16'), kontrapas: img('arrow', 10), kontraruch: img('arrow2', 10), sharrow: img('chevron2', 12) };
+  document.getElementById('legend-infra').innerHTML = Object.entries(INFRA).map(([k, i]) =>
+    `<div class="legend-row">${line(i)}${extra[k] || ''}<span>${esc(i.label)}</span></div>`).join('') +
+    `<div class="legend-row"><span style="width:34px;text-align:center;flex:none">${img('arrow', 10)}</span><span>Kierunek jazdy, gdzie tylko w jedną stronę</span></div>`;
+})();
 // legenda szlaków (dodana pod checkboxami)
 (function () {
   const svgDots = c => `<svg width="34" height="8"><line x1="3" y1="4" x2="33" y2="4" stroke="${c}" stroke-width="4" stroke-linecap="round" stroke-dasharray="0 7"/></svg>`;

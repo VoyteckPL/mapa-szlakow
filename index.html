@@ -668,21 +668,31 @@ function buildLaneChains(items, centerFeatures) {
 //   - krzywa się nie cofa i nie przecina żadnego pasa (także drugiego pasa tej ulicy).
 function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
   const xy = c => [c[0] * kx, c[1] * ky], ll = p => [p[0] / kx, p[1] / ky];
-  // Przejście pas → DDR: łuk pocięty na krótkie odcinki, których szerokość i kolor płynnie
-  // zmieniają się od pasa do drogi dla rowerów (bez twardego uskoku grubości).
   const extra = [];
-  const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-  const mix = (a, b, t) => '#' + hex(a).map((v, i) => Math.round(v + (hex(b)[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  // pts: łuk od końca pasa do DDR (xy). Łuk rysujemy kolorem pasa; ostatnie ~3 m to krótkie
+  // rozszerzenie w kolorze DDR (kolor zmienia się od razu, szerokość płynnie, liniowo).
+  const RAMP_M = 3;
   const transition = (lp, dp, pts) => {
-    const n = pts.length - 1, res = [], dflt = q => (q.color && q.w && q.wm ? q : { ...q, color: INFRA[q.cls].color, w: INFRA[q.cls].width, wm: widthM(q.cls, {}) });
+    const dflt = q => (q.color && q.w && q.wm ? q : { ...q, color: INFRA[q.cls].color, w: INFRA[q.cls].width, wm: widthM(q.cls, {}) });
     lp = dflt(lp); dp = dflt(dp);
-    for (let k = 1; k <= n; k++) {
-      const t = (k - 0.5) / n, e = t * t * (3 - 2 * t);
-      res.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [pts[k - 1], pts[k]].map(ll) },
-        properties: { ...lp, cls: 'przejscie', dir: 0, color: mix(lp.color, dp.color, e),
+    const S = [0];
+    for (let k = 1; k < pts.length; k++) S.push(S[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+    const total = S[S.length - 1], ramp = Math.min(RAMP_M, total / 2), at = d => {
+      let k = 1; while (k < S.length - 1 && S[k] < d) k++;
+      const t = (d - S[k - 1]) / ((S[k] - S[k - 1]) || 1);
+      return [pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * t, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * t];
+    };
+    const split = total - ramp;
+    const tail = [...pts.slice(1).filter((_, k) => S[k + 1] < split), at(split)];
+    const pieces = [], n = 4;
+    for (let k = 0; k < n; k++) {
+      const d0 = split + ramp * k / n, d1 = split + ramp * (k + 1) / n, e = (k + 1) / n;
+      const seg = [at(d0), ...pts.filter((_, j) => S[j] > d0 && S[j] < d1), at(d1)];
+      pieces.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: seg.map(ll) },
+        properties: { ...lp, cls: 'przejscie', side: 0, dir: 0, color: dp.color,
           w: lp.w + (dp.w - lp.w) * e, wm: lp.wm + (dp.wm - lp.wm) * e } });
     }
-    return res;
+    return { tail, pieces };
   };
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
   // punkty na drogach dla rowerów co ~3 m (z kierunkiem), w siatce 30 m do szybkiego wyszukiwania;
@@ -791,9 +801,10 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
       }
       let ok = true, prevProj = 0;
       for (const q of curve) { const pr = (q[0] - P0[0]) * t0[0] + (q[1] - P0[1]) * t0[1]; if (pr < prevProj - 0.05) { ok = false; break; } prevProj = pr; }
-      const NL = [...L.slice(0, cut + 1), ...(ok ? [] : [P3])].map(ll);
+      const tr = ok ? transition(f.properties, best.pe.f.properties, [P0, ...curve]) : null;
+      const NL = [...L.slice(0, cut + 1), ...(ok ? tr.tail : [P3])].map(ll);
       f.geometry.coordinates = atStart ? NL.reverse() : NL;
-      if (ok) extra.push(...transition(f.properties, best.pe.f.properties, [P0, ...curve]));
+      if (ok) extra.push(...tr.pieces);
       done.add(f.properties.ways + ':' + atStart);
     }
   }
@@ -836,7 +847,9 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
         prev = q;
       }
       if (!ok) continue;
-      extra.push(...transition(f.properties, best.f.properties, [P0, ...curve]));
+      const tr = transition(f.properties, best.f.properties, [P0, ...curve]), add = tr.tail.map(ll);
+      if (atStart) c.unshift(...add.reverse()); else c.push(...add);
+      extra.push(...tr.pieces);
     }
   }
   lanes.push(...extra);

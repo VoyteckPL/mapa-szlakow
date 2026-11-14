@@ -202,6 +202,7 @@ const INFRA = {
   kontraruch: { label: 'Kontraruch (bez pasa)',       color: '#3d9be9', width: 1.8, dash: [0.4, 1.0] },
   buspas:     { label: 'Buspas dla rowerów',          color: '#5b5fc7', width: 2.4 },
   sharrow:    { label: 'Sierżant rowerowy (P-27)',    color: '#8fc3f2', width: 1.8 },
+  przejazd:   { label: 'Przejazd dla rowerów (P-11)', color: '#d7262b', width: 7.0 },
 };
 
 /* =========================================================================
@@ -363,6 +364,12 @@ function infraClasses(t) {
   const out = []; const hw = t.highway; if (!hw) return out;
   const carDir = ['yes', '1', 'true'].includes(t.oneway) ? 1 : t.oneway === '-1' ? -1 : 0;
   const ow = v => v === 'yes' || v === '1' || v === 'true' ? 1 : v === '-1' ? -1 : v === 'no' ? 0 : null;
+  // przejazd przez jezdnię: czerwony z białymi kwadratami jak malowany P-11
+  if (t.cycleway === 'crossing' || (hw === 'cycleway' && (t.crossing || t.footway === 'crossing')) ||
+      (t.footway === 'crossing' && t.bicycle === 'designated') || (t.path === 'crossing' && t.bicycle === 'designated')) {
+    out.push({ cls: 'przejazd', side: 0, dir: 0 });
+    return out;
+  }
   if (hw === 'cycleway' || (t.bicycle === 'designated' && /^(path|footway|pedestrian|track|service|living_street|bridleway)$/.test(hw))) {
     const shared = hw === 'cycleway' ? (t.foot === 'designated' && t.segregated !== 'yes')
       : ((t.foot === 'designated' || hw === 'footway' || hw === 'pedestrian') && t.segregated !== 'yes');
@@ -529,13 +536,24 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': INFRA_WIDTH(1, 2.4), 'line-offset': INFRA_OFFSET, 'line-opacity': 0.95 } });
   map.addLayer({ id: 'infra', type: 'line', source: 'infra', minzoom: 11,
-    filter: ['!', isCls(...Object.keys(INFRA).filter(k => INFRA[k].dash))],
+    filter: ['!', isCls('przejazd', ...Object.keys(INFRA).filter(k => INFRA[k].dash))],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET } });
   for (const k of Object.keys(INFRA).filter(k => INFRA[k].dash)) {
     map.addLayer({ id: 'infra-' + k, type: 'line', source: 'infra', minzoom: 12, filter: isCls(k),
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET, 'line-dasharray': INFRA[k].dash } });
+  }
+  // przejazdy: szeroka czerwona linia + po obu brzegach białe kwadraciki
+  const CROSS_W = ['interpolate', ['exponential', 1.6], ['zoom'], 14, 3, 16, 6, 18, 13, 20, 30];
+  map.addLayer({ id: 'infra-przejazd', type: 'line', source: 'infra', minzoom: 14, filter: isCls('przejazd'),
+    layout: { 'line-cap': 'butt' }, paint: { 'line-color': INFRA.przejazd.color, 'line-width': CROSS_W } });
+  for (const sgn of [1, -1]) {
+    map.addLayer({ id: 'infra-przejazd-sq' + (sgn > 0 ? 'R' : 'L'), type: 'line', source: 'infra', minzoom: 15.5, filter: isCls('przejazd'),
+      layout: { 'line-cap': 'butt' },
+      paint: { 'line-color': '#ffffff', 'line-dasharray': [1, 1],
+        'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 15.5, 1.4, 18, 2.6, 20, 6],
+        'line-offset': ['interpolate', ['exponential', 1.6], ['zoom'], 15.5, sgn * 2.8, 18, sgn * 5.2, 20, sgn * 12] } });
   }
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
   const ICON_SIDE = (px) => ['case', ['==', ['get', 'side'], 1], ['literal', [0, px]], ['==', ['get', 'side'], -1], ['literal', [0, -px]], ['literal', [0, 0]]];
@@ -593,8 +611,8 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
-const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-kontrapas', 'infra-kontraruch'];
+const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
+const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
   const feats = map.queryRenderedFeatures([[p.x - r, p.y - r], [p.x + r, p.y + r]], { layers: CLICK_LAYERS.filter(l => map.getLayer(l)) });
@@ -744,9 +762,10 @@ function addInfraImages() {
     const cas = i.casing ? `<line x1="2" y1="6" x2="32" y2="6" stroke="#9db7dc" stroke-width="${i.width * 1.2 + 5}" stroke-linecap="round"/><line x1="2" y1="6" x2="32" y2="6" stroke="#fff" stroke-width="${i.width * 1.2 + 3}" stroke-linecap="round"/>` : '';
     return `<svg width="34" height="12" style="flex:none">${cas}<line x1="2" y1="6" x2="32" y2="6" stroke="${i.color}" stroke-width="${i.width * 1.2}" ${dash} stroke-linecap="${i.dash ? 'butt' : 'round'}"/></svg>${extra}`;
   };
+  const crossing = `<svg width="34" height="12" style="flex:none"><rect x="2" y="0" width="30" height="12" fill="#d7262b"/><line x1="2" y1="1.5" x2="32" y2="1.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/><line x1="2" y1="10.5" x2="32" y2="10.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/></svg>`;
   const extra = { droga: img('c13'), ciag: img('c13c16'), kontrapas: img('arrow', 10), kontraruch: img('arrow2', 10), sharrow: img('chevron2', 12) };
   document.getElementById('legend-infra').innerHTML = Object.entries(INFRA).map(([k, i]) =>
-    `<div class="legend-row">${line(i)}${extra[k] || ''}<span>${esc(i.label)}</span></div>`).join('') +
+    `<div class="legend-row">${k === 'przejazd' ? crossing : line(i)}${extra[k] || ''}<span>${esc(i.label)}</span></div>`).join('') +
     `<div class="legend-row"><span style="width:34px;text-align:center;flex:none">${img('arrow', 10)}</span><span>Kierunek jazdy, gdzie tylko w jedną stronę</span></div>`;
 })();
 // legenda szlaków (dodana pod checkboxami)

@@ -383,8 +383,11 @@ function infraClasses(t) {
   const sideVal = (side, v) => {
     let cls = map1(v); if (!cls) return;
     const explicit = ow(t[`cycleway:${side}:oneway`]);
-    if (cls === 'pas' && carDir && (explicit === -carDir || (side === 'left' && t['oneway:bicycle'] === 'no' && explicit === null))) cls = 'kontrapas';
-    push(cls, side === 'left' ? -1 : 1, cls === 'kontrapas' && explicit === null ? null : explicit);
+    const contraLeft = side === 'left' && carDir && t['oneway:bicycle'] === 'no' && explicit === null;
+    if (cls === 'pas' && carDir && (explicit === -carDir || contraLeft)) cls = 'kontrapas';
+    // sierżant / buspas po lewej stronie jednokierunkowej, gdy rowery jadą pod prąd: kierunek przeciwny do ruchu aut
+    const ex = (cls === 'sharrow' || cls === 'buspas') && contraLeft ? -carDir : explicit;
+    push(cls, side === 'left' ? -1 : 1, cls === 'kontrapas' && explicit === null ? null : ex);
   };
   if (t['cycleway:left']) sideVal('left', t['cycleway:left']);
   if (t['cycleway:right']) sideVal('right', t['cycleway:right']);
@@ -479,9 +482,8 @@ const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3
   residential: 2.8, living_street: 2.5, service: 2.2 };
 // Rzeczywista szerokość elementu infrastruktury w metrach (tag width / cycleway:width albo wartość typowa).
 const WIDTH_M = { droga: 2.0, ciag: 2.5, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.0 };
-function widthM(cls, t) {
-  const tagged = parseFloat(cls === 'droga' || cls === 'ciag' || cls === 'przejazd' ? (t['cycleway:width'] || (/^(cycleway|path)$/.test(t.highway) ? t.width : null)) : null);
-  return tagged > 0.8 && tagged < 8 ? tagged : WIDTH_M[cls];
+function widthM(cls, t) { // jednolita szerokość dla klasy (tagi width dawały różnie grube DDR obok siebie)
+  return WIDTH_M[cls];
 }
 function laneOffsetM(t) {
   const width = parseFloat(t.width);
@@ -791,14 +793,10 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
         if (back > 30) break;
         cut--;
       }
-      const P0 = L[cut], t0 = norm([P0[0] - L[cut - 1][0], P0[1] - L[cut - 1][1]]), dd = Math.hypot(best.S[0] - P0[0], best.S[1] - P0[1]) / 3;
-      const P1 = [P0[0] + t0[0] * dd, P0[1] + t0[1] * dd], P3 = best.S, P2 = [P3[0] - best.out[0] * dd, P3[1] - best.out[1] * dd];
+      // prosty, płaski skos od pasa do DDR (bez łuku, który dawał „banany”)
+      const P0 = L[cut], t0 = norm([P0[0] - L[cut - 1][0], P0[1] - L[cut - 1][1]]), P3 = best.S;
       const curve = [];
-      for (let k = 1; k <= 10; k++) {
-        const t = k / 10, u = 1 - t;
-        curve.push([u * u * u * P0[0] + 3 * u * u * t * P1[0] + 3 * u * t * t * P2[0] + t * t * t * P3[0],
-                    u * u * u * P0[1] + 3 * u * u * t * P1[1] + 3 * u * t * t * P2[1] + t * t * t * P3[1]]);
-      }
+      for (let k = 1; k <= 10; k++) curve.push([P0[0] + (P3[0] - P0[0]) * k / 10, P0[1] + (P3[1] - P0[1]) * k / 10]);
       let ok = true, prevProj = 0;
       for (const q of curve) { const pr = (q[0] - P0[0]) * t0[0] + (q[1] - P0[1]) * t0[1]; if (pr < prevProj - 0.05) { ok = false; break; } prevProj = pr; }
       const tr = ok ? transition(f.properties, best.pe.f.properties, [P0, ...curve]) : null;

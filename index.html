@@ -190,7 +190,7 @@ const BIKE_FALLBACK = { icn: '#0b3d91', ncn: '#c2185b', rcn: '#6a1b9a', lcn: '#0
 // Infrastruktura rowerowa: paleta niebieska. dash = wzór przerywania (inny niż kreski szlaków pieszych).
 const INFRA = {
   droga:      { label: 'Droga dla rowerów (C-13)',    color: '#0b3d91', width: 3.0, casing: true, icon: 'c13' },
-  ciag:       { label: 'Ciąg pieszo-rowerowy (C-13/16)', color: '#5fa8e8', width: 2.6, icon: 'c13c16' },
+  ciag:       { label: 'Ciąg pieszo-rowerowy (C-13/16)', color: '#5fa8e8', width: 2.6, casing: true, icon: 'c13c16' },
   pas:        { label: 'Pas rowerowy',                color: '#1e7be0', width: 2.4 },
   kontrapas:  { label: 'Kontrapas',                   color: '#1e7be0', width: 2.6, dash: [1.1, 0.7] },
   kontraruch: { label: 'Kontraruch (bez pasa)',       color: '#3d9be9', width: 1.8, dash: [0.4, 1.0] },
@@ -649,8 +649,8 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // Pasy rowerowe na dużym zoomie jak w rzeczywistości: niebieskie wypełnienie o szerokości ~1,5 m,
   // przerywana biała linia od strony pasa ruchu, ciągła od krawężnika, malowany rower ze strzałką.
   const LANE = isCls('pas', 'kontrapas');
-  const sideTimes = (k) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(17) * k]],
-    22, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(22) * k]]];
+  const sideTimes = (k) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(17) * 0.85 * k]],
+    22, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(22) * 0.85 * k]]];
   const MARK_W = ['interpolate', ['exponential', 2], ['zoom'], 17, 0.12 * PX_PER_M(17), 22, 0.12 * PX_PER_M(22)]; // linia 12 cm
   map.addLayer({ id: 'infra-lane-in', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
@@ -662,7 +662,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 260, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true,
       'icon-image': 'lanebike', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
-      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, 1.1 * PX_PER_M(17) / 14, 22, 1.1 * PX_PER_M(22) / 14],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, 0.95 * PX_PER_M(17) / 14, 22, 0.95 * PX_PER_M(22) / 14],
     } });
   // zwykłe strzałki: na pasach tylko do zoomu 17 (wyżej jest malowany rower ze strzałką)
   map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15,
@@ -881,7 +881,7 @@ function addInfraImages() {
   const img = (n, h = 14) => `<img src="${ICONS[n].toDataURL()}" height="${h}" alt="">`;
   const line = (i, extra = '') => {
     const dash = i.dash ? `stroke-dasharray="${i.dash.map(v => v * i.width * 1.6).join(' ')}"` : '';
-    const cas = i.casing ? `<line x1="2" y1="6" x2="32" y2="6" stroke="#9db7dc" stroke-width="${i.width * 1.2 + 5}" stroke-linecap="round"/><line x1="2" y1="6" x2="32" y2="6" stroke="#fff" stroke-width="${i.width * 1.2 + 3}" stroke-linecap="round"/>` : '';
+    const cas = i.casing ? `<line x1="2" y1="6" x2="32" y2="6" stroke="#9aa5b4" stroke-width="${i.width * 1.2 + 3}" stroke-linecap="round"/>` : '';
     return `<svg width="34" height="12" style="flex:none">${cas}<line x1="2" y1="6" x2="32" y2="6" stroke="${i.color}" stroke-width="${i.width * 1.2}" ${dash} stroke-linecap="${i.dash ? 'butt' : 'round'}"/></svg>${extra}`;
   };
   const crossing = `<svg width="34" height="12" style="flex:none"><rect x="2" y="0" width="30" height="12" fill="#d7262b"/><line x1="2" y1="1.5" x2="32" y2="1.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/><line x1="2" y1="10.5" x2="32" y2="10.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/></svg>`;

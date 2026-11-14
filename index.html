@@ -469,13 +469,6 @@ function rebuild() {
       const props = { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags), zebra: c.zebra ? 1 : 0 };
       if (c.side) sideItems.push({ coords, props, offM: laneOffsetM(w.tags) /* sierżant w tym samym miejscu co pas, bez skoku */, name: w.tags.name || w.tags.ref || '' });
       else infraFeatures.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: props });
-      // znaki C-13 / C-13/16 przy końcach każdego odcinka DDR (tam, gdzie się na nią wjeżdża: za przejazdem,
-      // na skrzyżowaniu, na łączeniu odcinków), 3 m od węzła; znaki bliżej niż 15 m od siebie scalamy niżej
-      if (c.cls === 'droga' || c.cls === 'ciag') {
-        const len = lineLength(coords);
-        if (len >= 8) signFeatures.push(pointAlong(coords, 3, c.cls), pointAlong(coords.slice().reverse(), 3, c.cls));
-        else if (len >= 4) signFeatures.push(pointAlong(coords, len / 2, c.cls));
-      }
     }
     infraLen += lineLength(coords);
   }
@@ -483,14 +476,57 @@ function rebuild() {
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
-  // etykiety pasów i sierżantów: przy połączeniach odcinków OSM (początek, koniec, łączenia), jak znaki C-13
+  // Schemat znaków: dla całego ciągu (kilka odcinków OSM połączonych bez rozgałęzień) znak na początku,
+  // na końcu i – gdy ciąg jest długi – w równych odstępach pośrodku (ok. co 100 m).
+  const signAt = len => {
+    if (len < 20) return [len / 2];
+    const k = Math.max(0, Math.round(len / 100) - 1), out = [3];
+    for (let i = 1; i <= k; i++) out.push(len * i / (k + 1));
+    out.push(len - 3);
+    return out;
+  };
+  // C-13 / C-13/16: scalamy odcinki DDR tej samej klasy w węzłach, w których spotykają się dokładnie dwa
+  // i nic więcej (przejazd, trzecia droga albo pas przerywają ciąg)
+  {
+    const nk = c => c[0].toFixed(7) + ',' + c[1].toFixed(7), deg = new Map(), at = new Map();
+    const bump = (k, v) => deg.set(k, (deg.get(k) || 0) + v);
+    for (const f of infraFeatures) {
+      const c = f.geometry.coordinates; if (c.length < 2) continue;
+      for (const e of [c[0], c[c.length - 1]]) bump(nk(e), 1);
+      if (f.properties.cls === 'przejazd') for (const e of c) bump(nk(e), 10); // przejazd zawsze przerywa
+    }
+    for (const it of sideItems) for (const e of [it.coords[0], it.coords[it.coords.length - 1]]) bump(nk(e), 10);
+    const paths = infraFeatures.filter(f => /^(droga|ciag)$/.test(f.properties.cls) && f.geometry.coordinates.length > 1);
+    paths.forEach((f, i) => { const c = f.geometry.coordinates; for (const e of [c[0], c[c.length - 1]]) { const k = nk(e); if (!at.has(k)) at.set(k, []); at.get(k).push(i); } });
+    const seen = new Set();
+    paths.forEach((f, i) => {
+      if (seen.has(i)) return; seen.add(i);
+      let line = f.geometry.coordinates.slice();
+      const grow = (front) => {
+        for (;;) {
+          const end = front ? line[0] : line[line.length - 1], k = nk(end);
+          if (deg.get(k) !== 2) return;
+          const j = (at.get(k) || []).find(x => !seen.has(x) && paths[x].properties.cls === f.properties.cls);
+          if (j === undefined) return;
+          seen.add(j);
+          let c = paths[j].geometry.coordinates.slice();
+          if (front) { if (nk(c[0]) === k) c.reverse(); line = c.concat(line.slice(1)); }
+          else { if (nk(c[c.length - 1]) === k) c.reverse(); line = line.concat(c.slice(1)); }
+        }
+      };
+      grow(false); grow(true);
+      const len = lineLength(line);
+      if (len >= 4) for (const m of signAt(len)) signFeatures.push(pointAlong(line, m, f.properties.cls));
+    });
+  }
+  // etykiety pasów i sierżantów: ten sam schemat dla całego ciągu pasa / sierżanta
   for (const f of infraFeatures) {
-    const j = f._joints; delete f._joints;
-    if (!j || !/^(pas|kontrapas|sharrow)$/.test(f.properties.cls) || !f.properties.dir) continue;
+    delete f._joints;
+    if (!/^(pas|kontrapas|sharrow)$/.test(f.properties.cls) || !f.properties.dir || f.properties.sign) continue;
     const c = f.geometry.coordinates, len = lineLength(c);
     if (len < 12) continue;
-    for (const t of j) {
-      const m = Math.min(len - 4, Math.max(4, t * len));
+    for (const m0 of signAt(len)) {
+      const m = Math.min(len - 4, Math.max(4, m0));
       const pf = pointAlong(c, m, f.properties.cls), q = pointAlong(c, Math.min(len, m + 1), f.properties.cls).geometry.coordinates, p0 = pointAlong(c, Math.max(0, m - 1), f.properties.cls).geometry.coordinates;
       const ang = Math.atan2(-(q[1] - p0[1]) * 110540, (q[0] - p0[0]) * 64650) * 180 / Math.PI + (f.properties.dir === -1 ? 180 : 0);
       pf.properties = { cls: f.properties.cls, sign: 2, side: 0, dir: 0, rot: ang };

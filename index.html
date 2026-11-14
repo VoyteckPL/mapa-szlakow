@@ -611,7 +611,7 @@ function buildLaneChains(items, centerFeatures) {
       return wsum ? sum / wsum : O[Math.min(j, O.length - 1)];
     });
     // zbieganie do osi na końcach, przy których zaczyna się droga dla rowerów / przejazd
-    const taperStart = continuesStraight(pts[0], pts[1]), taperEnd = continuesStraight(pts[pts.length - 1], pts[pts.length - 2]);
+    const taperStart = false, taperEnd = false; // zbieganie do osi wyłączone (dawało kliny i krzyżujące się pasy)
     const tl = Math.min(TAPER_M, total / 3);
     for (let j = 0; j < P.length; j++) {
       let f = 1;
@@ -625,7 +625,64 @@ function buildLaneChains(items, centerFeatures) {
     out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: offsetLine(P, D) },
       properties: { ...first, side, dir, ways: chain.map(c => items[c.i].props.way).join(',') } });
   });
+  joinLanesToPaths(out, centerFeatures, kx, ky);
   return out;
+}
+
+// Płynne przejście pasa w drogę dla rowerów: krótka krzywa Béziera styczna do końca pasa i do początku
+// drogi dla rowerów. Dodawana tylko, gdy przejdzie walidację; inaczej pas kończy się płasko.
+//   - koniec drogi dla rowerów leży ≤ 25 m od końca pasa, „przed” nim (odchylenie < 45°),
+//   - droga dla rowerów wychodzi w kierunku zbliżonym do pasa (zakręt < 75°),
+//   - krzywa się nie cofa i nie przecina żadnego pasa (także drugiego pasa tej ulicy).
+function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
+  const xy = c => [c[0] * kx, c[1] * ky], ll = p => [p[0] / kx, p[1] / ky];
+  const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
+  const ends = [];
+  for (const f of centerFeatures) if (/^(droga|ciag)$/.test(f.properties.cls)) {
+    const c = f.geometry.coordinates; if (c.length < 2) continue;
+    const a0 = xy(c[0]), a1 = xy(c[1]), b0 = xy(c[c.length - 1]), b1 = xy(c[c.length - 2]);
+    ends.push({ p: a0, out: norm([a1[0] - a0[0], a1[1] - a0[1]]) });
+    ends.push({ p: b0, out: norm([b1[0] - b0[0], b1[1] - b0[1]]) });
+  }
+  const segs = [];
+  lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
+  const orient = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  const cross = (a, b, c, d) => orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0;
+  for (const f of lanes) {
+    if (!/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
+    const c = f.geometry.coordinates;
+    for (const atStart of [true, false]) {
+      const P0 = xy(atStart ? c[0] : c[c.length - 1]), Q = xy(atStart ? c[1] : c[c.length - 2]);
+      const t0 = norm([P0[0] - Q[0], P0[1] - Q[1]]);
+      let best = null, bestD = 25;
+      for (const e of ends) {
+        const v = [e.p[0] - P0[0], e.p[1] - P0[1]], d = Math.hypot(v[0], v[1]);
+        if (d < 0.5 || d > bestD) continue;
+        if ((v[0] * t0[0] + v[1] * t0[1]) / d < 0.71) continue;   // koniec DDR przed pasem (< 45°)
+        if (e.out[0] * t0[0] + e.out[1] * t0[1] < 0.26) continue;  // DDR biegnie dalej w podobnym kierunku (< 75°)
+        best = e; bestD = d;
+      }
+      if (!best) continue;
+      const L = bestD / 3, P1 = [P0[0] + t0[0] * L, P0[1] + t0[1] * L], P3 = best.p, P2 = [P3[0] - best.out[0] * L, P3[1] - best.out[1] * L];
+      const curve = [];
+      for (let k = 1; k <= 8; k++) {
+        const t = k / 8, u = 1 - t;
+        curve.push([u * u * u * P0[0] + 3 * u * u * t * P1[0] + 3 * u * t * t * P2[0] + t * t * t * P3[0],
+                    u * u * u * P0[1] + 3 * u * u * t * P1[1] + 3 * u * t * t * P2[1] + t * t * t * P3[1]]);
+      }
+      let ok = true, prevProj = 0, prev = P0;
+      for (const q of curve) {
+        const proj = (q[0] - P0[0]) * t0[0] + (q[1] - P0[1]) * t0[1];
+        if (proj < prevProj - 0.05) { ok = false; break; }   // bez cofania
+        prevProj = proj;
+        if (segs.some(([a, b]) => cross(prev, q, a, b))) { ok = false; break; } // bez przecięć z pasami
+        prev = q;
+      }
+      if (!ok) continue;
+      const add = curve.map(ll);
+      if (atStart) c.unshift(...add.reverse()); else c.push(...add);
+    }
+  }
 }
 
 function lineLength(c) {

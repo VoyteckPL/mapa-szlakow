@@ -196,7 +196,7 @@ const INFRA = {
   kontraruch: { label: 'Kontraruch (bez pasa)',       color: '#3d9be9', width: 1.8, dash: [0.4, 1.0] },
   buspas:     { label: 'Buspas dla rowerów',          color: '#5b5fc7', width: 2.4 },
   sharrow:    { label: 'Sierżant rowerowy (P-27)',    color: '#8fc3f2', width: 1.8 },
-  przejazd:   { label: 'Przejazd dla rowerów (P-11)', color: '#d7262b', width: 7.0 },
+  przejazd:   { label: 'Przejazd dla rowerów (P-11)', color: '#d7262b', width: 3.0 },
 };
 
 /* =========================================================================
@@ -455,7 +455,7 @@ function rebuild() {
     for (const c of classes) {
       infraFeatures.push({ type: 'Feature',
         geometry: { type: 'LineString', coordinates: c.side ? offsetLine(coords, c.side * (c.cls === 'sharrow' ? Math.max(1.4, laneOffsetM(w.tags) - 1.9) : laneOffsetM(w.tags))) : coords },
-        properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width } });
+        properties: { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags) } });
     }
     infraLen += lineLength(coords);
   }
@@ -475,6 +475,12 @@ function rebuild() {
 // pół szerokości jezdni (z tagu width, z liczby pasów albo typowej dla klasy drogi) + pół szerokości pasa rowerowego.
 const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3.3, tertiary: 3.1, unclassified: 2.8,
   residential: 2.8, living_street: 2.5, service: 2.2 };
+// Rzeczywista szerokość elementu infrastruktury w metrach (tag width / cycleway:width albo wartość typowa).
+const WIDTH_M = { droga: 2.0, ciag: 2.5, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.0 };
+function widthM(cls, t) {
+  const tagged = parseFloat(cls === 'droga' || cls === 'ciag' || cls === 'przejazd' ? (t['cycleway:width'] || (/^(cycleway|path)$/.test(t.highway) ? t.width : null)) : null);
+  return tagged > 0.8 && tagged < 8 ? tagged : WIDTH_M[cls];
+}
 function laneOffsetM(t) {
   const width = parseFloat(t.width);
   if (width > 3 && width < 40) return width / 2 - 0.75;
@@ -547,8 +553,16 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // infrastruktura (pod szlakami); pasy po stronie jezdni wg tagów left/right
   addInfraImages();
   const INFRA_OFFSET = 0; // pasy przy jezdni są już przesunięte w geometrii (w metrach, patrz offsetLine)
-  const INFRA_WIDTH = (k = 1, add = 0) => ['interpolate', ['linear'], ['zoom'],
-    11, ['+', ['*', ['get', 'w'], 0.5 * k], add * 0.5], 15, ['+', ['*', ['get', 'w'], k], add], 18, ['+', ['*', ['get', 'w'], 1.8 * k], add * 1.6]];
+  // Szerokość: do zoomu 16 stylizowana (w px), od 17 rzeczywista szerokość w metrach (właściwość wm),
+  // żeby na dużym zoomie droga dla rowerów i przejazd miały naturalną, tę samą szerokość co na ortofotomapie.
+  const PX_PER_M = z => 2 ** z / 45441; // MapLibre (kafle 512 px) na szerokości ~54,5°
+  const INFRA_WIDTH = (k = 1, add = 0) => {
+    const stop = e => (add ? ['+', ['*', e, k], add] : ['*', e, k]);
+    return ['interpolate', ['exponential', 2], ['zoom'],
+      11, stop(['*', ['get', 'w'], 0.5]), 14, stop(['*', ['get', 'w'], 0.85]), 16, stop(['*', ['get', 'w'], 1.15]),
+      17, stop(['max', ['*', ['get', 'w'], 1.3], ['*', ['get', 'wm'], PX_PER_M(17)]]),
+      22, stop(['*', ['get', 'wm'], PX_PER_M(22)])];
+  };
   const isCls = (...c) => ['in', ['get', 'cls'], ['literal', c]];
   map.addLayer({ id: 'infra-casing', type: 'line', source: 'infra', minzoom: 11, filter: isCls('droga'),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -563,15 +577,14 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
       paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET, 'line-dasharray': INFRA[k].dash } });
   }
   // przejazdy: szeroka czerwona linia + po obu brzegach białe kwadraciki
-  const CROSS_W = ['interpolate', ['exponential', 1.6], ['zoom'], 14, 3, 16, 6, 18, 13, 20, 30];
+  const CROSS_W = INFRA_WIDTH();
   map.addLayer({ id: 'infra-przejazd', type: 'line', source: 'infra', minzoom: 14, filter: isCls('przejazd'),
     layout: { 'line-cap': 'butt' }, paint: { 'line-color': INFRA.przejazd.color, 'line-width': CROSS_W } });
   for (const sgn of [1, -1]) {
     map.addLayer({ id: 'infra-przejazd-sq' + (sgn > 0 ? 'R' : 'L'), type: 'line', source: 'infra', minzoom: 15.5, filter: isCls('przejazd'),
       layout: { 'line-cap': 'butt' },
       paint: { 'line-color': '#ffffff', 'line-dasharray': [1, 1],
-        'line-width': ['interpolate', ['exponential', 1.6], ['zoom'], 15.5, 1.4, 18, 2.6, 20, 6],
-        'line-offset': ['interpolate', ['exponential', 1.6], ['zoom'], 15.5, sgn * 2.8, 18, sgn * 5.2, 20, sgn * 12] } });
+        'line-width': INFRA_WIDTH(0.2), 'line-offset': INFRA_WIDTH(sgn * 0.4) } });
   }
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
   map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')]],

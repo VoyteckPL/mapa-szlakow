@@ -569,7 +569,8 @@ function buildLaneChains(items, centerFeatures) {
         if (cSide !== side || cDir !== dir) continue;
         const cp = rev ? ci.coords.slice().reverse() : ci.coords;
         const outDir = forward ? segDir(tip, cp[1]) : segDir(tip, cp[cp.length - 2]);
-        const cos = forward ? inDir[0] * outDir[0] + inDir[1] * outDir[1] : -(inDir[0] * outDir[0] + inDir[1] * outDir[1]);
+        // obie strony: inDir i outDir wskazują „dalej” od ciągu, więc prosta kontynuacja ma cos ≈ 1 (nie zawracamy)
+        const cos = inDir[0] * outDir[0] + inDir[1] * outDir[1];
         if (cos > bestCos) { bestCos = cos; best = { i: cand.i, rev }; }
       }
       if (!best) return;
@@ -623,7 +624,8 @@ function buildLaneChains(items, centerFeatures) {
     const side = first.side * (chain[0].rev ? -1 : 1);
     const dir = first.dir === 2 || !first.dir ? first.dir : first.dir * (chain[0].rev ? -1 : 1);
     out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: offsetLine(P, D) },
-      properties: { ...first, side, dir, ways: chain.map(c => items[c.i].props.way).join(',') } });
+      properties: { ...first, side, dir, ways: chain.map(c => items[c.i].props.way).join(',') },
+      _axis: [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]] }); // oś jezdni na końcach (do lejka pas → DDR)
   });
   joinLanesToPaths(out, centerFeatures, kx, ky);
   return out;
@@ -657,10 +659,88 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
   lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
   const orient = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
   const cross = (a, b, c, d) => orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0;
+  // 1) Lejek: droga dla rowerów zaczyna się w węźle osi jezdni, w którym kończy się pas (typowe mapowanie
+  //    zjazdu z pasa na DDR). Odcinek DDR leżący na jezdni (bliżej osi niż pas) chowamy, a pas prowadzimy
+  //    prostą, gładką linią do miejsca, gdzie DDR schodzi z jezdni – bez zawijasów w środku skrzyżowania.
+  const pathEnds = new Map(), nk = c => c[0].toFixed(7) + ',' + c[1].toFixed(7);
+  for (const f of centerFeatures) if (/^(droga|ciag)$/.test(f.properties.cls) && f.geometry.coordinates.length > 1) {
+    const c = f.geometry.coordinates;
+    for (const atStart of [true, false]) {
+      const k = nk(atStart ? c[0] : c[c.length - 1]);
+      if (!pathEnds.has(k)) pathEnds.set(k, []);
+      pathEnds.get(k).push({ f, atStart });
+    }
+  }
+  const done = new Set();
   for (const f of lanes) {
+    if (!f._axis || !/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
+    for (const atStart of [true, false]) {
+      const c = f.geometry.coordinates;
+      const [Nll, Mll] = f._axis[atStart ? 0 : 1];
+      const cands = pathEnds.get(nk(Nll)); if (!cands) continue;
+      const N = xy(Nll), M = xy(Mll), E = xy(atStart ? c[0] : c[c.length - 1]);
+      const a = norm([N[0] - M[0], N[1] - M[1]]);                 // kierunek jazdy „w stronę końca”
+      let nrm = [-a[1], a[0]];
+      let offE = (E[0] - N[0]) * nrm[0] + (E[1] - N[1]) * nrm[1];
+      if (offE < 0) { nrm = [-nrm[0], -nrm[1]]; offE = -offE; }
+      if (offE < 0.5) continue;
+      const sd = p => (p[0] - N[0]) * nrm[0] + (p[1] - N[1]) * nrm[1];
+      // DDR, która od węzła schodzi na stronę pasa i dalej do przodu (nie wraca wzdłuż pasa)
+      let best = null;
+      for (const pe of cands) {
+        const pc = pe.f.geometry.coordinates.map(xy); if (!pe.atStart) pc.reverse();
+        let acc = 0;
+        for (let i = 1; i < pc.length && acc < 40; i++) {
+          const p = pc[i - 1], q = pc[i], sp = sd(p), sq = sd(q);
+          acc += Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (sq >= offE && sp < offE) {
+            const t = (offE - sp) / (sq - sp), S = [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+            const fwd = (S[0] - N[0]) * a[0] + (S[1] - N[1]) * a[1];
+            if (fwd > -3 && (!best || acc < best.acc)) best = { pe, pc, i, S, acc, out: norm([q[0] - p[0], q[1] - p[1]]) };
+            break;
+          }
+        }
+      }
+      if (!best) continue;
+      // przytnij DDR do punktu zejścia z jezdni
+      const rest = [best.S, ...best.pc.slice(best.i)].map(ll);
+      best.pe.f.geometry.coordinates = best.pe.atStart ? rest : rest.reverse();
+      // pas: cofnij koniec, aż linia do S będzie łagodna (≤ ~20° od kierunku pasa), maks. 30 m
+      const L = c.map(xy); if (atStart) L.reverse();               // L kończy się na końcu pasa
+      let cut = L.length - 1, back = 0;
+      const dS = Math.hypot(best.S[0] - E[0], best.S[1] - E[1]);
+      while (cut > 1) {
+        const P = L[cut], Q = L[cut - 1], t = norm([P[0] - Q[0], P[1] - Q[1]]);
+        const v = [best.S[0] - P[0], best.S[1] - P[1]], d = Math.hypot(v[0], v[1]);
+        if ((v[0] * t[0] + v[1] * t[1]) / d >= 0.94 && back >= Math.min(8, dS)) break;
+        back += Math.hypot(P[0] - Q[0], P[1] - Q[1]);
+        if (back > 30) break;
+        cut--;
+      }
+      const P0 = L[cut], t0 = norm([P0[0] - L[cut - 1][0], P0[1] - L[cut - 1][1]]), dd = Math.hypot(best.S[0] - P0[0], best.S[1] - P0[1]) / 3;
+      const P1 = [P0[0] + t0[0] * dd, P0[1] + t0[1] * dd], P3 = best.S, P2 = [P3[0] - best.out[0] * dd, P3[1] - best.out[1] * dd];
+      const curve = [];
+      for (let k = 1; k <= 10; k++) {
+        const t = k / 10, u = 1 - t;
+        curve.push([u * u * u * P0[0] + 3 * u * u * t * P1[0] + 3 * u * t * t * P2[0] + t * t * t * P3[0],
+                    u * u * u * P0[1] + 3 * u * u * t * P1[1] + 3 * u * t * t * P2[1] + t * t * t * P3[1]]);
+      }
+      let ok = true, prevProj = 0;
+      for (const q of curve) { const pr = (q[0] - P0[0]) * t0[0] + (q[1] - P0[1]) * t0[1]; if (pr < prevProj - 0.05) { ok = false; break; } prevProj = pr; }
+      const tail = (ok ? curve : [P3]);
+      const NL = [...L.slice(0, cut + 1), ...tail].map(ll);
+      f.geometry.coordinates = atStart ? NL.reverse() : NL;
+      done.add(f.properties.ways + ':' + atStart);
+    }
+  }
+  segs.length = 0;
+  lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
+  for (const f of lanes) {
+    delete f._axis;
     if (!/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
     const c = f.geometry.coordinates;
     for (const atStart of [true, false]) {
+      if (done.has(f.properties.ways + ':' + atStart)) continue;
       const P0 = xy(atStart ? c[0] : c[c.length - 1]), Q = xy(atStart ? c[1] : c[c.length - 2]);
       const t0 = norm([P0[0] - Q[0], P0[1] - Q[1]]);
       let best = null, bestScore = Infinity;

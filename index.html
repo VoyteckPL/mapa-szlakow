@@ -229,6 +229,7 @@ rel[type=route][route~"^(bicycle|mtb|hiking|foot|walking)$"](${bb})->.r;
 way(r.r)(${bb})->.rw;
 (
   way[highway=cycleway](${bb});
+  way[highway][cycleway=crossing](${bb});
   way[highway~"^(path|footway|pedestrian|track|service|living_street|bridleway)$"][bicycle=designated](${bb});
   way[highway][~"^cycleway(:both|:left|:right)?$"~"^(lane|opposite_lane|track|opposite_track|share_busway|opposite_share_busway|shared_lane|opposite)$"](${bb});
   way[highway]["oneway:bicycle"=no][oneway~"^(yes|-1|1|true)$"](${bb});

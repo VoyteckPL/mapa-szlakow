@@ -476,6 +476,7 @@ function rebuild() {
   }
 
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
+  attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
   map.getSource('infra').setData({ type: 'FeatureCollection', features: infraFeatures.concat(signFeatures) });
   stats = {
@@ -634,6 +635,23 @@ function buildLaneChains(items, centerFeatures) {
       }
     };
     cutAtCrossing(false); cutAtCrossing(true);
+    // Końcówka pasa/sierżanta wjeżdżająca w skrzyżowanie: jeśli w węźle osi ≤ 25 m przed końcem kończy się
+    // droga dla rowerów (zjazd z DDR na jezdnię), a koniec ciągu to węzeł skrzyżowania, ucinamy ciąg na tym węźle.
+    const cutAtPathNode = (fromEnd) => {
+      const n = pts.length, endK = nodeKey(pts[fromEnd ? n - 1 : 0]);
+      if ((byNode.get(endK) || []).length < 2) return;           // koniec nie jest węzłem z innymi pasami
+      let acc = 0;
+      for (let k = 1; k < n - 1; k++) {
+        const j = fromEnd ? n - 1 - k : k, jPrev = fromEnd ? j + 1 : j - 1;
+        acc += Math.hypot((pts[j][0] - pts[jPrev][0]) * kx, (pts[j][1] - pts[jPrev][1]) * ky);
+        if (acc > 25) return;
+        if (!pathNodes.has(nodeKey(pts[j]))) continue;
+        if (fromEnd) { pts.splice(j + 1); segOff.splice(j); } else { pts.splice(0, j); segOff.splice(0, j); }
+        return;
+      }
+    };
+    if (!flat[1]) cutAtPathNode(true);
+    if (!flat[0]) cutAtPathNode(false);
     if (pts.length < 2) return;
     // zagęszczenie co ≤ 6 m, żeby wygładzenie i zbieganie offsetu miały na czym działać
     const P = [], O = [];
@@ -708,26 +726,6 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
     return { tail, pieces };
   };
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
-  // punkty na drogach dla rowerów co ~3 m (z kierunkiem), w siatce 30 m do szybkiego wyszukiwania;
-  // pas może wpiąć się w drogę dla rowerów nie tylko na jej końcu, ale też kawałek dalej (łagodny kąt)
-  const grid = new Map(), G = 30, gk = (x, y) => Math.floor(x / G) + ':' + Math.floor(y / G);
-  for (const f of centerFeatures) if (/^(droga|ciag)$/.test(f.properties.cls)) {
-    const c = f.geometry.coordinates.map(xy);
-    for (let i = 1; i < c.length; i++) {
-      const a = c[i - 1], b = c[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(len / 3)), dir = norm([b[0] - a[0], b[1] - a[1]]);
-      for (let k = 0; k <= n; k++) {
-        const p = [a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n], key = gk(p[0], p[1]);
-        if (!grid.has(key)) grid.set(key, []);
-        grid.get(key).push({ p, dir, f });
-      }
-    }
-  }
-  const near = p => { const out = [], cx = Math.floor(p[0] / G), cy = Math.floor(p[1] / G);
-    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) out.push(...(grid.get((cx + i) + ':' + (cy + j)) || [])); return out; };
-  const segs = [];
-  lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
-  const orient = (p, q, r) => Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
-  const cross = (a, b, c, d) => orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0;
   // 1) Lejek: droga dla rowerów zaczyna się w węźle osi jezdni, w którym kończy się pas (typowe mapowanie
   //    zjazdu z pasa na DDR). Odcinek DDR leżący na jezdni (bliżej osi niż pas) chowamy, a pas prowadzimy
   //    prostą, gładką linią do miejsca, gdzie DDR schodzi z jezdni – bez zawijasów w środku skrzyżowania.
@@ -746,7 +744,7 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
     return { p, u: norm([q[0] - p[0], q[1] - p[1]]) };
   };
   for (const f of lanes) {
-    if (!f._axis || !/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
+    if (!f._axis || !/^(pas|kontrapas|buspas|sharrow)$/.test(f.properties.cls)) continue;
     for (const atStart of [true, false]) {
       const c = f.geometry.coordinates;
       if (f._flat[atStart ? 0 : 1]) { done.add(f.properties.ways + ':' + atStart); continue; } // przy przejeździe: płaski koniec
@@ -817,51 +815,45 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
       done.add(f.properties.ways + ':' + atStart);
     }
   }
-  segs.length = 0;
-  lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
-  for (const f of lanes) {
-    delete f._axis; delete f._flat;
-    if (!/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
+  // (ogólne łuki do dowolnego punktu DDR wyłączone: łączyły pasy przez skrzyżowania; pas bez DDR w węźle kończy się płasko)
+  for (const f of lanes) { delete f._axis; delete f._flat; }
+  lanes.push(...extra);
+}
+
+// Droga dla rowerów kończąca się w środku przejazdu (na węźle osi jezdni) jest w OSM „wciągnięta” na jezdnię.
+// Rysujemy ją tak, jak wygląda w terenie: ostatnie wierzchołki leżące nad jezdnią pomijamy, a DDR dochodzi
+// do najbliższego końca przejazdu (po swojej stronie).
+function attachPathsToCrossingEnds(features) {
+  const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
+  const key = c => c[0].toFixed(7) + ',' + c[1].toFixed(7);
+  const inner = new Map(); // węzeł wewnętrzny przejazdu → przejazd
+  for (const f of features) if (f.properties.cls === 'przejazd') {
     const c = f.geometry.coordinates;
+    for (let i = 1; i < c.length - 1; i++) inner.set(key(c[i]), c);
+  }
+  for (const f of features) if (/^(droga|ciag)$/.test(f.properties.cls)) {
     for (const atStart of [true, false]) {
-      if (done.has(f.properties.ways + ':' + atStart)) continue;
-      const P0 = xy(atStart ? c[0] : c[c.length - 1]), Q = xy(atStart ? c[1] : c[c.length - 2]);
-      const t0 = norm([P0[0] - Q[0], P0[1] - Q[1]]);
-      let best = null, bestScore = Infinity;
-      for (const e of near(P0)) {
-        const v = [e.p[0] - P0[0], e.p[1] - P0[1]], d = Math.hypot(v[0], v[1]);
-        if (d < 4 || d > 25) continue;
-        const ahead = (v[0] * t0[0] + v[1] * t0[1]) / d;
-        if (ahead < 0.82) continue;                                   // punkt DDR przed pasem (< ~35°)
-        const dot = e.dir[0] * t0[0] + e.dir[1] * t0[1], out = dot >= 0 ? e.dir : [-e.dir[0], -e.dir[1]];
-        if (Math.abs(dot) < 0.5) continue;                            // DDR biegnie dalej podobnie (< 60°)
-        const score = d * (2 - ahead) * (2 - Math.abs(dot));           // najbliżej i najprościej
-        if (score < bestScore) { bestScore = score; best = { p: e.p, out, f: e.f }; }
+      let c = f.geometry.coordinates;
+      const N = atStart ? c[0] : c[c.length - 1], cr = inner.get(key(N));
+      if (!cr || c.length < 2) continue;
+      const pts = atStart ? c.slice() : c.slice().reverse();    // pts[0] = węzeł w przejeździe
+      const P = p => [(p[0] - N[0]) * kx, (p[1] - N[1]) * ky];
+      // koniec przejazdu po stronie, z której przychodzi DDR
+      const prev = P(pts[1]);
+      let best = null;
+      for (const C of [cr[0], cr[cr.length - 1]]) {
+        const v = P(C), L = Math.hypot(v[0], v[1]) || 1, u = [v[0] / L, v[1] / L];
+        const proj = prev[0] * u[0] + prev[1] * u[1];
+        if (proj > 0 && (!best || proj / L > best.score)) best = { C, u, L, score: proj / L };
       }
-      const bestD = best ? Math.hypot(best.p[0] - P0[0], best.p[1] - P0[1]) : 0;
       if (!best) continue;
-      const L = bestD / 3, P1 = [P0[0] + t0[0] * L, P0[1] + t0[1] * L], P3 = best.p, P2 = [P3[0] - best.out[0] * L, P3[1] - best.out[1] * L];
-      const curve = [];
-      for (let k = 1; k <= 8; k++) {
-        const t = k / 8, u = 1 - t;
-        curve.push([u * u * u * P0[0] + 3 * u * u * t * P1[0] + 3 * u * t * t * P2[0] + t * t * t * P3[0],
-                    u * u * u * P0[1] + 3 * u * u * t * P1[1] + 3 * u * t * t * P2[1] + t * t * t * P3[1]]);
-      }
-      let ok = true, prevProj = 0, prev = P0;
-      for (const q of curve) {
-        const proj = (q[0] - P0[0]) * t0[0] + (q[1] - P0[1]) * t0[1];
-        if (proj < prevProj - 0.05) { ok = false; break; }   // bez cofania
-        prevProj = proj;
-        if (segs.some(([a, b]) => cross(prev, q, a, b))) { ok = false; break; } // bez przecięć z pasami
-        prev = q;
-      }
-      if (!ok) continue;
-      const tr = transition(f.properties, best.f.properties, [P0, ...curve]), add = tr.tail.map(ll);
-      if (atStart) c.unshift(...add.reverse()); else c.push(...add);
-      extra.push(...tr.pieces);
+      let k = 1;
+      // pomijamy wierzchołki leżące praktycznie na linii przejazdu (< 2,5 m od niej)
+      while (k < pts.length - 1) { const v = P(pts[k]); if (Math.abs(v[0] * best.u[1] - v[1] * best.u[0]) >= 2.5) break; k++; }
+      const np = [best.C, ...pts.slice(k)];
+      f.geometry.coordinates = atStart ? np : np.reverse();
     }
   }
-  lanes.push(...extra);
 }
 
 function lineLength(c) {
@@ -999,9 +991,9 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // sierżanty: podwójny chevron w kierunku jazdy
   map.addLayer({ id: 'infra-sharrow', type: 'symbol', source: 'infra', minzoom: 15, filter: isCls('sharrow'),
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 90, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
-      'icon-image': 'chevron2', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 14, 0.65, 18, 1.1],
+      'symbol-placement': 'line', 'symbol-spacing': 160, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
+      'icon-image': 'sharrowsign', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 15, 0.55, 18, 0.9, 22, 2.6 * PX_PER_M(22) / 34],
     } });
   // znaki C-13 / C-13/16 co jakiś czas na drogach dla rowerów i ciągach
   map.addLayer({ id: 'infra-signs', type: 'symbol', source: 'infra', minzoom: 14.5, filter: ['==', ['get', 'sign'], 1],
@@ -1158,16 +1150,24 @@ const SIGN_BLUE = '#1659c7';
 const ICONS = {
   arrow: canvasIcon(16, 12, (g) => {
     g.beginPath(); g.moveTo(2, 4.2); g.lineTo(8, 4.2); g.lineTo(8, 1.5); g.lineTo(14.5, 6); g.lineTo(8, 10.5); g.lineTo(8, 7.8); g.lineTo(2, 7.8); g.closePath();
-    g.fillStyle = '#0b3d91'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
+    g.fillStyle = '#24508f'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
   }),
   arrow2: canvasIcon(20, 12, (g) => {
     g.beginPath(); g.moveTo(1.5, 6); g.lineTo(6.5, 1.5); g.lineTo(6.5, 4.2); g.lineTo(13.5, 4.2); g.lineTo(13.5, 1.5); g.lineTo(18.5, 6);
     g.lineTo(13.5, 10.5); g.lineTo(13.5, 7.8); g.lineTo(6.5, 7.8); g.lineTo(6.5, 10.5); g.closePath();
-    g.fillStyle = '#0b3d91'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
+    g.fillStyle = '#24508f'; g.strokeStyle = '#fff'; g.lineWidth = 1.6; g.stroke(); g.fill();
   }),
   chevron2: canvasIcon(18, 14, (g) => {
     const ch = (x) => { g.beginPath(); g.moveTo(x, 2); g.lineTo(x + 5, 7); g.lineTo(x, 12); };
     for (const [col, w] of [['#fff', 4.6], ['#0b3d91', 2.4]]) { g.strokeStyle = col; g.lineWidth = w; ch(3); g.stroke(); ch(9); g.stroke(); }
+  }),
+  // sierżant rowerowy (P-27): szare pole, rower i podwójny chevron w kierunku jazdy (w prawo = wzdłuż linii)
+  sharrowsign: canvasIcon(34, 16, (g) => {
+    g.fillStyle = 'rgba(88,96,108,0.92)'; g.strokeStyle = '#fff'; g.lineWidth = 1;
+    g.beginPath(); g.roundRect ? g.roundRect(1, 1, 32, 14, 2.5) : g.rect(1, 1, 32, 14); g.fill(); g.stroke();
+    drawBike(g, 12, 8.4, 13.5, '#fff');
+    g.strokeStyle = '#fff'; g.lineWidth = 1.6;
+    for (const x of [22.5, 27]) { g.beginPath(); g.moveTo(x, 3.5); g.lineTo(x + 3.5, 8); g.lineTo(x, 12.5); g.stroke(); }
   }),
   c13: canvasIcon(22, 22, (g) => {
     g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
@@ -1200,7 +1200,7 @@ function addInfraImages() {
     return `<svg width="34" height="12" style="flex:none">${cas}<line x1="2" y1="6" x2="32" y2="6" stroke="${i.color}" stroke-width="${i.width * 1.2}" ${dash} stroke-linecap="${i.dash ? 'butt' : 'round'}"/></svg>${extra}`;
   };
   const crossing = `<svg width="34" height="12" style="flex:none"><rect x="2" y="0" width="30" height="12" fill="#d7262b"/><line x1="2" y1="1.5" x2="32" y2="1.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/><line x1="2" y1="10.5" x2="32" y2="10.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/></svg>`;
-  const extra = { droga: img('c13'), ciag: img('c13c16'), kontrapas: img('arrow', 10), kontraruch: img('arrow2', 10), sharrow: img('chevron2', 12) };
+  const extra = { droga: img('c13'), ciag: img('c13c16'), kontrapas: img('arrow', 10), kontraruch: img('arrow2', 10), sharrow: img('sharrowsign', 12) };
   document.getElementById('legend-infra').innerHTML = Object.entries(INFRA).map(([k, i]) =>
     `<div class="legend-row">${k === 'przejazd' ? crossing : line(i)}${extra[k] || ''}<span>${esc(i.label)}</span></div>`).join('') +
     `<div class="legend-row"><span style="width:34px;text-align:center;flex:none">${img('arrow', 10)}</span><span>Kierunek jazdy, gdzie tylko w jedną stronę</span></div>`;

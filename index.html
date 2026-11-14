@@ -996,11 +996,11 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addLayer({ id: 'infra-lane-out', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': DASH_W, 'line-offset': sideTimes(0.5), 'line-dasharray': [6, 6] } }); // przerywana po obu stronach pasa
-  map.addLayer({ id: 'infra-lane-sym', type: 'symbol', source: 'infra', minzoom: 17, filter: ['all', LANE, ['!=', ['get', 'dir'], 0]],
+  map.addLayer({ id: 'infra-lane-sym', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', LANE, ['!=', ['get', 'dir'], 0]],
     layout: {
-      'symbol-placement': 'line', 'symbol-spacing': 260, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true,
+      'symbol-placement': 'line', 'symbol-spacing': 160, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
       'icon-image': 'lanebike', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
-      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, 0.95 * PX_PER_M(17) / 14, 22, 0.95 * PX_PER_M(22) / 14],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 15, 0.55, 18, 0.9, 22, 2.6 * PX_PER_M(22) / 34],
     } });
   // zwykłe strzałki: na pasach tylko do zoomu 17 (wyżej jest malowany rower ze strzałką)
   map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15,
@@ -1011,7 +1011,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
       'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
       'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
     } });
-  map.addLayer({ id: 'infra-arrows-lane', type: 'symbol', source: 'infra', minzoom: 15, maxzoom: 17,
+  map.addLayer({ id: 'infra-arrows-lane', type: 'symbol', source: 'infra', minzoom: 14, maxzoom: 15,
     filter: ['all', ['!=', ['get', 'dir'], 0], LANE],
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
@@ -1211,11 +1211,14 @@ const ICONS = {
     drawWalker(g, 11, 6.8, 7, '#fff'); drawBike(g, 11, 15.2, 10, '#fff');
   }),
   // malowany symbol roweru ze strzałką (jak na jezdni), patrzy w prawo = w kierunku linii
-  lanebike: canvasIcon(40, 14, (g) => {
-    g.save(); g.translate(12, 7); g.rotate(Math.PI / 2); drawBike(g, 0, 0.3, 13, '#fff'); g.restore();
+  // pas rowerowy (P-23): etykieta jak sierżant, ale na niebieskim tle – rower i strzałka w kierunku jazdy
+  lanebike: canvasIcon(34, 16, (g) => {
+    g.fillStyle = '#2f6fae'; g.strokeStyle = '#fff'; g.lineWidth = 1;
+    g.beginPath(); g.roundRect ? g.roundRect(1, 1, 32, 14, 2.5) : g.rect(1, 1, 32, 14); g.fill(); g.stroke();
+    g.save(); g.translate(11, 8); g.rotate(Math.PI / 2); drawBike(g, 0, 0.3, 12.5, '#fff'); g.restore();
     g.strokeStyle = '#fff'; g.lineWidth = 1.6;
-    g.beginPath(); g.moveTo(27, 7); g.lineTo(37, 7); g.stroke();
-    g.beginPath(); g.moveTo(38.5, 7); g.lineTo(34, 4); g.lineTo(34, 10); g.closePath(); g.fillStyle = '#fff'; g.fill();
+    g.beginPath(); g.moveTo(19.5, 8); g.lineTo(27, 8); g.stroke();
+    g.beginPath(); g.moveTo(30.5, 8); g.lineTo(25.5, 4.5); g.lineTo(25.5, 11.5); g.closePath(); g.fillStyle = '#fff'; g.fill();
   }),
 };
 function addInfraImages() {
@@ -1232,7 +1235,7 @@ function addInfraImages() {
     return `<svg width="34" height="12" style="flex:none">${cas}<line x1="2" y1="6" x2="32" y2="6" stroke="${i.color}" stroke-width="${i.width * 1.2}" ${dash} stroke-linecap="${i.dash ? 'butt' : 'round'}"/></svg>${extra}`;
   };
   const crossing = `<svg width="34" height="12" style="flex:none"><rect x="2" y="0" width="30" height="12" fill="#d7262b"/><line x1="2" y1="1.5" x2="32" y2="1.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/><line x1="2" y1="10.5" x2="32" y2="10.5" stroke="#fff" stroke-width="2.4" stroke-dasharray="2.4 2.4"/></svg>`;
-  const extra = { droga: img('c13'), ciag: img('c13c16'), kontrapas: img('arrow', 10), kontraruch: img('arrow2', 10), sharrow: img('sharrowsign', 12) };
+  const extra = { droga: img('c13'), ciag: img('c13c16'), pas: img('lanebike', 12), kontrapas: img('lanebike', 12), kontraruch: img('arrow2', 10), sharrow: img('sharrowsign', 12) };
   document.getElementById('legend-infra').innerHTML = Object.entries(INFRA).map(([k, i]) =>
     `<div class="legend-row">${k === 'przejazd' ? crossing : line(i)}${extra[k] || ''}<span>${esc(i.label)}</span></div>`).join('') +
     `<div class="legend-row"><span style="width:34px;text-align:center;flex:none">${img('arrow', 10)}</span><span>Kierunek jazdy, gdzie tylko w jedną stronę</span></div>`;

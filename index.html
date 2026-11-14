@@ -671,13 +671,17 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
       pathEnds.get(k).push({ f, atStart });
     }
   }
-  const done = new Set();
+  const done = new Set(), pathEndRefs = [...pathEnds.values()].flat();
+  const endOf = pe => { // aktualny koniec DDR (po ewentualnym przycięciu) i kierunek w głąb DDR
+    const c = pe.f.geometry.coordinates, p = xy(pe.atStart ? c[0] : c[c.length - 1]), q = xy(pe.atStart ? c[1] : c[c.length - 2]);
+    return { p, u: norm([q[0] - p[0], q[1] - p[1]]) };
+  };
   for (const f of lanes) {
     if (!f._axis || !/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
     for (const atStart of [true, false]) {
       const c = f.geometry.coordinates;
       const [Nll, Mll] = f._axis[atStart ? 0 : 1];
-      const cands = pathEnds.get(nk(Nll)); if (!cands) continue;
+      const cands = pathEnds.get(nk(Nll)) || [];
       const N = xy(Nll), M = xy(Mll), E = xy(atStart ? c[0] : c[c.length - 1]);
       const a = norm([N[0] - M[0], N[1] - M[1]]);                 // kierunek jazdy „w stronę końca”
       let nrm = [-a[1], a[0]];
@@ -701,10 +705,23 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
           }
         }
       }
-      if (!best) continue;
-      // przytnij DDR do punktu zejścia z jezdni
-      const rest = [best.S, ...best.pc.slice(best.i)].map(ll);
-      best.pe.f.geometry.coordinates = best.pe.atStart ? rest : rest.reverse();
+      if (best) {
+        // przytnij DDR do punktu zejścia z jezdni
+        const rest = [best.S, ...best.pc.slice(best.i)].map(ll);
+        best.pe.f.geometry.coordinates = best.pe.atStart ? rest : rest.reverse();
+      } else {
+        // DDR nie zaczyna się w węźle jezdni, ale jej koniec leży tuż obok, po stronie pasa
+        // (np. 5 m za końcem pasa): pas dociągamy do tego końca, stycznie do kierunku DDR
+        for (const near of pathEndRefs.map(endOf)) {
+          const P = near.p, dE = Math.hypot(P[0] - E[0], P[1] - E[1]);
+          if (dE > 20) continue;
+          const side = sd(P), fwd = (P[0] - N[0]) * a[0] + (P[1] - N[1]) * a[1];
+          if (side < offE * 0.6 || side > offE + 8 || fwd < -25 || fwd > 12) continue;
+          if (near.u[0] * a[0] + near.u[1] * a[1] < 0.5) continue;      // DDR biegnie dalej w tę stronę co pas
+          if (!best || dE < best.acc) best = { S: P, out: near.u, acc: dE };
+        }
+        if (!best) continue;
+      }
       // pas: cofnij koniec, aż linia do S będzie łagodna (≤ ~20° od kierunku pasa), maks. 30 m
       const L = c.map(xy); if (atStart) L.reverse();               // L kończy się na końcu pasa
       let cut = L.length - 1, back = 0;
@@ -862,7 +879,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // przejazdy: szeroka czerwona linia + po obu brzegach białe kwadraciki
   const CROSS_W = INFRA_WIDTH();
   map.addLayer({ id: 'infra-przejazd', type: 'line', source: 'infra', minzoom: 14, filter: isCls('przejazd'),
-    layout: { 'line-cap': 'butt' }, paint: { 'line-color': INFRA.przejazd.color, 'line-width': CROSS_W } });
+    layout: { 'line-cap': 'butt' }, paint: { 'line-color': INFRA.przejazd.color, 'line-width': CROSS_W } }, 'infra-casing'); // pod drogami dla rowerów
   // zebra obok przejazdu: białe pasy ~0,5 m (wzór przerywania liczony w szerokościach linii)
   map.addLayer({ id: 'infra-zebra', type: 'line', source: 'infra', minzoom: 16, filter: ['all', isCls('przejazd'), ['==', ['get', 'zebra'], 1]],
     layout: { 'line-cap': 'butt' },
@@ -871,7 +888,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
     map.addLayer({ id: 'infra-przejazd-sq' + (sgn > 0 ? 'R' : 'L'), type: 'line', source: 'infra', minzoom: 15.5, filter: isCls('przejazd'),
       layout: { 'line-cap': 'butt' },
       paint: { 'line-color': '#ffffff', 'line-dasharray': [1, 1],
-        'line-width': INFRA_WIDTH(0.2), 'line-offset': INFRA_WIDTH(sgn * 0.4) } });
+        'line-width': INFRA_WIDTH(0.2), 'line-offset': INFRA_WIDTH(sgn * 0.4) } }, 'infra-casing');
   }
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
   // Pasy rowerowe na dużym zoomie jak w rzeczywistości: niebieskie wypełnienie o szerokości ~1,5 m,
@@ -879,10 +896,11 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   const LANE = isCls('pas', 'kontrapas');
   const sideTimes = (k) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(17) * 0.85 * k]],
     22, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(22) * 0.85 * k]]];
-  const MARK_W = ['interpolate', ['exponential', 2], ['zoom'], 17, 0.12 * PX_PER_M(17), 22, 0.12 * PX_PER_M(22)]; // linia 12 cm
+  const markW = m => ['interpolate', ['exponential', 2], ['zoom'], 17, Math.max(1, m * PX_PER_M(17)), 22, m * PX_PER_M(22)];
+  const MARK_W = markW(0.14), DASH_W = markW(0.22); // linia ciągła 14 cm, przerywana 22 cm (lepiej widoczna)
   map.addLayer({ id: 'infra-lane-in', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-color': '#ffffff', 'line-width': MARK_W, 'line-offset': sideTimes(-0.5), 'line-dasharray': [8, 8] } });
+    paint: { 'line-color': '#ffffff', 'line-width': DASH_W, 'line-offset': sideTimes(-0.5), 'line-dasharray': [6, 6] } });
   map.addLayer({ id: 'infra-lane-out', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-width': MARK_W, 'line-offset': sideTimes(0.5) } });

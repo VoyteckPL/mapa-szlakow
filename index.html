@@ -601,6 +601,27 @@ function buildLaneChains(items, centerFeatures) {
       cp.forEach((p, j) => { if (n > 0 && j === 0) return; pts.push(p); if (pts.length > 1) segOff.push(off); });
     });
     if (pts.length < 2) return;
+    // Pas nie przechodzi przez przejazd dla rowerów: jeśli za przejazdem zostaje tylko krótka końcówka
+    // (< 15 m, np. kawałek ulicy do węzła z DDR), ucinamy ją i kończymy pas płasko tuż przed przejazdem.
+    const flat = [false, false];
+    const cutAtCrossing = (fromEnd) => {
+      const n = pts.length; let acc = 0;
+      for (let k = 1; k < n - 1; k++) {
+        const j = fromEnd ? n - 1 - k : k, jPrev = fromEnd ? j + 1 : j - 1;
+        acc += Math.hypot((pts[j][0] - pts[jPrev][0]) * kx, (pts[j][1] - pts[jPrev][1]) * ky);
+        if (acc > 15) return;
+        if (!crossNodes.has(nodeKey(pts[j]))) continue;
+        // punkt 1,5 m przed przejazdem (połowa szerokości przejazdu + zapas)
+        const q = fromEnd ? pts[j - 1] : pts[j + 1], L = Math.hypot((q[0] - pts[j][0]) * kx, (q[1] - pts[j][1]) * ky);
+        const t = L > 2.5 ? 1.5 / L : 0, cutP = [pts[j][0] + (q[0] - pts[j][0]) * t, pts[j][1] + (q[1] - pts[j][1]) * t];
+        if (fromEnd) { pts.splice(j, Infinity, cutP); segOff.splice(j); }   // segmenty 0..j-1, ostatni kończy się w cutP
+        else { pts.splice(0, j + 1, cutP); segOff.splice(0, j); }            // pierwszy segment zaczyna się w cutP
+        flat[fromEnd ? 1 : 0] = true;
+        return;
+      }
+    };
+    cutAtCrossing(false); cutAtCrossing(true);
+    if (pts.length < 2) return;
     // zagęszczenie co ≤ 6 m, żeby wygładzenie i zbieganie offsetu miały na czym działać
     const P = [], O = [];
     for (let j = 0; j < pts.length - 1; j++) {
@@ -634,7 +655,7 @@ function buildLaneChains(items, centerFeatures) {
     const dir = first.dir === 2 || !first.dir ? first.dir : first.dir * (chain[0].rev ? -1 : 1);
     out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: offsetLine(P, D) },
       properties: { ...first, side, dir, ways: chain.map(c => items[c.i].props.way).join(',') },
-      _axis: [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]] }); // oś jezdni na końcach (do lejka pas → DDR)
+      _axis: [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]], _flat: flat }); // oś jezdni na końcach (do lejka pas → DDR)
   });
   joinLanesToPaths(out, centerFeatures, kx, ky);
   return out;
@@ -705,6 +726,7 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
     if (!f._axis || !/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
     for (const atStart of [true, false]) {
       const c = f.geometry.coordinates;
+      if (f._flat[atStart ? 0 : 1]) { done.add(f.properties.ways + ':' + atStart); continue; } // przy przejeździe: płaski koniec
       const [Nll, Mll] = f._axis[atStart ? 0 : 1];
       const cands = pathEnds.get(nk(Nll)) || [];
       const N = xy(Nll), M = xy(Mll), E = xy(atStart ? c[0] : c[c.length - 1]);
@@ -778,7 +800,7 @@ function joinLanesToPaths(lanes, centerFeatures, kx, ky) {
   segs.length = 0;
   lanes.forEach(f => { const c = f.geometry.coordinates.map(xy); for (let i = 1; i < c.length; i++) segs.push([c[i - 1], c[i]]); });
   for (const f of lanes) {
-    delete f._axis;
+    delete f._axis; delete f._flat;
     if (!/^(pas|kontrapas|buspas)$/.test(f.properties.cls)) continue;
     const c = f.geometry.coordinates;
     for (const atStart of [true, false]) {

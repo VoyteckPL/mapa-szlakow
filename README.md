@@ -1,6 +1,8 @@
 # Mapa Szlaków – prototyp (Gdynia)
 
-Jeden plik `index.html`, bez budowania i bez serwera. Otwórz go w przeglądarce (dwuklik) albo wrzuć na dowolny hosting statyczny (GitHub Pages, Netlify).
+Mapa: https://voyteckpl.github.io/mapa-szlakow/
+
+Strona statyczna bez budowania: `index.html` + `js/config.js` (regiony, serwery Overpass, zapytanie). `data/gdynia.json` to kopia danych odświeżana przez GitHub Actions.
 
 ## Co jest na mapie
 
@@ -10,7 +12,7 @@ Jeden plik `index.html`, bez budowania i bez serwera. Otwórz go w przeglądarce
 | Cieniowanie terenu | Geoportal, NMT ISOK `ShadedRelief` (WMS, EPSG:3857) | nakładka z suwakiem przezroczystości |
 | Szlaki rowerowe | relacje OSM `type=route` + `route=bicycle/mtb` | **kropki** w kolorze `colour` |
 | Szlaki piesze | relacje OSM `route=hiking/foot/walking` | **kreski** w kolorze z `osmc:symbol` (PTTK) |
-| Infrastruktura rowerowa | drogi `highway=cycleway`, `bicycle=designated`, `cycleway[:left/right/both]=*`, `oneway:bicycle=no` | linie ciągłe, kolor wg typu (legenda) |
+| Infrastruktura rowerowa | `highway=cycleway`, `bicycle=designated`, `cycleway[:left/right/both]=*`, `oneway:bicycle=no`, `cycleway=crossing` | paleta niebieska: droga dla rowerów ciemna z konturem i znakami C-13, ciąg jasny ze znakami C-13/16, kontrapas i kontraruch przerywane, sierżanty z podwójnym chevronem, przejazdy czerwone z białymi kwadratami; strzałki tam, gdzie jazda jest jednokierunkowa |
 
 Kliknięcie szlaku otwiera panel ze wszystkimi tagami relacji i linkami (OSM, Waymarked Trails, edycja). Kliknięcie drogi rowerowej pokazuje tagi drogi.
 
@@ -22,7 +24,7 @@ Znane niedoskonałości (do dopieszczenia): szlak może „przeskoczyć” na in
 
 ## Świeżość danych
 
-Dane są pobierane na żywo z Overpass API (aktualizowany co minutę z bazy OSM). Mapa odświeża dane co 5 minut i pokazuje „Stan bazy OSM” (znacznik czasu serwera). Serwery z danymi starszymi niż godzina są odrzucane. Ostatnia kopia jest trzymana w IndexedDB przeglądarki, więc przeładowanie strony pokazuje dane od razu.
+Przy otwarciu strona pokazuje najpierw najnowszą kopię: z pamięci przeglądarki albo `data/gdynia.json` (GitHub Actions pobiera ją z Overpass co ~15 min i commituje tylko przy zmianie danych). Potem dane są pobierane na żywo z Overpass API (aktualizowany co minutę z bazy OSM). Mapa odświeża dane co 5 minut i pokazuje „Stan bazy OSM” (znacznik czasu serwera). Serwery z danymi starszymi niż godzina są odrzucane. Ostatnia kopia jest trzymana w IndexedDB przeglądarki, więc przeładowanie strony pokazuje dane od razu.
 
 Publiczny Overpass bywa przeciążony (HTTP 429/504), wtedy pierwsze ładowanie trwa 10–60 s. To ograniczenie prototypu, nie architektury.
 

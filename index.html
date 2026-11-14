@@ -619,7 +619,9 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   for (const k of Object.keys(INFRA).filter(k => INFRA[k].dash)) {
     map.addLayer({ id: 'infra-' + k, type: 'line', source: 'infra', minzoom: 12, filter: isCls(k),
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
-      paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET, 'line-dasharray': INFRA[k].dash } });
+      paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET,
+        // od zoomu 17 kontrapas wygląda jak pas (pełne niebieskie wypełnienie + malowane linie), niżej przerywany
+        'line-dasharray': k === 'kontrapas' ? ['step', ['zoom'], ['literal', INFRA[k].dash], 17, ['literal', [1, 0]]] : INFRA[k].dash } });
   }
   // przejazdy: szeroka czerwona linia + po obu brzegach białe kwadraciki
   const CROSS_W = INFRA_WIDTH();
@@ -636,7 +638,35 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
         'line-width': INFRA_WIDTH(0.2), 'line-offset': INFRA_WIDTH(sgn * 0.4) } });
   }
   // strzałki kierunku (wszędzie, gdzie jazda rowerem jest jednokierunkowa, i dwustronne na kontraruchu)
-  map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15, filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')]],
+  // Pasy rowerowe na dużym zoomie jak w rzeczywistości: niebieskie wypełnienie o szerokości ~1,5 m,
+  // przerywana biała linia od strony pasa ruchu, ciągła od krawężnika, malowany rower ze strzałką.
+  const LANE = isCls('pas', 'kontrapas');
+  const sideTimes = (k) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(17) * k]],
+    22, ['*', ['get', 'side'], ['*', ['get', 'wm'], PX_PER_M(22) * k]]];
+  const MARK_W = ['interpolate', ['exponential', 2], ['zoom'], 17, 0.12 * PX_PER_M(17), 22, 0.12 * PX_PER_M(22)]; // linia 12 cm
+  map.addLayer({ id: 'infra-lane-in', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': MARK_W, 'line-offset': sideTimes(-0.5), 'line-dasharray': [8, 8] } });
+  map.addLayer({ id: 'infra-lane-out', type: 'line', source: 'infra', minzoom: 17, filter: LANE,
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-width': MARK_W, 'line-offset': sideTimes(0.5) } });
+  map.addLayer({ id: 'infra-lane-sym', type: 'symbol', source: 'infra', minzoom: 17, filter: ['all', LANE, ['!=', ['get', 'dir'], 0]],
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 260, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true,
+      'icon-image': 'lanebike', 'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, 1.1 * PX_PER_M(17) / 14, 22, 1.1 * PX_PER_M(22) / 14],
+    } });
+  // zwykłe strzałki: na pasach tylko do zoomu 17 (wyżej jest malowany rower ze strzałką)
+  map.addLayer({ id: 'infra-arrows', type: 'symbol', source: 'infra', minzoom: 15,
+    filter: ['all', ['!=', ['get', 'dir'], 0], ['!', isCls('sharrow')], ['!', LANE]],
+    layout: {
+      'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
+      'icon-image': ['case', ['==', ['get', 'dir'], 2], 'arrow2', 'arrow'],
+      'icon-rotate': ['case', ['==', ['get', 'dir'], -1], 180, 0],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 15, 0.75, 18, 1.1],
+    } });
+  map.addLayer({ id: 'infra-arrows-lane', type: 'symbol', source: 'infra', minzoom: 15, maxzoom: 17,
+    filter: ['all', ['!=', ['get', 'dir'], 0], LANE],
     layout: {
       'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-rotation-alignment': 'map', 'icon-padding': 1,
       'icon-image': ['case', ['==', ['get', 'dir'], 2], 'arrow2', 'arrow'],
@@ -688,7 +718,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-arrows', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
@@ -780,7 +810,7 @@ document.getElementById('toggle-controls').onclick = () => document.getElementBy
 if (matchMedia('(max-width: 640px)').matches) document.getElementById('controls').classList.add('collapsed');
 
 // --- ikony rysowane na canvasie (bez zewnętrznych plików) ---
-const PR = 2; // gęstość pikseli ikon
+const PR = 4; // gęstość pikseli ikon (4, bo symbol roweru na pasie bywa duży przy maksymalnym zoomie)
 function canvasIcon(w, h, draw) {
   const c = document.createElement('canvas'); c.width = w * PR; c.height = h * PR;
   const g = c.getContext('2d'); g.scale(PR, PR); g.lineJoin = 'round'; g.lineCap = 'round'; draw(g, w, h); return c;
@@ -824,6 +854,13 @@ const ICONS = {
     g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
     g.beginPath(); g.moveTo(2.5, 11); g.lineTo(19.5, 11); g.lineWidth = 1.2; g.stroke();
     drawWalker(g, 11, 6.8, 7, '#fff'); drawBike(g, 11, 15.2, 10, '#fff');
+  }),
+  // malowany symbol roweru ze strzałką (jak na jezdni), patrzy w prawo = w kierunku linii
+  lanebike: canvasIcon(40, 14, (g) => {
+    drawBike(g, 13, 7.2, 20, '#fff');
+    g.strokeStyle = '#fff'; g.lineWidth = 1.6;
+    g.beginPath(); g.moveTo(27, 7); g.lineTo(37, 7); g.stroke();
+    g.beginPath(); g.moveTo(38.5, 7); g.lineTo(34, 4); g.lineTo(34, 10); g.closePath(); g.fillStyle = '#fff'; g.fill();
   }),
 };
 function addInfraImages() {

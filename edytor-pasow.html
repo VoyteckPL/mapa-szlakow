@@ -60,7 +60,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('canvas'), octx = off.getContext('2d');
-const KEY = 'edytor-pasow-v3', CHEVRONS = false, HINTS = false, TAPER2 = false;
+const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = false;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
 const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5, living_street: 2.25, service: 4, busway: 3.25 };
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
@@ -237,15 +237,15 @@ function layout() {
           gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [] });
         }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
-        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 5) break; rows.push({ s, a, b, g }); }
+        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 6) break; rows.push({ s, a, b, g }); }
         if (rows.length > 2 && rows.some(r => r.g > 1)) {
           const sEnd = Math.max(0, rows[rows.length - 1].s - 1.5); cutIn.push({ i: yl.i, ss: yl.st ? 1 : -1, st: yl.st, s: sEnd }, { i: yr.i, ss: yr.st ? -1 : 1, st: yr.st, s: sEnd });
           const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];
           if (CHEVRONS && G.some(e => /^(motorway|trunk)/.test(R[e.i].hw))) {
             let last = -99; const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
             for (let ri = 0; ri < rows.length && chev.length < 5; ri++) {
-              const r0 = rows[ri]; if (r0.g < 2.4 || r0.s - last < 6) continue; const s2 = Math.min(r0.s + 0.6 * r0.g, smax), a2 = atS(A, cA, s2), b2 = atS(B, cB, s2);
-              chev.push([a2, lerp(r0.a, r0.b, 0.5), b2]); last = r0.s;
+              const r0 = rows[ri]; if (r0.g < 1.2 || r0.g > 4.2 || r0.s - last < 1.9) continue; const s2 = Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
+              chev.push([a2, lerp(t1, t2, 0.5), b2]); last = r0.s;
             }
           }
           gores.push({ poly, A: rows.map(r => atS(A2, cA, r.s)), B: rows.map(r => atS(B2, cB, r.s)), chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
@@ -360,7 +360,7 @@ function drawLayer(g) {
   for (const l of L.lines) line(l.P, l.st);
   for (const q of L.gores) {
     line(q.A, 'p2'); line(q.B, 'p2');
-    for (const c of q.chev) { pathOf(g, c, false); g.strokeStyle = '#f2f2f2'; g.lineWidth = Math.max(1, 0.45 * k); g.lineJoin = 'miter'; g.lineCap = 'butt'; g.stroke(); g.lineJoin = 'round'; }
+    for (const c of q.chev) { pathOf(g, c, false); g.strokeStyle = '#f2f2f2'; g.lineWidth = Math.max(1, 0.2 * k); g.lineJoin = 'miter'; g.lineCap = 'butt'; g.stroke(); g.lineJoin = 'round'; }
   }
   for (const a of L.arrows) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }

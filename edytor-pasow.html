@@ -215,17 +215,16 @@ function layout() {
         const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
-          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(6, Math.min(+$('fT').value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
+          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(16, Math.min(+$("fT").value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
           if (!sh) return;
-          const Q0 = o.Q.map(q => q.slice()); // pozycja = mieszanie położenia osi własnej z położeniem odniesienia (przedłużenie dwupasowej + przesunięcie)
+          const Q0 = o.Q.map(q => q.slice()); // ścieżka wylotu: równolegle (P) do przedłużenia dwupasowej, potem krzywa Hermite'a do osi OSM (styczna z obu stron)
+          const sb = P + T2, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, sb + 1), Bm = atS(Q0, o.cum, Math.max(0, sb - 1)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
+          const rfP = ref(P), A = [rfP.p[0] - rfP.t[1] * sh, rfP.p[1] + rfP.t[0] * sh], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
           for (let jx = 0; jx < n; jx++) {
-            const sx = o.cum[jx], b = sx <= P ? 1 : 1 - sm5((sx - P) / T2); if (b <= 0) continue;
-            const rf = ref(sx), T = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh], jj = e.st ? jx : n - 1 - jx;
-            c.Q[jj] = [Q0[jx][0] + (T[0] - Q0[jx][0]) * b, Q0[jx][1] + (T[1] - Q0[jx][1]) * b];
-          }
-          { // lekkie wygładzenie ścieżki wylotu na odcinku dojścia do osi (bez ruszania węzła)
-            let m = 0; while (m < n - 2 && o.cum[m] < P + T2 + 12) m++;
-            for (let it = 0; it < 12; it++) { const A = c.Q.map(q => q.slice()); for (let jx = 2; jx <= m; jx++) { const jj = e.st ? jx : n - 1 - jx, a = A[jj + (e.st ? -1 : 1)], b2 = A[jj + (e.st ? 1 : -1)]; if (!a || !b2) continue; c.Q[jj] = [0.25 * a[0] + 0.5 * A[jj][0] + 0.25 * b2[0], 0.25 * a[1] + 0.5 * A[jj][1] + 0.25 * b2[1]]; } }
+            const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx; if (sx >= sb) continue;
+            if (sx <= P) { const rf = ref(sx); c.Q[jj] = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; continue; }
+            const u = (sx - P) / T2, h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+            c.Q[jj] = [h00 * A[0] + h10 * Ls * rfP.t[0] + h01 * B[0] + h11 * Ls * bt[0], h00 * A[1] + h10 * Ls * rfP.t[1] + h01 * B[1] + h11 * Ls * bt[1]];
           }
           c.cum = cumOf(c.Q);
         });
@@ -290,6 +289,17 @@ function layout() {
       }
     }
   });
+  { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
+    const sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), tol = 0.7; let ch = true;
+    while (ch) { ch = false;
+      for (let i = 0; i < sol.length && !ch; i++) for (let j = i + 1; j < sol.length && !ch; j++) {
+        const a = sol[i], b = sol[j], sa = a.P[0], ea = a.P[a.P.length - 1], sb = b.P[0], eb = b.P[b.P.length - 1];
+        if (dist(ea, sb) < tol) a.P = a.P.concat(b.P.slice(1)); else if (dist(ea, eb) < tol) a.P = a.P.concat(b.P.slice(0, -1).reverse()); else if (dist(sa, eb) < tol) a.P = b.P.concat(a.P.slice(1)); else if (dist(sa, sb) < tol) a.P = b.P.slice(1).reverse().concat(a.P); else continue;
+        sol.splice(j, 1); ch = true;
+      }
+    }
+    lines.length = 0; lines.push(...rest, ...sol);
+  }
   S.forks = forks; return { polys, lines, gores, arrows };
 }
 

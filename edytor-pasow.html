@@ -46,7 +46,7 @@
     </div>
     <div class="row">
       <label>pasy – krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
-      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bImp">Wczytaj drogi z widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
+      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
     </div>
     <div id="props"></div>
     <details><summary>Dane</summary>
@@ -132,9 +132,10 @@ function makeRoad(o, a, b) {
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });
 
 // ---------- warstwa OSM ----------
-async function loadOsmAround(lat, lon) {
+async function loadOsmAround(lat, lon, box) {
   const tx = Math.floor(lon / 0.02), ty = Math.floor(lat / 0.01); let fail = 0;
-  for (let x = tx - 1; x <= tx + 1; x++) for (let y = ty - 1; y <= ty + 1; y++) {
+  const [xa, xb, ya, yb] = box || [tx - 1, tx + 1, ty - 1, ty + 1];
+  for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) {
     const k = x + '_' + y; if (S.osm.tiles.has(k)) continue; S.osm.tiles.add(k);
     try { const r = await fetch(`data/roads/gdynia/${k}.json`); if (!r.ok) continue; for (const w of await r.json()) if (!S.osm.ways.has(w.i)) S.osm.ways.set(w.i, { id: w.i, t: w.t, g: w.g.map(c => proj(c[0], c[1])), nk: w.g.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); } catch (e) { fail++; }
   }
@@ -442,7 +443,12 @@ function props() {
 $('bLnk').onclick = () => loadLink($('lnk').value);
 $('lnk').addEventListener('keydown', e => { if (e.key === 'Enter') loadLink($('lnk').value); });
 $('lnk').addEventListener('paste', () => setTimeout(() => { if (parseLink($('lnk').value)) loadLink($('lnk').value); }));
-$('bImp').onclick = () => { push(); importView(); };
+$('bImp').onclick = async () => {
+  const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
+  const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];
+  if ((box[1] - box[0] + 1) * (box[3] - box[2] + 1) > 40) { say('Widok za duży – przybliż mapę.'); return; }
+  say('Pobieram dane widoku…'); await loadOsmAround((la + lb) / 2, (lo + hi) / 2, box); push(); importView();
+};
 for (const id of ['cTile', 'cLay', 'cAx', 'rA', 'bm']) $(id).oninput = () => render();
 $('cSm').oninput = () => touch(); $('fP').oninput = $('fT').oninput = () => touch();
 $('bFinish').onclick = finishDraw; $('bCancel').onclick = () => setTool('sel');

@@ -250,16 +250,7 @@ function layout() {
           c.cum = cumOf(c.Q);
         });
         if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
-        { // wyloty nie moga na siebie nachodzic (np. oba prawie prosto): tam, gdzie odstep krawedzi < 0, rozsuwamy je symetrycznie
-          for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
-          const oa = orient(C[yl.i], yl.st), ob = orient(C[yr.i], yr.st), wsum = (rw(R[yl.i]) + rw(R[yr.i])) / 2, Lm = Math.min(oa.cum[oa.cum.length - 1], ob.cum[ob.cum.length - 1], 60), N = Math.floor(Lm) + 1, df = [];
-          for (let i = 0; i < N; i++) { const pa = atS(oa.Q, oa.cum, i), pb = atS(ob.Q, ob.cum, i); df.push(Math.max(0, wsum - ((pb[0] - pa[0]) * nR[0] + (pb[1] - pa[1]) * nR[1]))); }
-          if (df.some(v => v > 0.02)) {
-            const mx = df.map((_, i) => Math.max(...df.slice(Math.max(0, i - 3), i + 4))), sm = mx.map((_, i) => { let a = 0, c = 0; for (let k = Math.max(0, i - 3); k <= Math.min(N - 1, i + 3); k++) { a += mx[k]; c++; } return a / c; });
-            const dAt = sv => { if (sv >= N - 1) return 0; const i = Math.floor(sv), f = sv - i; return sm[i] * (1 - f) + sm[i + 1] * f; };
-            [[yl, -1], [yr, 1]].forEach(([e, sg]) => { const c = C[e.i], o = orient(c, e.st), n = o.Q.length; for (let jx = 0; jx < n; jx++) { const tu = Math.min(1, o.cum[jx] / 8), dd = dAt(o.cum[jx]) * tu * tu * (3 - 2 * tu) / 2; if (!dd) continue; const jj = e.st ? jx : n - 1 - jx; c.Q[jj] = [c.Q[jj][0] + sg * nR[0] * dd, c.Q[jj][1] + sg * nR[1] * dd]; } c.cum = cumOf(c.Q); });
-          }
-        }
+        for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
         { // łata na styku dwupasowej i obu wylotów: zasłania szczeliny między obciętymi końcami
           const nd = orient(C[X.i], X.st), pts6 = [edgeOf(nd, -1)[0], edgeOf(nd, 1)[0]];
           for (const e of [yl, yr]) { const oy = orient(C[e.i], e.st); pts6.push(edgeOf(oy, -1)[0], edgeOf(oy, 1)[0]); }

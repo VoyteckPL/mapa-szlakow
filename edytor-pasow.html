@@ -163,6 +163,7 @@ function importView(margin = 40) {
   for (const o of S.osm.ways.values()) {
     const hw = (o.t.highway || '').replace('_link', ''); if (!OKHW.has(hw) || o.t.area === 'yes' || ['parking_aisle', 'driveway'].includes(o.t.service)) continue;
     const have = cov.get(o.id), need = o.g.map((p, i) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1 && !(have && have.has(o.nk[i])));
+    if (!have && need.some(Boolean) && o.g.length > 1) { if (S.doc.road.length >= 500) { full = true; break; } S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); n++; continue; } // cala droga naraz (nie ciecie na kawalki przy widoku – to psulo zwezenia i rozjazdy)
     for (let i = 0; i < need.length; i++) {
       if (!need[i]) continue; let j = i; while (j + 1 < need.length && need[j + 1]) j++;
       const A = Math.max(0, i - 1), B = Math.min(o.g.length - 1, j + 1); i = j;
@@ -214,7 +215,7 @@ function layout() {
         const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
         R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
         c.side = e.st ? sf : -sf; c.w.fill(narrow); const n = c.Q.length;
-        for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); }
+        for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); } c.tf = c.e.map(v => v / extra);
         if (R[e.i].oneway && !e.st && len > T + 24) for (const sa of [T + 8, T + 20]) { // P-9: kończący się pas wskazuje sąsiedni (zmiana pasów 3→2)
           const v = len - sa, p = atS(c.Q, c.cum, v), p2 = atS(c.Q, c.cum, Math.min(len, v + 1)), off = c.side * (narrow / 2 + extra / 2), q = offsetPts([p, p2], [off, off]), qc = offsetPts([p, p2], [0, 0]), dx = p2[0] - p[0], dy = p2[1] - p[1], cr = dx * (qc[0][1] - q[0][1]) - dy * (qc[0][0] - q[0][0]);
           preAr.push({ x: q[0][0], y: q[0][1], rot: Math.atan2(dy, dx) * 180 / Math.PI + 90, type: cr > 0 ? 'p9b' : 'p9a', ly: R[e.i].ly | 0 });
@@ -267,7 +268,7 @@ function layout() {
           }
           c.cum = cumOf(c.Q);
         });
-        if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
+        if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); if (cX.tf) cX.e = cX.tf.map(f => (wX - wM) * f); else cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
         { // wyloty nie moga na siebie nachodzic (np. oba prawie prosto): tam, gdzie odstep krawedzi < 0, rozsuwamy je symetrycznie
           for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
           const oa = orient(C[yl.i], yl.st), ob = orient(C[yr.i], yr.st), wsum = (rw(R[yl.i]) + rw(R[yr.i])) / 2, Lm = Math.min(oa.cum[oa.cum.length - 1], ob.cum[ob.cum.length - 1], 60), N = Math.floor(Lm) + 1, df = [];

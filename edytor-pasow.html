@@ -221,6 +221,13 @@ function layout() {
         const T = R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1 ? 'rozjazd-2-1+1' : (R[X.i].lanes === 3 && Ys.map(e => R[e.i].lanes).sort().join() === '1,2' ? 'rozjazd-3-2+1' : null);
         if (!T || !FORK_TYPES[T].on || !G.some(e => FORK_TYPES[T].hw.test(R[e.i].hw || ''))) continue; // tylko typy z rejestru FORK_TYPES, tylko na wskazanych klasach drog
         (T === 'rozjazd-2-1+1' ? forks : forks3).push(orient(C[X.i], X.st).Q[0]); forkX.set(X.i, X.st);
+        // krotki "kikut" osi przy wezle (pierwszy segment < 14 m, ktory ostro skreca wzgledem dalszego przebiegu) nie jest sladem pasa - pomijamy ten wierzcholek tylko w renderze
+        for (const e of Ys) {
+          const G0 = gp(R[e.i]); if (G0.length < 3) continue; const P0 = e.st ? G0 : G0.slice().reverse(), d1 = dist(P0[0], P0[1]);
+          if (d1 < 14) { const u1 = [(P0[1][0] - P0[0][0]) / d1, (P0[1][1] - P0[0][1]) / d1], l2 = dist(P0[0], P0[2]) || 1, u2 = [(P0[2][0] - P0[0][0]) / l2, (P0[2][1] - P0[0][1]) / l2];
+            if (Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1]))) * 180 / Math.PI > 15) { const keepIdx = e.st ? [0].concat(G0.map((_, i) => i).slice(2)) : G0.map((_, i) => i).slice(0, G0.length - 2).concat([G0.length - 1]); C[e.i] = comp({ ...R[e.i], pts: keepIdx.map(i => G0[i]), rp: null }, hints[e.i]); }
+          }
+        }
         const mu = [U[0][0] + U[1][0] + U[2][0] - U[xi][0], U[0][1] + U[1][1] + U[2][1] - U[xi][1]], ml = Math.hypot(...mu) || 1, m = [mu[0] / ml, mu[1] / ml], nR = [-m[1], m[0]];
         const cr = Ys.map(e => { const u = unitFrom(C[e.i], e.st); return m[0] * u[1] - m[1] * u[0]; });
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
@@ -257,7 +264,7 @@ function layout() {
           if (df.some(v => v > 0.02)) {
             const mx = df.map((_, i) => Math.max(...df.slice(Math.max(0, i - 3), i + 4))), sm = mx.map((_, i) => { let a = 0, c = 0; for (let k = Math.max(0, i - 3); k <= Math.min(N - 1, i + 3); k++) { a += mx[k]; c++; } return a / c; });
             const dAt = sv => { if (sv >= N - 1) return 0; const i = Math.floor(sv), f = sv - i; return sm[i] * (1 - f) + sm[i + 1] * f; };
-            [[yl, -1], [yr, 1]].forEach(([e, sg]) => { const c = C[e.i], o = orient(c, e.st), n = o.Q.length; for (let jx = 0; jx < n; jx++) { const tu = Math.min(1, o.cum[jx] / 8), dd = dAt(o.cum[jx]) * tu * tu * (3 - 2 * tu) / 2; if (!dd) continue; const jj = e.st ? jx : n - 1 - jx; c.Q[jj] = [c.Q[jj][0] + sg * nR[0] * dd, c.Q[jj][1] + sg * nR[1] * dd]; } c.cum = cumOf(c.Q); });
+            [[yl, -1], [yr, 1]].forEach(([e, sg]) => { const c = C[e.i], o = orient(c, e.st), n = o.Q.length; for (let jx = 0; jx < n; jx++) { const dd = dAt(o.cum[jx]) / 2; if (!dd) continue; const jj = e.st ? jx : n - 1 - jx; c.Q[jj] = [c.Q[jj][0] + sg * nR[0] * dd, c.Q[jj][1] + sg * nR[1] * dd]; } c.cum = cumOf(c.Q); });
           }
         }
         { // łata na styku dwupasowej i obu wylotów: zasłania szczeliny między obciętymi końcami

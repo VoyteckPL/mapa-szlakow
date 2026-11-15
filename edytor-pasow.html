@@ -63,7 +63,7 @@ const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('can
 // Rejestr typow rozjazdow renderowanych specjalnie. Kazdy typ: gdzie stosowany (hw = regex na highway drog w wezle), co rysuje.
 // Pozostale wezly ida po zwyklej osi OSM. Kolejne typy dopisujemy tutaj.
 const FORK_TYPES = { 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk)/ } };
-const EMBED = /[?&]embed=1/.test(location.search); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
+const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search), EKEY = (() => { const m = /#map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); return m ? 'rozj-' + m[1] + '/' + m[2] : 'rozj-x'; })(); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = false;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
@@ -454,7 +454,15 @@ const snap = () => JSON.stringify(S.doc);
 function push() { S.undo.push(snap()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
 function restore(s) { S.doc = JSON.parse(s); S.sel = -1; S.vsel = -1; save(); ui(); touch(); }
 function curHash() { try { const c = unproj(s2w([W / 2, H / 2])), z = Math.log2(156543.03 * Math.cos(c.lat * Math.PI / 180) * S.view.k); return `#map=${z.toFixed(2)}/${c.lat.toFixed(6)}/${c.lon.toFixed(6)}`; } catch (e) { return ''; } }
-function save() { if (EMBED) return; const h = curHash(); try { if (h) history.replaceState(null, '', h); } catch (e) {} try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, org: S.org, h })); } catch (e) {} } // zapamietuje biezaca lokacje (tez w adresie), by odswiezenie nie wracalo do pierwotnej
+function saveEmb() { // tryb edycji w piaskownicy: zapamietuje tylko reczne korekty renderu (lon/lat) pod kluczem przypadku
+  try { const roads = S.doc.road.filter(r => r.rp).map(r => ({ osm: r.osm, nk: r.nk, pts: r.pts.map(q => { const u = unproj(q); return [+u.lon.toFixed(7), +u.lat.toFixed(7)]; }), rp: r.rp.map(q => { const u = unproj(q); return [+u.lon.toFixed(7), +u.lat.toFixed(7)]; }) })); if (roads.length) localStorage.setItem(EKEY, JSON.stringify({ v: 1, roads })); else localStorage.removeItem(EKEY); } catch (e) {}
+}
+function applyEmb() {
+  try { const j = JSON.parse(localStorage.getItem(EKEY) || 'null'); if (!j) return; const pr = c => proj(c[0], c[1]);
+    for (const o of j.roads) { const r = S.doc.road.find(x => x.osm === o.osm && x.nk[0] === o.nk[0] && x.nk[x.nk.length - 1] === o.nk[o.nk.length - 1]); if (r) { r.pts = o.pts.map(pr); r.nk = o.nk.slice(); r.rp = o.rp.map(pr); } }
+    touch(); } catch (e) {}
+}
+function save() { if (EMBED) { if (EDIT) saveEmb(); return; } const h = curHash(); try { if (h) history.replaceState(null, '', h); } catch (e) {} try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, org: S.org, h })); } catch (e) {} } // zapamietuje biezaca lokacje (tez w adresie), by odswiezenie nie wracalo do pierwotnej
 $('bUndo').onclick = () => { if (S.undo.length) { S.redo.push(snap()); restore(S.undo.pop()); } };
 $('bRedo').onclick = () => { if (S.redo.length) { S.undo.push(snap()); restore(S.redo.pop()); } };
 function moveNode(r, vi, x, y) { const k = r.nk[vi]; r.pts[vi] = [x, y]; if (k) for (const o of S.doc.road) o.nk.forEach((kk, j) => { if (kk === k) o.pts[j] = [x, y]; }); }
@@ -576,12 +584,12 @@ window.addEventListener('resize', resize);
 
 // ---------- start ----------
 (async function () {
-  if (EMBED) { document.getElementById('panel').style.display = 'none'; S.tool = 'pan'; document.getElementById('hint').style.display = 'none'; }
+  if (EMBED) { document.getElementById('panel').style.display = 'none'; S.tool = EDIT ? 'rend' : 'pan'; document.getElementById('hint').style.display = 'none'; if (EDIT) { const b = document.createElement('button'); b.textContent = 'Zeruj'; b.style.cssText = 'position:fixed;right:8px;top:8px;z-index:9;padding:6px 10px;border-radius:8px;border:1px solid #888;background:#fff;font:13px system-ui'; b.onclick = () => { S.doc.road.forEach(r => { delete r.rp; }); try { localStorage.removeItem(EKEY); } catch (e) {} S.dirty = true; render(); }; document.body.appendChild(b); } }
   resize(); ui();
   const h = decodeURIComponent(location.hash || '') + ' ' + location.search;
   let sv = null; try { sv = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
   // adres zgodny z ostatnio zapamietanym widokiem (odswiezenie) -> przywroc zapis; inny #map= (nowy link) -> wczytaj od nowa
-  if (parseLink(location.hash) && /#map=/.test(h) && !(!EMBED && sv && sv.doc && sv.doc.road && sv.h === location.hash)) { $('lnk').value = location.hash; await loadLink(h); return; }
+  if (parseLink(location.hash) && /#map=/.test(h) && !(!EMBED && sv && sv.doc && sv.doc.road && sv.h === location.hash)) { $('lnk').value = location.hash; await loadLink(h); if (EDIT) applyEmb(); return; }
   try { const s = EMBED ? null : sv; if (s && s.doc && s.doc.road) { S.doc = s.doc; S.view = s.view; S.org = s.org; $('lnk').value = s.h || ''; { const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])); await loadOsmAround(S.org.lat, S.org.lon, [Math.floor(Math.min(a.lon, b.lon) / 0.02), Math.floor(Math.max(a.lon, b.lon) / 0.02), Math.floor(Math.min(a.lat, b.lat) / 0.01), Math.floor(Math.max(a.lat, b.lat) / 0.01)]); } touch(); say(`Przywrócono ${S.doc.road.length} dróg.`); return; } } catch (e) {}
   say('Wklej link z openstreetmap.org i naciśnij Wczytaj.'); render();
 })();

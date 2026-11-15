@@ -60,7 +60,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('canvas'), octx = off.getContext('2d');
-const KEY = 'edytor-pasow-v3', CHEVRONS = false, HINTS = false;
+const KEY = 'edytor-pasow-v3', CHEVRONS = false, HINTS = false, TAPER2 = false;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
 const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5, living_street: 2.25, service: 4, busway: 3.25 };
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
@@ -184,11 +184,11 @@ function layout() {
     if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
     if (best < -1.0 && ln[xi] >= Math.max(...ln.filter((_, a) => a !== xi))) G.forEach((e, a) => { if (a === xi) return; const h = hints[e.i] || (hints[e.i] = {}), t = [-U[xi][0], -U[xi][1]]; if (e.st) h.tin = t; else h.tout = [-t[0], -t[1]]; });
   }
-  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [];
+  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [], forks = [];
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
-      if (Math.abs(ws[0] - ws[1]) > 0.3) { // dodatkowy pas dochodzi bokiem, dwa główne zostają na osi
+      if (TAPER2 && Math.abs(ws[0] - ws[1]) > 0.3) { // dodatkowy pas dochodzi bokiem, dwa główne zostają na osi
         const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(30, len / 2.2);
         const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
         R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
@@ -204,6 +204,8 @@ function layout() {
       const X = G[xi], Ys = G.filter((_, a) => a !== xi), wX = rw(R[X.i]);
       if (U[xi][0] * (U[(xi + 1) % 3][0] + U[(xi + 2) % 3][0]) + U[xi][1] * (U[(xi + 1) % 3][1] + U[(xi + 2) % 3][1]) < -1.0 && R[X.i].lanes >= Math.max(R[Ys[0].i].lanes, R[Ys[1].i].lanes)) {
         handled.add(k);
+        if (!(R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1)) continue; // tylko rozjazd 2 -> 1+1 jest renderowany specjalnie
+        forks.push(orient(C[X.i], X.st).Q[0]);
         const mu = [U[0][0] + U[1][0] + U[2][0] - U[xi][0], U[0][1] + U[1][1] + U[2][1] - U[xi][1]], ml = Math.hypot(...mu) || 1, m = [mu[0] / ml, mu[1] / ml], nR = [-m[1], m[0]];
         const cr = Ys.map(e => { const u = unitFrom(C[e.i], e.st); return m[0] * u[1] - m[1] * u[0]; });
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
@@ -271,7 +273,7 @@ function layout() {
       }
     }
   });
-  return { polys, lines, gores, arrows };
+  S.forks = forks; return { polys, lines, gores, arrows };
 }
 
 // ---------- strzałki ----------
@@ -357,6 +359,7 @@ function render() {
     });
     ctx.textAlign = 'start';
   }
+  for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
   const bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : 100; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar + ' m', 12, H - 22);
 }

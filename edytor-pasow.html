@@ -76,6 +76,7 @@ const w2s = p => [(p[0] - S.view.x) * S.view.k + W / 2, (p[1] - S.view.y) * S.vi
 const s2w = p => [(p[0] - W / 2) / S.view.k + S.view.x, (p[1] - H / 2) / S.view.k + S.view.y];
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const sm = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+const sm5 = t => { t = Math.max(0, Math.min(1, t)); return t * t * t * (t * (6 * t - 15) + 10); };
 const proj = (lon, lat) => [(lon - S.org.lon) * 111320 * Math.cos(S.org.lat * Math.PI / 180), -(lat - S.org.lat) * 110540];
 const unproj = p => ({ lon: S.org.lon + p[0] / (111320 * Math.cos(S.org.lat * Math.PI / 180)), lat: S.org.lat - p[1] / 110540 });
 function segDist(p, a, b) { const x = b[0] - a[0], y = b[1] - a[1], l2 = x * x + y * y || 1; let t = ((p[0] - a[0]) * x + (p[1] - a[1]) * y) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - x * t, p[1] - a[1] - y * t); }
@@ -218,9 +219,13 @@ function layout() {
           if (!sh) return;
           const Q0 = o.Q.map(q => q.slice()); // pozycja = mieszanie położenia osi własnej z położeniem odniesienia (przedłużenie dwupasowej + przesunięcie)
           for (let jx = 0; jx < n; jx++) {
-            const sx = o.cum[jx], b = sx <= P ? 1 : 1 - sm((sx - P) / T2); if (b <= 0) continue;
+            const sx = o.cum[jx], b = sx <= P ? 1 : 1 - sm5((sx - P) / T2); if (b <= 0) continue;
             const rf = ref(sx), T = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh], jj = e.st ? jx : n - 1 - jx;
             c.Q[jj] = [Q0[jx][0] + (T[0] - Q0[jx][0]) * b, Q0[jx][1] + (T[1] - Q0[jx][1]) * b];
+          }
+          { // lekkie wygładzenie ścieżki wylotu na odcinku dojścia do osi (bez ruszania węzła)
+            let m = 0; while (m < n - 2 && o.cum[m] < P + T2 + 12) m++;
+            for (let it = 0; it < 12; it++) { const A = c.Q.map(q => q.slice()); for (let jx = 1; jx <= m; jx++) { const jj = e.st ? jx : n - 1 - jx, a = A[jj + (e.st ? -1 : 1)], b2 = A[jj + (e.st ? 1 : -1)]; if (!a || !b2) continue; c.Q[jj] = [0.25 * a[0] + 0.5 * A[jj][0] + 0.25 * b2[0], 0.25 * a[1] + 0.5 * A[jj][1] + 0.25 * b2[1]]; } }
           }
           c.cum = cumOf(c.Q);
         });

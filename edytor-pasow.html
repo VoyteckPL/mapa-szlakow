@@ -64,6 +64,7 @@ const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('can
 // Pozostale wezly ida po zwyklej osi OSM. Kolejne typy dopisujemy tutaj.
 const FORK_TYPES = { 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk)/ } };
 const EMBED = /[?&]embed=1/.test(location.search); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
+const ZJAZD_BOK = 3.5; // m: o tyle (minimum) zjazd z turn:lanes ma byc odsuniety na swoja strone od osi pasa przelotowego po ok. 20 m
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = false;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
@@ -251,6 +252,15 @@ function layout() {
         });
         if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
         for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
+        { // regula z turn:lanes dwupasowki ("through|right"): pas zjazdowy odchodzi na swoja strone nawet gdy os OSM biegnie prosto (OSM prowadzi nawigacje "prosto")
+          const tk = (R[X.i].tl || '').split('|'), exL = /(^|;)(sharp_|slight_)?left(;|$)/, exR = /(^|;)(sharp_|slight_)?right(;|$)/;
+          const esg = X.st || tk.length !== 2 ? 0 : (exR.test(tk[1]) && !exR.test(tk[0]) ? 1 : (exL.test(tk[0]) && !exL.test(tk[1]) ? -1 : 0));
+          if (esg) {
+            const ey = esg > 0 ? yr : yl, c = C[ey.i], o = orient(c, ey.st), n = o.Q.length, len = o.cum[n - 1], nx = [nR[0] * esg, nR[1] * esg], p20 = atS(o.Q, o.cum, Math.min(20, len));
+            const lat0 = (p20[0] - o.Q[0][0]) * nx[0] + (p20[1] - o.Q[0][1]) * nx[1], sideOff = Math.max(0, ZJAZD_BOK - lat0), tail = Math.min(25, len * 0.4), ss3 = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+            if (sideOff > 0.05) { for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], off = sideOff * ss3(sx / 18) * (1 - ss3((sx - (len - tail)) / tail)), jj = ey.st ? jx : n - 1 - jx; c.Q[jj] = [c.Q[jj][0] + nx[0] * off, c.Q[jj][1] + nx[1] * off]; } c.cum = cumOf(c.Q); }
+          }
+        }
         { // łata na styku dwupasowej i obu wylotów: zasłania szczeliny między obciętymi końcami
           const nd = orient(C[X.i], X.st), pts6 = [edgeOf(nd, -1)[0], edgeOf(nd, 1)[0]];
           for (const e of [yl, yr]) { const oy = orient(C[e.i], e.st); pts6.push(edgeOf(oy, -1)[0], edgeOf(oy, 1)[0]); }

@@ -147,7 +147,7 @@ function makeRoad(o, a, b) {
   let tl = ow ? (t['turn:lanes'] || t['turn:lanes:forward'] || '') : (t['turn:lanes:forward'] || '');
   if (t.oneway === '-1') { pts.reverse(); nk.reverse(); }
   const nf = ow ? n : (f || Math.round(n / 2));
-  return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, nf, ly: layerOf(t), br: !!t.bridge && t.bridge !== 'no' };
+  return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, tlb: ow ? '' : (t['turn:lanes:backward'] || ''), nf, ly: layerOf(t), br: !!t.bridge && t.bridge !== 'no' };
 }
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });
 
@@ -359,6 +359,18 @@ function layout() {
         }
       }
     }
+    if (r.tlb && !r.oneway) { // strzałki turn:lanes:backward: pasy przeciwnego kierunku, malowane przy początku drogi i obrócone o 180°
+      const parts = r.tlb.split('|'), len = c.cum[n - 1], NL = Math.max(1, r.lanes | 0), nbk = NL - (r.nf || 1);
+      if (nbk > 0 && parts.length === nbk && len > 25) for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 3; sa += 21, cnt++) {
+        const p = atS(Q, c.cum, sa), p2 = atS(Q, c.cum, sa + 1), dx = p2[0] - p[0], dy = p2[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, ang = Math.atan2(dy, dx) * 180 / Math.PI + 90 + 180;
+        let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - sa); if (dd < bd) { bd = dd; jn = j; } }
+        const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj;
+        parts.forEach((v, k) => {
+          const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-');
+          if (key === 'through-left-right' || ARR.has(key)) { const lat = leftLat + (nbk - 1 - k + 0.5) * r.lw; arrows.push({ x: p[0] + nx * lat, y: p[1] + ny * lat, rot: ang, type: key }); }
+        });
+      }
+    }
   });
   R.forEach((r, i) => { const ly = r.ly | 0, nx = rng[i + 1] || [lines.length, arrows.length, polys.length], b = rng[i]; if (!b) return; for (let j = b[0]; j < nx[0]; j++) lines[j].ly = ly; for (let j = b[1]; j < nx[1]; j++) arrows[j].ly = ly; for (let j = b[2]; j < nx[2]; j++) { polys[j].ly = ly; polys[j].br = !!r.br; } });
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
@@ -525,7 +537,7 @@ const TAGK = [['lanes', 'lanes – liczba pasów'], ['lanes:forward', 'lanes:for
 const osmWay = id => S.osm.ways.get(id) || [...S.osm.ways.values()].find(o => o.id === id);
 const baseTags = r => (osmWay(r.osm) || { t: {} }).t;
 function effTags(r) { const t = { ...baseTags(r) }; for (const [k, v] of Object.entries(r.tg || {})) { if (v === null || v === '') delete t[k]; else t[k] = v; } return t; }
-function applyTags(r) { const w = osmWay(r.osm); if (!w) return; const m = makeRoad({ ...w, t: effTags(r) }, 0, w.g.length - 1); for (const k of ['lanes', 'lw', 'oneway', 'marked', 'edge', 'tl', 'nf']) r[k] = m[k]; }
+function applyTags(r) { const w = osmWay(r.osm); if (!w) return; const m = makeRoad({ ...w, t: effTags(r) }, 0, w.g.length - 1); for (const k of ['lanes', 'lw', 'oneway', 'marked', 'edge', 'tl', 'tlb', 'nf']) r[k] = m[k]; }
 let LSEL = { r: 0, i: 0 }, LAN = null, LP = null;
 const TURN = [['left', '←', 'w lewo'], ['through', '↑', 'prosto'], ['right', '→', 'w prawo'], ['reverse', '↶', 'zawróć'], ['merge_to_left', '⇖', 'zlewa się w lewo'], ['merge_to_right', '⇗', 'zlewa się w prawo']];
 function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + przyciski strzałek/liczby pasów (zapisuje tagi lanes*, turn:lanes*)

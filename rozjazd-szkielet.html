@@ -112,18 +112,22 @@ function drawRoad(){
     // os klina (srodek miedzy krawedziami) z gestym krokiem; szewrony w rownych odstepach SP wzdluz osi
     const M=[],Gp=[],Cs=[0];for(let i=0;i<ia.length;i++){const[j,g]=near(i,ib);M.push([(ia[i][0]+ib[j][0])/2,(ia[i][1]+ib[j][1])/2]);Gp.push(g);if(i)Cs.push(Cs[i-1]+Math.hypot(M[i][0]-M[i-1][0],M[i][1]-M[i-1][1]));}
     let i0=-1;for(let i=8;i<ia.length;i++)if(Gp[i]>=2.2){i0=i;break;}if(i0<0)return null;
-    const apexes=[];for(let k=0;k<S.chN;k++){const sT=Cs[i0]+k*SP;let i=i0;while(i<ia.length-1&&Cs[i]<sT)i++;if(Cs[i]<sT-1e-6)break;apexes.push(i);}
-    const iL=apexes[apexes.length-1],hL=Gp[iL]/2;let iEnd=iL;while(iEnd<ia.length-1&&Cs[iEnd]<Cs[iL]+hL*0.9+0.6)iEnd++;
+    const apexes=[];for(let k=0;k<S.chN;k++){const sT=Cs[i0]+k*SP;let i=i0;while(i<ia.length-1&&Cs[i]<sT)i++;if(Cs[i]<sT-1e-6)break;const f=i>0?(sT-Cs[i-1])/((Cs[i]-Cs[i-1])||1):1;apexes.push({i,m:i>0?[M[i-1][0]+(M[i][0]-M[i-1][0])*f,M[i-1][1]+(M[i][1]-M[i-1][1])*f]:M[i]});}
+    const iL=apexes[apexes.length-1].i,hL=Gp[iL]/2;let iEnd=iL;while(iEnd<ia.length-1&&Cs[iEnd]<Cs[iL]+hL*0.9+0.6)iEnd++;
     const jEnd=near(iEnd,ib)[0],poly=ia.slice(0,iEnd+1).concat(ib.slice(0,jEnd+1).reverse());
     const inP=pt=>{let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const A=poly[i],B=poly[j];if((A[1]>pt[1])!==(B[1]>pt[1])&&pt[0]<(B[0]-A[0])*(pt[1]-A[1])/(B[1]-A[1])+A[0])c=!c;}return c;};
     const al=S.chAng*Math.PI/180,ch=[];
-    apexes.forEach(i=>{const i1=Math.max(0,i-6),i2=Math.min(ia.length-1,i+6),u=nrm(sub(M[i2],M[i1])),nn=nOf(u),m=M[i],arms=[];
+    apexes.forEach(({i,m})=>{const i1=Math.max(0,i-6),i2=Math.min(ia.length-1,i+6),u=nrm(sub(M[i2],M[i1])),nn=nOf(u),arms=[];
       [-1,1].forEach(sd=>{const d=add(mul(u,Math.cos(al)),mul(nn,sd*Math.sin(al)));let t=0;while(t<40&&inP(add(m,mul(d,t+0.05))))t+=0.05;
         const hit=add(m,mul(d,t));let tan=null;{const[j1,d1]=(()=>{let bj=0,bd=1e9;for(let j=0;j<ia.length;j++){const q=Math.hypot(ia[j][0]-hit[0],ia[j][1]-hit[1]);if(q<bd){bd=q;bj=j;}}return[bj,bd];})(),[j2,d2]=(()=>{let bj=0,bd=1e9;for(let j=0;j<ib.length;j++){const q=Math.hypot(ib[j][0]-hit[0],ib[j][1]-hit[1]);if(q<bd){bd=q;bj=j;}}return[bj,bd];})();
           const E=d1<=d2?ia:ib,j=d1<=d2?j1:j2;tan=nrm(sub(E[Math.min(E.length-1,j+4)],E[Math.max(0,j-4)]));}
         arms.push({d,hit,tan,m});});
       ch.push(arms);});
-    return{ch,poly};})();
+    // wypelnienie klina konczy sie litera V ostatniego szewronu (bez skosnego uciecia)
+    const nearIdx=(E,pt)=>{let bj=0,bd=1e9;for(let j=0;j<E.length;j++){const q=Math.hypot(E[j][0]-pt[0],E[j][1]-pt[1]);if(q<bd){bd=q;bj=j;}}return bj;};
+    const last=ch[ch.length-1],hA=last.map(o=>o.hit),dA=hA.map(h=>Math.hypot(ia[nearIdx(ia,h)][0]-h[0],ia[nearIdx(ia,h)][1]-h[1])),kA=dA[0]<=dA[1]?0:1,hh=[hA[kA],hA[1-kA]],mApex=last[0].m;
+    const fillPoly=ia.slice(0,nearIdx(ia,hh[0])+1).concat([hh[0],mApex,hh[1]],ib.slice(0,nearIdx(ib,hh[1])+1).reverse());
+    return{ch,poly:fillPoly,clip:poly};})();
   if(gore){path(gore.poly,true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();}
   const edgeLines=()=>{const r=[];[G.a,G.b].forEach(o=>{const oe=o.sg>0?o.L:o.Rr,ie=o.sg>0?o.Rr:o.L,xs=o.sg>0?G.x.R:G.x.L;r.push(xs.slice().reverse().concat(oe.slice(1)),ie);});return r;};
   if(S.curb){const E=edgeLines();E.forEach(P=>stroke(P,'#6f716c',2*0.42));E.forEach(P=>stroke(P,'#c4c6c0',2*0.34));} // krawezniki: waski jasny pasek na zewnatrz konturu (wnetrze przykrywa jezdnia)
@@ -137,7 +141,7 @@ function drawRoad(){
   // biale krawedzie jezdni leza dokladnie na niebieskich konturach (bez wcinania do srodka), bez klina
   const xneg=G.x.L,xpos=G.x.R;
   [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,innerEdge=o.sg>0?o.Rr:o.L,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.2);stroke(innerEdge,LINE,0.2);});
-  if(gore){const v=S.chVar,CW=S.chW;ctx.save();if(v===1){path(gore.poly,true);ctx.clip();}
+  if(gore){const v=S.chVar,CW=S.chW;ctx.save();if(v===1){path(gore.clip,true);ctx.clip();}
     gore.ch.forEach(arms=>{const legs=arms.map(o=>{let P;const L=Math.hypot(o.hit[0]-o.m[0],o.hit[1]-o.m[1]);
       if(v===2){const q1=sub(o.hit,mul(o.d,Math.min(1.2,L*0.35))),e2=add(o.hit,mul(o.tan,Math.min(1.4,L*0.5)));P=[o.m];for(let k=0;k<=14;k++){const t=k/14;P.push([0,1].map(c=>(1-t)*(1-t)*q1[c]+2*(1-t)*t*o.hit[c]+t*t*e2[c]));}}
       else if(v===3)P=[o.m,add(o.hit,mul(o.d,0.5))];else P=[o.m,o.hit];return P;});

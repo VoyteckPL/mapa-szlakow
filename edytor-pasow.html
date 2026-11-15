@@ -592,7 +592,7 @@ function showLanePal(x, y) {
   d.onpointerdown = e => e.stopPropagation();
   d.querySelectorAll('button').forEach(b => b.onclick = () => { const ri = LAN.ri; if (b.dataset.a === 'add') LAN.act.add(ri); else if (b.dataset.a === 'del') LAN.act.del(ri); else LAN.act.toggle(b.dataset.k); showLanePal(x, y); });
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); if ((e.key === 'Delete' || e.key === 'Backspace') && S.vsel >= 0 && S.sel >= 0 && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { const b = $('bDelV'); if (b) { e.preventDefault(); b.click(); } } });
 function props() {
   const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
@@ -650,6 +650,8 @@ const evp = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.l
 function nearVertex(p, tolPx, skipSel) {
   let best = null, bd = tolPx; S.doc.road.forEach((r, i) => r.pts.forEach((q, vi) => { const d = dist(w2s(q), p); if (d < bd) { bd = d; best = { i, vi }; } })); return best;
 }
+function axisDistPx(r, w) { let bd = 1e9; for (let j = 1; j < r.pts.length; j++) bd = Math.min(bd, segDist(w, r.pts[j - 1], r.pts[j])); return bd * S.view.k; }
+function axisProj(r, w) { let bd = 1e9, bi = 0, bp = null; for (let j = 1; j < r.pts.length; j++) { const a = r.pts[j - 1], b = r.pts[j], x = b[0] - a[0], y = b[1] - a[1], l2 = x * x + y * y || 1; let t = ((w[0] - a[0]) * x + (w[1] - a[1]) * y) / l2; t = Math.max(0, Math.min(1, t)); const q = [a[0] + x * t, a[1] + y * t], d = Math.hypot(w[0] - q[0], w[1] - q[1]); if (d < bd) { bd = d; bi = j - 1; bp = q; } } return { i: bi, p: bp, d: bd * S.view.k }; }
 function hitRoad(w) { const tol = 10 / S.view.k; let best = -1, bd = 1e9; S.doc.road.forEach((r, i) => { const hw = Math.max(tol, rw(r) / 2 + 0.3); for (let j = 1; j < r.pts.length; j++) { const d = segDist(w, r.pts[j - 1], r.pts[j]); if (d < hw && d / hw < bd) { bd = d / hw; best = i; } } }); return best; } // trafienie w całą szerokość jezdni, nie tylko w oś
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
@@ -667,6 +669,7 @@ cv.addEventListener('pointerdown', e => {
     if (sr) for (let i = 0; i < sr.pts.length - 1; i++) { const a = sr.pts[i], b = sr.pts[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); sr.pts.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); sr.nk.splice(i + 1, 0, null); if (sr.rp) sr.rp.splice(i + 1, 0, [(sr.rp[i][0] + sr.rp[i + 1][0]) / 2, (sr.rp[i][1] + sr.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } }
     const v = nearVertex(p, 14);
     if (v) { push(); S.sel = v.i; S.vsel = v.vi; drag = { m: 'vtx', i: v.i, vi: v.vi, moved: false }; ui(); render(); return; }
+    if (sr && S.sel >= 0) { const w0 = s2w(p), pj = axisProj(sr, w0); if (pj.d < 8) { drag = { m: 'axisIns', i: S.sel, seg: pj.i, p, moved: false }; return; } }
   }
   drag = { m: 'maybe', p, v: { x: S.view.x, y: S.view.y }, w };
 });
@@ -674,6 +677,7 @@ cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, evp(e));
   if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.5, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
   if (!drag) return; const p = evp(e);
+  if (drag.m === 'axisIns') { if (dist(p, drag.p) < 5) return; const r = S.doc.road[drag.i], i = drag.seg, pj = axisProj(r, s2w(drag.p)); push(); r.pts.splice(i + 1, 0, pj.p); r.nk.splice(i + 1, 0, null); if (r.rp) r.rp.splice(i + 1, 0, [(r.rp[i][0] + r.rp[i + 1][0]) / 2, (r.rp[i][1] + r.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: drag.i, vi: i + 1, moved: true }; ui(); }
   if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
   if (drag.m === 'pan') { S.view.x = drag.v.x - (p[0] - drag.p[0]) / S.view.k; S.view.y = drag.v.y - (p[1] - drag.p[1]) / S.view.k; render(); }
   else if (drag.m === 'rvtx') {
@@ -687,8 +691,9 @@ cv.addEventListener('pointermove', e => {
 });
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;
+  if (d.m === 'axisIns') { hideLanePal(); S.vsel = -1; ui(); render(); return; }
   if (d.m === 'maybe') {
-    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; if (S.tool === 'sel' && S.sel >= 0 && S.doc.road[S.sel].osm && !EMBED) { LSEL = laneAt(S.doc.road[S.sel], d.w, S.sel); ui(); showLanePal(e.clientX, e.clientY); } else { hideLanePal(); ui(); } }
+    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; const onAxis = S.sel >= 0 && axisDistPx(S.doc.road[S.sel], d.w) < 9; if (S.tool === 'sel' && S.sel >= 0 && !onAxis && S.doc.road[S.sel].osm && !EMBED) { LSEL = laneAt(S.doc.road[S.sel], d.w, S.sel); ui(); showLanePal(e.clientX, e.clientY); } else { hideLanePal(); ui(); } }
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }

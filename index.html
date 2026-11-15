@@ -704,6 +704,36 @@ function buildCarriageways(items, ways) {
     if (side && n > m) taperOf.set(id, { k: n - m, side });
     shiftOf.set(id, s); return s;
   };
+  // Rozwidlenie / połączenie: w jednym węźle kończą się trzy drogi, z czego jedna (X) biegnie w przeciwną stronę niż dwie pozostałe (Y).
+  // Szerokość X dzielimy na plastry dla Y (od lewej do prawej), a każde Y schodzi z plastra do swojej osi na ok. 30 m,
+  // dzięki czemu np. 4 pasy rozchodzą się płynnie na 2 + 2, a dwie łącznice zlewają się w jedną dwupasmówkę.
+  const LR = id => { const r = roads.get(id), h = roadHalf(r.t), sd = sides.get(id) || new Set(); return { L: sd.has(-1) ? h + 1.75 : h, R: sd.has(1) ? h + 1.75 : h, sh: shift(id) }; };
+  const junc = new Map();
+  const junction = (k) => {
+    if (junc.has(k)) return junc.get(k);
+    let res = null;
+    const ents = at.get(k) || [];
+    if (ents.length === 3 && ents.every(o => o.end)) {
+      const info = ents.map(o => {
+        const r = roads.get(o.id), start = nk(r.g[0]) === k, g = start ? r.g : r.g.slice().reverse();
+        let q = g[1];
+        for (let j = 1; j < g.length; j++) { q = g[j]; if (Math.hypot((q[0] - g[0][0]) * kx, (q[1] - g[0][1]) * ky) > 6) break; }
+        const dx = (q[0] - g[0][0]) * kx, dy = (q[1] - g[0][1]) * ky, l = Math.hypot(dx, dy) || 1;
+        return Object.assign({ id: o.id, start, u: [dx / l, dy / l], q: [dx, dy] }, LR(o.id));
+      });
+      const xi = info.findIndex((a, i) => info.every((b, j) => j === i || a.u[0] * b.u[0] + a.u[1] * b.u[1] < -0.3));
+      if (xi >= 0) {
+        const X = info[xi], Ys = info.filter((_, i) => i !== xi), v = [-X.u[0], -X.u[1]], rt = [v[1], -v[0]];
+        const a = X.start ? -(X.sh + X.R) : X.sh - X.L, b = X.start ? -(X.sh - X.L) : X.sh + X.R; // krawędzie X w układzie „w stronę Y”
+        Ys.forEach(y => { y.lat = y.q[0] * rt[0] + y.q[1] * rt[1]; });
+        Ys.sort((p1, q1) => p1.lat - q1.lat);
+        const tot = Ys.reduce((s1, y) => s1 + y.L + y.R, 0); let cur = a;
+        res = new Map([[X.id, null]]);
+        for (const y of Ys) { const w = (y.L + y.R) * (b - a) / tot, s0 = cur, s1 = cur + w; cur = s1; res.set(y.id, y.start ? { eL: s0, eR: s1 } : { eL: -s1, eR: -s0 }); }
+      }
+    }
+    junc.set(k, res); return res;
+  };
   for (const [id, r] of roads) {
     const t = r.t, c = r.g;
     if (c.length < 2) continue;
@@ -742,6 +772,8 @@ function buildCarriageways(items, ways) {
     // stopniowo na ok. 30 m (jak w rzeczywistości), a nie skokiem. Szerszy odcinek dopasowuje się do węższego.
     const ends = [0, 1].map(e => {
       const k = nk(e ? c[c.length - 1] : c[0]);
+      const jn = junction(k);
+      if (jn && jn.has(id)) return jn.get(id);
       const os = (at.get(k) || []).filter(o => o.id !== id);
       if (os.length !== 1 || !os[0].end) return null;
       const ro = roads.get(os[0].id), ho = roadHalf(ro.t), sdo = sides.get(os[0].id) || new Set();

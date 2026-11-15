@@ -231,6 +231,12 @@ function layout() {
         });
         if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
         for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
+        { // łata na styku dwupasowej i obu wylotów: zasłania szczeliny między obciętymi końcami
+          const nd = orient(C[X.i], X.st), pts6 = [edgeOf(nd, -1)[0], edgeOf(nd, 1)[0]];
+          for (const e of [yl, yr]) { const oy = orient(C[e.i], e.st); pts6.push(edgeOf(oy, -1)[0], edgeOf(oy, 1)[0]); }
+          const cx = pts6.reduce((q, v) => q + v[0] / pts6.length, 0), cy = pts6.reduce((q, v) => q + v[1] / pts6.length, 0);
+          gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [] });
+        }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
         const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 5) break; rows.push({ s, a, b, g }); }
         if (rows.length > 2 && rows.some(r => r.g > 1)) {
@@ -258,7 +264,7 @@ function layout() {
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
     const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
-    polys.push({ P: Lf.concat(Rt.slice().reverse()), kerb: r.kerb });
+    polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.8) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (r.marked && nl > 1) for (let k = 1; k < nl; k++) {
@@ -333,7 +339,7 @@ function drawTiles() {
 function pathOf(g, P, closed) { const s = P.map(w2s); g.beginPath(); s.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if (closed) g.closePath(); }
 function drawLayer(g) {
   const k = S.view.k; g.lineJoin = 'round';
-  for (const q of L.polys) if (q.kerb && q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.fill(); g.stroke(); }
+  for (const q of L.polys) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
   for (const q of L.polys) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
   for (const q of L.gores) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
   const line = (P, st, col) => {

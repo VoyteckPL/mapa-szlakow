@@ -46,7 +46,7 @@
     </div>
     <div class="row">
       <label>pasy – krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
-      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
+      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
     </div>
     <div id="props"></div>
     <details><summary>Dane</summary>
@@ -196,7 +196,7 @@ function layout() {
     if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
     if (best < -1.0 && ln[xi] === 2 && ln.filter((_, a) => a !== xi).every(v => v === 1)) G.forEach((e, a) => { const h = hints[e.i] || (hints[e.i] = {}); h.sm = true; if (a === xi || !HINTS) return; const t = [-U[xi][0], -U[xi][1]]; if (e.st) h.tin = t; else h.tout = [-t[0], -t[1]]; });
   }
-  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [], forks = [], forks3 = [], forkX = new Map();
+  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], forkLinks = [], cutIn = [], forks = [], forks3 = [], forkX = new Map();
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
@@ -224,12 +224,13 @@ function layout() {
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
         for (const e of [yl, yr]) { C[e.i].w.fill(rw(R[e.i])); C[e.i].e.fill(0); }
         const lY = [yl, yr].map(e => R[e.i].lanes), uX0 = unitFrom(C[X.i], X.st, 8), angE = [yl, yr].map(e => { const t = unitFrom(C[e.i], e.st, 8); return Math.acos(Math.max(-1, Math.min(1, -(t[0] * uX0[0] + t[1] * uX0[1])))) * 180 / Math.PI; });
-        // rozjazd asymetryczny: jeden wylot idzie prosto (os OSM = przedluzenie dwupasowej), drugi odchodzi pod katem -> prosty zostaje na osi, odchodzacy dochodzi z boku (jak przy 3->2+1)
-        const asym = lY[0] === lY[1] && Math.min(...angE) < 6 && Math.max(...angE) > 12, uneq = lY[0] !== lY[1] || asym, mi = asym ? (angE[0] < angE[1] ? 0 : 1) : (lY[0] > lY[1] ? 0 : 1); // 3 -> 2+1: główne pasy na osi, pas zjazdu bokiem
+        // rozjazd "prosty + odchodzacy": jeden wylot idzie prosto (os OSM = przedluzenie dwupasowej), drugi odchodzi pod katem. Dwupasowa zostaje symetryczna; oba wyloty ida wlasnymi osiami OSM, a ich szerokosc zwezamy od szerokosci dwupasowej
+        const asym = lY[0] === lY[1] && Math.min(...angE) < 6 && Math.max(...angE) > 12, uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1;
         const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
           const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(16, Math.min(+$("fT").value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
+          if (asym) { const Lt = 16; for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx, u = Math.min(1, sx / Lt), sm3 = u * u * (3 - 2 * u); c.w[jj] = wX + (rw(R[e.i]) - wX) * sm3; } return; }
           if (!sh) return;
           // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
           const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
@@ -253,7 +254,7 @@ function layout() {
           gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [] });
         }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
-        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 6) break; rows.push({ s, a, b, g }); }
+        const rows = []; for (let s = 0; s <= smax; s += asym ? 0.75 : 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (asym && !rows.length && g < 0.05) continue; if (g > 6) break; rows.push({ s, a, b, g }); }
         if (rows.length > 2 && rows.some(r => r.g > 1)) {
           const sEnd = Math.max(0, rows[rows.length - 1].s - 1.5); cutIn.push({ i: yl.i, ss: yl.st ? 1 : -1, st: yl.st, s: sEnd }, { i: yr.i, ss: yr.st ? -1 : 1, st: yr.st, s: sEnd });
           const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];
@@ -264,8 +265,8 @@ function layout() {
               const ap = lerp(t1, t2, 0.5), ex = (P, Q) => lerp(Q, P, 1.12); let bb = b2, bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; ss <= smax; ss += 0.04) { const pb = atS(B2, cB, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } } chev.push([ex(a2, ap), ap, ex(bb, ap)]); last = r0.s;
             }
           }
-          const sL = rows[rows.length - 1].s, c0 = [(A2[0][0] + B2[0][0]) / 2, (A2[0][1] + B2[0][1]) / 2], Al = [], Bl = [];
-          for (let ss = 0; ; ss = Math.min(ss + 0.5, sL)) { const u = Math.min(1, ss / 5), w = u * u * (3 - 2 * u), pa = atS(A2, cA, ss), pb = atS(B2, cB, ss); Al.push([c0[0] + (pa[0] - c0[0]) * w, c0[1] + (pa[1] - c0[1]) * w]); Bl.push([c0[0] + (pb[0] - c0[0]) * w, c0[1] + (pb[1] - c0[1]) * w]); if (ss >= sL) break; }
+          const sL = rows[rows.length - 1].s, sS = rows[0].s, pa0 = atS(A2, cA, sS), pb0 = atS(B2, cB, sS), c0 = [(pa0[0] + pb0[0]) / 2, (pa0[1] + pb0[1]) / 2], Al = [], Bl = [];
+          for (let ss = sS; ; ss = Math.min(ss + 0.5, sL)) { const u = Math.min(1, (ss - sS) / 5), w = u * u * (3 - 2 * u), pa = atS(A2, cA, ss), pb = atS(B2, cB, ss); Al.push([c0[0] + (pa[0] - c0[0]) * w, c0[1] + (pa[1] - c0[1]) * w]); Bl.push([c0[0] + (pb[0] - c0[0]) * w, c0[1] + (pb[1] - c0[1]) * w]); if (ss >= sL) break; }
           gores.push({ poly, A: Al, B: Bl, chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;
@@ -274,6 +275,7 @@ function layout() {
   }
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
   const polys = [], lines = [], arrows = [];
+  forkLinks.forEach(l => lines.push(l));
   R.forEach((r, i) => {
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: gp(r)[j], rad: rad + 1.5 }); });
@@ -460,6 +462,21 @@ function props() {
 $('bLnk').onclick = () => loadLink($('lnk').value);
 $('lnk').addEventListener('keydown', e => { if (e.key === 'Enter') loadLink($('lnk').value); });
 $('lnk').addEventListener('paste', () => setTimeout(() => { if (parseLink($('lnk').value)) loadLink($('lnk').value); }));
+function resetFromOsm(idx) {
+  let n = 0;
+  for (const i of idx) {
+    const r = S.doc.road[i], o = r && S.osm.ways.get(r.osm); if (!o) continue;
+    const ia = o.nk.indexOf(r.nk[0]), ib = o.nk.indexOf(r.nk[r.nk.length - 1]); if (ia < 0 || ib < 0 || ia === ib) continue;
+    S.doc.road[i] = makeRoad(o, Math.min(ia, ib), Math.max(ia, ib)); n++;
+  }
+  return n;
+}
+$('bRst').onclick = () => {
+  const a = s2w([0, 0]), b = s2w([W, H]), x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+  const idx = []; S.doc.road.forEach((r, i) => { if (gp(r).some(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1)) idx.push(i); });
+  push(); const n = resetFromOsm(idx); save(); ui(); touch(); say(`Przywrócono z OSM ${n} dróg w widoku (cofnij: ↶).`);
+};
+$('bRstSel').onclick = () => { if (S.sel < 0) { say('Zaznacz najpierw drogę.'); return; } push(); const n = resetFromOsm([S.sel]); save(); ui(); touch(); say(n ? 'Przywrócono zaznaczoną drogę z OSM (cofnij: ↶).' : 'Nie znaleziono tej drogi w danych OSM.'); };
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];

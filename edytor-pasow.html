@@ -448,6 +448,12 @@ function render() {
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); octx.clearRect(0, 0, W, H); drawLayer(octx);
     ctx.globalAlpha = +$('rA').value; ctx.drawImage(off, 0, 0, W, H); ctx.globalAlpha = 1;
   }
+  if (S.tool === 'sel' && S.sel >= 0 && LP && LAN && !EMBED && S.doc.road[S.sel] && S.doc.road[S.sel].osm) { // podświetlenie zaznaczonego pasa + podgląd strzałki
+    const r = S.doc.road[S.sel], nb = r.oneway ? 0 : r.lanes - (r.nf || 1), g = r.oneway ? LSEL.i : (LSEL.r === 0 ? nb + LSEL.i : nb - 1 - LSEL.i), o0 = -rw(r) / 2 + g * r.lw;
+    const A = offsetPts(r.pts, r.pts.map(() => o0)), B = offsetPts(r.pts, r.pts.map(() => o0 + r.lw)); ctx.save(); pathOf(ctx, A.concat(B.slice().reverse()), true); ctx.fillStyle = 'rgba(47,111,174,.32)'; ctx.fill(); ctx.strokeStyle = '#2f8bff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+    const tk = (LAN.cur.tok[LAN.idx] || '').split(';'), key = ['through', 'left', 'right', 'reverse'].filter(x => tk.includes(x)).join('-');
+    if (key && (key === 'through-left-right' || ARR.has(key)) && LP.sel) { const n = [-LP.dir[1], LP.dir[0]], pp = [LP.p[0] + n[0] * (-rw(r) / 2 + (g + 0.5) * r.lw), LP.p[1] + n[1] * (-rw(r) / 2 + (g + 0.5) * r.lw)], sp = w2s(pp), ang = Math.atan2(LP.dir[1], LP.dir[0]) * 180 / Math.PI + 90 + (LP.back ? 180 : 0); ctx.save(); ctx.translate(sp[0], sp[1]); ctx.rotate((ang - 90) * Math.PI / 180); const sc = 5 * k / 48; ctx.scale(sc, sc); ctx.translate(-24, -16); glyph(ctx, key); ctx.restore(); }
+  }
   // niezaimportowane drogi OSM (szare, przerywane)
   const have = new Set(D.road.map(r => r.osm)); ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(80,90,100,.6)';
   for (const o of S.osm.ways.values()) if (!have.has(o.id) && o.g.length > 1 && OKHW.has((o.t.highway || '').replace('_link', ''))) { pathOf(ctx, o.g, false); ctx.stroke(); }
@@ -512,7 +518,7 @@ const osmWay = id => S.osm.ways.get(id) || [...S.osm.ways.values()].find(o => o.
 const baseTags = r => (osmWay(r.osm) || { t: {} }).t;
 function effTags(r) { const t = { ...baseTags(r) }; for (const [k, v] of Object.entries(r.tg || {})) { if (v === null || v === '') delete t[k]; else t[k] = v; } return t; }
 function applyTags(r) { const w = osmWay(r.osm); if (!w) return; const m = makeRoad({ ...w, t: effTags(r) }, 0, w.g.length - 1); for (const k of ['lanes', 'lw', 'oneway', 'marked', 'edge', 'tl', 'nf']) r[k] = m[k]; }
-let LSEL = { r: 0, i: 0 }, LAN = null;
+let LSEL = { r: 0, i: 0 }, LAN = null, LP = null;
 const TURN = [['left', '←', 'w lewo'], ['through', '↑', 'prosto'], ['right', '→', 'w prawo'], ['reverse', '↶', 'zawróć'], ['merge_to_left', '⇖', 'zlewa się w lewo'], ['merge_to_right', '⇗', 'zlewa się w prawo']];
 function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + przyciski strzałek/liczby pasów (zapisuje tagi lanes*, turn:lanes*)
   const et = effTags(r), nbk = parseInt(et['lanes:backward'], 10) || 0, nfw = parseInt(et['lanes:forward'], 10) || 0;
@@ -540,9 +546,10 @@ function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + 
   return h;
 }
 function laneAt(r, w) { // który pas (wiersz/indeks kafelka) leży pod punktem w
-  let bd = 1e9, lat = 0; for (let j = 1; j < r.pts.length; j++) { const a = r.pts[j - 1], b = r.pts[j], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, t = Math.max(0, Math.min(1, ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / (l * l))), px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(w[0] - px, w[1] - py); if (d < bd) { bd = d; lat = ((w[0] - px) * -dy + (w[1] - py) * dx) / l; } }
+  let bd = 1e9, lat = 0, bp = [0, 0], bdir = [1, 0], bs = 0; for (let j = 1; j < r.pts.length; j++) { const a = r.pts[j - 1], b = r.pts[j], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, t = Math.max(0, Math.min(1, ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / (l * l))), px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(w[0] - px, w[1] - py); if (d < bd) { bd = d; lat = ((w[0] - px) * -dy + (w[1] - py) * dx) / l; bp = [px, py]; bdir = [dx / l, dy / l]; bs = j; } }
   const idx = Math.max(0, Math.min(r.lanes - 1, Math.floor((lat + rw(r) / 2) / r.lw)));
-  if (r.oneway) return { r: 0, i: idx }; const nb = r.lanes - (r.nf || 1); return idx >= nb ? { r: 0, i: idx - nb } : { r: 1, i: nb - 1 - idx };
+  LP = { sel: bs, g: idx, lat: -rw(r) / 2 + (idx + 0.5) * r.lw, p: bp, dir: bdir, back: false };
+  if (r.oneway) return { r: 0, i: idx }; const nb = r.lanes - (r.nf || 1); LP.back = idx < nb; return idx >= nb ? { r: 0, i: idx - nb } : { r: 1, i: nb - 1 - idx };
 }
 function hideLanePal() { const e = document.getElementById('lpal'); if (e) e.remove(); }
 function showLanePal(x, y) {

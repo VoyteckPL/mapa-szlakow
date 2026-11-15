@@ -67,7 +67,7 @@ const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
 const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street', 'service', 'busway']);
 const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse']);
-const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę']];
+const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render']];
 const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
 let W = 0, H = 0, DPR = 1, L = null;
 
@@ -115,7 +115,7 @@ function atS(Q, c, s) { // punkt na polilinii w odległości s
 }
 
 // ---------- model drogi ----------
-const rw = r => r.lanes * r.lw;
+const rw = r => r.lanes * r.lw, gp = r => r.rp || r.pts; // rp = ręcznie przesunięte punkty samej warstwy renderowanej
 function makeRoad(o, a, b) {
   const t = o.t, hw = t.highway || '', base = hw.replace('_link', ''), ow = ['yes', '1', 'true', '-1'].includes(t.oneway) || t.junction === 'roundabout' || (base === 'motorway' && t.oneway !== 'no');
   const f = parseInt(t['lanes:forward'], 10) || 0, bk = parseInt(t['lanes:backward'], 10) || 0;
@@ -165,7 +165,7 @@ async function loadLink(txt) {
 
 // ---------- układ automatyczny ----------
 function comp(r, h) {
-  const Q = smoothDense(r.pts, 2, h && h.tin, h && h.tout), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+  const Q = smoothDense(gp(r), 2, h && h.tin, h && h.tout), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg) => offsetPts(o.Q, o.d.map((v, i) => v + sg * o.w[i] / 2));
@@ -244,7 +244,7 @@ function layout() {
   const polys = [], lines = [], arrows = [];
   R.forEach((r, i) => {
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
-    r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: r.pts[j], rad: rad + 1.5 }); });
+    r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: gp(r)[j], rad: rad + 1.5 }); });
     const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad));
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
@@ -349,7 +349,10 @@ function render() {
       const c = HW_COL[(r.hw || '').replace('_link', '')] || '#6a7f94', isSel = i === S.sel;
       pathOf(ctx, smoothDense(r.pts, 3, (S.hints[i] || {}).tin, (S.hints[i] || {}).tout), false); ctx.strokeStyle = isSel ? '#ffd23f' : c; ctx.lineWidth = isSel ? 3 : 1.8; ctx.stroke();
       if (k > 6 || isSel) r.pts.forEach((p, vi) => { const s = w2s(p); if (s[0] < -10 || s[1] < -10 || s[0] > W + 10 || s[1] > H + 10) return; ctx.beginPath(); ctx.arc(s[0], s[1], isSel ? (vi === S.vsel ? 7 : 5) : (r.nk[vi] ? 3.5 : 2.5), 0, 7); ctx.fillStyle = isSel ? (vi === S.vsel ? '#ff5a36' : '#ffd23f') : '#fff'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.stroke(); });
-      if (isSel) for (let vi = 0; vi < r.pts.length - 1; vi++) { const a = r.pts[vi], b = r.pts[vi + 1], m = w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); ctx.beginPath(); ctx.arc(m[0], m[1], 4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke(); }
+      if (r.rp) { ctx.strokeStyle = 'rgba(0,200,255,.9)'; ctx.lineWidth = 1; r.pts.forEach((q, j) => { const a = w2s(q), b = w2s(r.rp[j]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }); ctx.setLineDash([4, 3]); ctx.lineWidth = 1.6; pathOf(ctx, smoothDense(r.rp, 3), false); ctx.stroke(); ctx.setLineDash([]); }
+      if (S.tool === 'rend') { gp(r).forEach((q, vi) => { const s = w2s(q); if (s[0] < -10 || s[1] < -10 || s[0] > W + 10 || s[1] > H + 10) return; ctx.fillStyle = vi === S.vsel && isSel ? '#ff5a36' : '#00c8ff'; ctx.fillRect(s[0] - 4, s[1] - 4, 8, 8); ctx.strokeStyle = '#003'; ctx.lineWidth = 1; ctx.strokeRect(s[0] - 4, s[1] - 4, 8, 8); }); }
+      if (isSel && S.tool === 'rend') { const G = gp(r); for (let vi = 0; vi < G.length - 1; vi++) { const m = w2s([(G[vi][0] + G[vi + 1][0]) / 2, (G[vi][1] + G[vi + 1][1]) / 2]); ctx.beginPath(); ctx.arc(m[0], m[1], 4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.stroke(); } }
+      if (isSel && S.tool !== 'rend') for (let vi = 0; vi < r.pts.length - 1; vi++) { const a = r.pts[vi], b = r.pts[vi + 1], m = w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); ctx.beginPath(); ctx.arc(m[0], m[1], 4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke(); }
       if (isSel || k > 9) { const mid = w2s(r.pts[Math.floor(r.pts.length / 2)]); if (mid[0] > 0 && mid[0] < W && mid[1] > 0 && mid[1] < H) { const label = [r.name, r.hw, r.lanes + ' pasy'].filter(Boolean).join(' · '); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.strokeText(label, mid[0], mid[1] - 6); ctx.fillStyle = c; ctx.fillText(label, mid[0], mid[1] - 6); } }
     });
     ctx.textAlign = 'start';
@@ -376,7 +379,7 @@ function ui() {
   $('tools').innerHTML = TOOLS.map(([k, n]) => `<button data-t="${k}" class="${S.tool === k ? 'on' : ''}">${n}</button>`).join('');
   $('tools').querySelectorAll('button').forEach(b => b.onclick = () => setTool(b.dataset.t));
   $('drawbar').style.display = S.draw ? 'flex' : 'none';
-  $('hint').textContent = ({ sel: 'Przeciągnij punkt osi drogi – pasy i chevrony przeliczają się na żywo. Wspólne węzły ruszają razem. Dotknij drogi, by ją zaznaczyć (parametry w panelu).', pan: 'Przeciągaj, by przesuwać widok; dwa palce lub kółko zoomują.', osm: 'Dotknij szarej linii OSM, by dodać tę drogę.', road: 'Dotykaj kolejne punkty osi drogi; punkt blisko istniejącego węzła się z nim łączy. Potem „Zakończ”.' })[S.tool];
+  $('hint').textContent = ({ sel: 'Przeciągnij punkt osi drogi – pasy i chevrony przeliczają się na żywo. Wspólne węzły ruszają razem. Dotknij drogi, by ją zaznaczyć (parametry w panelu).', pan: 'Przeciągaj, by przesuwać widok; dwa palce lub kółko zoomują.', rend: 'Przesuń render: przeciągaj błękitne punkty, by przesunąć samą wygenerowaną warstwę (oś OSM zostaje, różnica widoczna jako cienkie łączniki). Biały punkt na odcinku dodaje punkt.', osm: 'Dotknij szarej linii OSM, by dodać tę drogę.', road: 'Dotykaj kolejne punkty osi drogi; punkt blisko istniejącego węzła się z nim łączy. Potem „Zakończ”.' })[S.tool];
   props();
 }
 function numRow(label, val, fn, step = 1) { const id = 'n' + Math.random().toString(36).slice(2, 7); setTimeout(() => { const el = $(id); if (el) el.onchange = () => fn(parseFloat(el.value)); }); return `<label>${label}<input type="number" id="${id}" value="${val}" step="${step}"></label>`; }
@@ -387,11 +390,12 @@ function props() {
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { r.lanes = Math.max(1, Math.round(v)); })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'
     + chk('jednokierunkowa', 'oneway') + chk('pasy (linie)', 'marked') + chk('krawędziowe', 'edge') + chk('krawężnik', 'kerb')
     + `<select id="pc">${['auto', 'p1', 'p2', 'p4', 'brak'].map(m => `<option ${r.centre === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div><div class="small">linia środkowa. Szerokość = pasy × szer. pasa.</div><div class="row">`
-    + `<button id="bRev">Odwróć kierunek</button>${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}<button id="bDel" class="warn">Usuń drogę</button></div>`;
+    + `<button id="bRev">Odwróć kierunek</button>${r.rp ? '<button id="bRz">Zeruj render</button>' : ''}${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}<button id="bDel" class="warn">Usuń drogę</button></div>`;
   el.innerHTML = h; bind.forEach(f => f());
   $('pc').onchange = () => mut(() => { r.centre = $('pc').value; });
-  $('bRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); });
-  if ($('bDelV')) $('bDelV').onclick = () => mut(() => { r.pts.splice(S.vsel, 1); r.nk.splice(S.vsel, 1); S.vsel = -1; if (r.pts.length < 2) { S.doc.road.splice(S.sel, 1); S.sel = -1; } });
+  if ($('bRz')) $('bRz').onclick = () => mut(() => { delete r.rp; });
+  $('bRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });
+  if ($('bDelV')) $('bDelV').onclick = () => mut(() => { r.pts.splice(S.vsel, 1); r.nk.splice(S.vsel, 1); if (r.rp) r.rp.splice(S.vsel, 1); S.vsel = -1; if (r.pts.length < 2) { S.doc.road.splice(S.sel, 1); S.sel = -1; } });
   $('bDel').onclick = () => mut(() => { S.doc.road.splice(S.sel, 1); S.sel = -1; S.vsel = -1; });
 }
 $('bLnk').onclick = () => loadLink($('lnk').value);
@@ -419,9 +423,15 @@ cv.addEventListener('pointerdown', e => {
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
   const p = evp(e), w = s2w(p);
   if (e.button === 1 || e.button === 2 || S.tool === 'pan') { drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; return; }
+  if (S.tool === 'rend') {
+    const sr = S.doc.road[S.sel];
+    if (sr) { const G = gp(sr); for (let i = 0; i < G.length - 1; i++) { const a = G[i], b = G[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); if (!sr.rp) sr.rp = sr.pts.map(q => q.slice()); const A = sr.pts[i], B = sr.pts[i + 1]; sr.pts.splice(i + 1, 0, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]); sr.nk.splice(i + 1, 0, null); sr.rp.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); S.vsel = i + 1; drag = { m: 'rvtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } } }
+    let best = null, bd = 14; S.doc.road.forEach((r, i) => gp(r).forEach((q, vi) => { const d = dist(w2s(q), p); if (d < bd) { bd = d; best = { i, vi }; } }));
+    if (best) { push(); const r = S.doc.road[best.i]; if (!r.rp) r.rp = r.pts.map(q => q.slice()); S.sel = best.i; S.vsel = best.vi; drag = { m: 'rvtx', i: best.i, vi: best.vi, moved: false }; ui(); render(); return; }
+  }
   if (S.tool === 'sel') {
     const sr = S.doc.road[S.sel];
-    if (sr) for (let i = 0; i < sr.pts.length - 1; i++) { const a = sr.pts[i], b = sr.pts[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); sr.pts.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); sr.nk.splice(i + 1, 0, null); S.vsel = i + 1; drag = { m: 'vtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } }
+    if (sr) for (let i = 0; i < sr.pts.length - 1; i++) { const a = sr.pts[i], b = sr.pts[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); sr.pts.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); sr.nk.splice(i + 1, 0, null); if (sr.rp) sr.rp.splice(i + 1, 0, [(sr.rp[i][0] + sr.rp[i + 1][0]) / 2, (sr.rp[i][1] + sr.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } }
     const v = nearVertex(p, 14);
     if (v) { push(); S.sel = v.i; S.vsel = v.vi; drag = { m: 'vtx', i: v.i, vi: v.vi, moved: false }; ui(); render(); return; }
   }
@@ -433,16 +443,17 @@ cv.addEventListener('pointermove', e => {
   if (!drag) return; const p = evp(e);
   if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
   if (drag.m === 'pan') { S.view.x = drag.v.x - (p[0] - drag.p[0]) / S.view.k; S.view.y = drag.v.y - (p[1] - drag.p[1]) / S.view.k; render(); }
+  else if (drag.m === 'rvtx') { const w = s2w(p); S.doc.road[drag.i].rp[drag.vi] = [w[0], w[1]]; drag.moved = true; touch(); }
   else if (drag.m === 'vtx') { const w = s2w(p); moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
 });
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;
   if (d.m === 'maybe') {
-    if (S.tool === 'sel') { S.sel = hitRoad(d.w); S.vsel = -1; ui(); }
+    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; ui(); }
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }
-  if (d.m === 'vtx' && !d.moved) S.undo.pop();
+  if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
   save(); render();
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);

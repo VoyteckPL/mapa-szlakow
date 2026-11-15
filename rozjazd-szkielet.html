@@ -15,7 +15,7 @@ canvas{display:block;width:100%;height:calc(100vh - 150px);min-height:420px;touc
 #info{padding:6px 16px;color:var(--mut);font-size:12px}
 </style></head><body>
 <header><h1>Szkielet rozjazdu 2→1+1</h1>
-<p>Dwa pasy = referencja (oś OSM w środku, każdy pas ma tę samą szerokość). Odnogi startują przyklejone, po ±pół pasa od osi, i płynnie schodzą na środek własnej jezdni. Przeciągaj białe kółka (oś odnogi), przeciągnięcie tła przesuwa widok, kółko myszy lub szczypanie zoomuje, dwuklik na osi dodaje punkt, dwuklik na kółku go usuwa.</p></header>
+<p>Dwa pasy = referencja (oś OSM w środku, każdy pas ma tę samą szerokość). Odnogi startują przyklejone, po ±pół pasa od osi, i płynnie schodzą na środek własnej jezdni. Przeciągaj białe kółka (oś odnogi), przeciągnięcie tła przesuwa widok, kółko myszy lub szczypanie zoomuje, tryby „Dodaj punkt na osi" (klik w oś) i „Usuń punkt" (klik w kółko) albo dwuklik w trybie przesuwania.</p></header>
 <div class="bar" id="bar"></div>
 <canvas id="cv"></canvas>
 <div id="info"></div>
@@ -29,7 +29,7 @@ const PRESETS={
  'Przykład ze zrzutu':{x:[[4,70]],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
  'Odnoga prawie równolegle':{x:[[0,70]],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
 };
-const S={nX:2,lA:1,grid:true,snap:true,draw:null,w:3.75,T:70,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:false,preset:'Prosto + odnoga w prawo'};
+const S={nX:2,lA:1,grid:true,snap:true,mode:'move',draw:null,w:3.75,T:70,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:false,preset:'Prosto + odnoga w prawo'};
 function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.map(q=>q.slice()),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
 // ---------- geometria ----------
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],add=(a,b)=>[a[0]+b[0],a[1]+b[1]],mul=(a,k)=>[a[0]*k,a[1]*k],len=a=>Math.hypot(a[0],a[1]),nrm=a=>{const l=len(a)||1;return[a[0]/l,a[1]/l]};
@@ -106,6 +106,7 @@ function ui(){const b=$('bar');b.innerHTML='';
   Object.keys(PRESETS).forEach(n=>{const e=document.createElement('button');e.textContent=n;if(n===S.preset)e.className='on';e.onclick=()=>load(n);b.appendChild(e);});
   const sel=(lab,k,opts,cb)=>{const l=document.createElement('label');l.innerHTML=lab+' <select>'+opts.map(o=>'<option'+(o===S[k]?' selected':'')+'>'+o+'</option>').join('')+'</select>';l.querySelector('select').onchange=e=>{S[k]=+e.target.value;if(S.lA>=S.nX)S.lA=S.nX-1;if(cb)cb();render();ui();};b.appendChild(l);};
   sel('pasy wjazdu','nX',[2,3,4,5]);sel('pasy odnogi A','lA',Array.from({length:S.nX-1},(_,i)=>i+1));{const l=document.createElement('span');l.style.color='var(--mut)';l.textContent='odnoga B: '+(S.nX-S.lA)+' pas.';b.appendChild(l);}
+  [['move','Przesuwaj'],['add','Dodaj punkt na osi'],['del','Usuń punkt']].forEach(([k,lab])=>{const e=document.createElement('button');e.textContent=lab;if(S.mode===k)e.className='on';e.onclick=()=>{S.mode=k;ui();};b.appendChild(e);});
   [['x','Rysuj wjazd'],['a','Rysuj odnogę A'],['b','Rysuj odnogę B']].forEach(([k,lab])=>{const e=document.createElement('button');e.textContent=lab;e.onclick=()=>startDraw(k,lab);b.appendChild(e);});
   if(S.draw){const e=document.createElement('button');e.textContent='Zakończ rysowanie';e.className='on';e.onclick=endDraw;b.appendChild(e);}
   const sl=(lab,k,mn,mx,st)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+S[k]+'> <span>'+S[k]+'</span>';l.querySelector('input').oninput=e=>{S[k]=+e.target.value;l.querySelector('span').textContent=S[k];render();};b.appendChild(l);};
@@ -119,17 +120,17 @@ function hit(e){const m=mpos(e);let best=null,bd=18;[['a',S.P.a],['b',S.P.b],['x
 const snapP=p=>{if(!S.snap)return p;const g=gridStep();return[Math.round(p[0]/g)*g,Math.round(p[1]/g)*g];};
 const mpos=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
 function zoomAt(mx,my,f){const k=Math.max(2,Math.min(80,K*f));f=k/K;OX=mx-(mx-OX)*f;OY=my-(my-OY)*f;K=k;render();}
-cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,mpos(e));if(ptrs.size===2){drag=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};return;}if(S.draw){const m=mpos(e);S.draw.pts.push(snapP([(m[0]-OX)/K,(m[1]-OY)/K]));S.P[S.draw.k]=S.draw.pts.map(q=>q.slice());render();return;}drag=hit(e);if(!drag){const m=mpos(e);pan={x:m[0],y:m[1],ox:OX,oy:OY};}};
+cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,mpos(e));if(ptrs.size===2){drag=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};return;}if(!S.draw&&S.mode==='add'){addPointAt(mpos(e));return;}if(!S.draw&&S.mode==='del'){delPointAt(e);return;}if(S.draw){const m=mpos(e);S.draw.pts.push(snapP([(m[0]-OX)/K,(m[1]-OY)/K]));S.P[S.draw.k]=S.draw.pts.map(q=>q.slice());render();return;}drag=hit(e);if(!drag){const m=mpos(e);pan={x:m[0],y:m[1],ox:OX,oy:OY};}};
 cv.onpointermove=e=>{if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,mpos(e));
   if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinch.d>0)zoomAt((a[0]+b[0])/2,(a[1]+b[1])/2,d/pinch.d);pinch.d=d;return;}
   if(drag){const m=mpos(e),p=snapP([(m[0]-OX)/K,(m[1]-OY)/K]);S.P[drag[0]][drag[1]]=p;render();}
   else if(pan){const m=mpos(e);OX=pan.ox+m[0]-pan.x;OY=pan.oy+m[1]-pan.y;render();}};
 cv.onpointerup=cv.onpointercancel=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;drag=null;pan=null;};
 cv.onwheel=e=>{e.preventDefault();const m=mpos(e);zoomAt(m[0],m[1],Math.exp(-e.deltaY*0.0015));};
-cv.ondblclick=e=>{const h=hit(e);if(h){if(S.P[h[0]].length>1){S.P[h[0]].splice(h[1],1);render();}return;} // dwuklik na uchwycie usuwa punkt (min. 1 na odnoge)
-  const m=mpos(e);let best=null,bd=16;for(const k of ['a','b','x']){if(!S.P[k].length)continue;const line=spline([[0,0],...S.P[k]]);for(const q of line){const sq=w2s(q),d=Math.hypot(sq[0]-m[0],sq[1]-m[1]);if(d<bd){bd=d;best=[k,q];}}}
-  if(!best)return;const arr=S.P[best[0]],pt=snapP([(m[0]-OX)/K,(m[1]-OY)/K]),pts=[[0,0],...arr];let bi=0,bdd=1e9;for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1;let t=((pt[0]-a[0])*dx+(pt[1]-a[1])*dy)/l2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(pt[0]-a[0]-t*dx,pt[1]-a[1]-t*dy);if(d<bdd){bdd=d;bi=i;}}
-  arr.splice(bi,0,pt);render();};
+function addPointAt(m){let best=null,bd=18;for(const k of ['a','b','x']){if(!S.P[k].length)continue;const line=spline([[0,0],...S.P[k]]);for(let i=0;i<line.length-1;i++){const a=w2s(line[i]),b=w2s(line[i+1]),dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1;let t=((m[0]-a[0])*dx+(m[1]-a[1])*dy)/l2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(m[0]-a[0]-t*dx,m[1]-a[1]-t*dy);if(d<bd){bd=d;best=[k,i];}}}
+  if(!best)return false;const arr=S.P[best[0]],pt=snapP([(m[0]-OX)/K,(m[1]-OY)/K]);arr.splice(best[1],0,pt);render();return true;}
+function delPointAt(e){const h=hit(e);if(!h||S.P[h[0]].length<2)return false;S.P[h[0]].splice(h[1],1);render();return true;}
+cv.ondblclick=e=>{if(S.mode!=='move')return;if(!delPointAt(e))addPointAt(mpos(e));};
 let drawBackup=null;
 function startDraw(k,label){endDraw();drawBackup=S.P[k].map(q=>q.slice());S.draw={k,label,pts:[]};S.P[k]=[];ui();render();}
 function endDraw(){if(!S.draw)return;if(!S.draw.pts.length)S.P[S.draw.k]=drawBackup||[];S.draw=null;drawBackup=null;ui();render();}

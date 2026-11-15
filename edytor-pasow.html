@@ -216,12 +216,13 @@ function layout() {
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
           const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(+$('fT').value, len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
           if (!sh) return;
+          const Q0 = o.Q.map(q => q.slice()); // pozycja = mieszanie położenia osi własnej z położeniem odniesienia (przedłużenie dwupasowej + przesunięcie)
           for (let jx = 0; jx < n; jx++) {
             const sx = o.cum[jx], b = sx <= P ? 1 : 1 - sm((sx - P) / T2); if (b <= 0) continue;
-            const rf = ref(sx), tg = [o.Q[Math.min(n - 1, jx + 1)][0] - o.Q[Math.max(0, jx - 1)][0], o.Q[Math.min(n - 1, jx + 1)][1] - o.Q[Math.max(0, jx - 1)][1]], tl = Math.hypot(...tg) || 1, nq = [-tg[1] / tl, tg[0] / tl];
-            const T = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; let v = ((T[0] - o.Q[jx][0]) * nq[0] + (T[1] - o.Q[jx][1]) * nq[1]) * b; v = Math.max(-40, Math.min(40, v));
-            const jj = e.st ? jx : n - 1 - jx; c.d[jj] += e.st ? v : -v;
+            const rf = ref(sx), T = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh], jj = e.st ? jx : n - 1 - jx;
+            c.Q[jj] = [Q0[jx][0] + (T[0] - Q0[jx][0]) * b, Q0[jx][1] + (T[1] - Q0[jx][1]) * b];
           }
+          c.cum = cumOf(c.Q);
         });
         if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
         for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }

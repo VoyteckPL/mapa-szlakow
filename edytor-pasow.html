@@ -507,6 +507,11 @@ function ui() {
   props();
 }
 function numRow(label, val, fn, step = 1) { const id = 'n' + Math.random().toString(36).slice(2, 7); setTimeout(() => { const el = $(id); if (el) el.onchange = () => fn(parseFloat(el.value)); }); return `<label>${label}<input type="number" id="${id}" value="${val}" step="${step}"></label>`; }
+const TAGK = [['lanes', 'lanes – liczba pasów'], ['lanes:forward', 'lanes:forward'], ['lanes:backward', 'lanes:backward'], ['oneway', 'oneway (yes/no/-1)'], ['turn:lanes', 'turn:lanes (np. left|through|through;right)'], ['turn:lanes:forward', 'turn:lanes:forward'], ['turn:lanes:backward', 'turn:lanes:backward'], ['width', 'width [m]'], ['lane_markings', 'lane_markings (yes/no)'], ['maxspeed', 'maxspeed']];
+const osmWay = id => S.osm.ways.get(id) || [...S.osm.ways.values()].find(o => o.id === id);
+const baseTags = r => (osmWay(r.osm) || { t: {} }).t;
+function effTags(r) { const t = { ...baseTags(r) }; for (const [k, v] of Object.entries(r.tg || {})) { if (v === null || v === '') delete t[k]; else t[k] = v; } return t; }
+function applyTags(r) { const w = osmWay(r.osm); if (!w) return; const m = makeRoad({ ...w, t: effTags(r) }, 0, w.g.length - 1); for (const k of ['lanes', 'lw', 'oneway', 'marked', 'edge', 'tl', 'nf']) r[k] = m[k]; }
 function props() {
   const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = ''; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
@@ -515,6 +520,8 @@ function props() {
     + chk('jednokierunkowa', 'oneway') + chk('pasy (linie)', 'marked') + chk('krawędziowe', 'edge') + chk('krawężnik', 'kerb')
     + `<select id="pc">${['auto', 'p1', 'p2', 'p4', 'brak'].map(m => `<option ${r.centre === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div><div class="small">linia środkowa. Szerokość = pasy × szer. pasa.</div><div class="row">`
     + `<button id="bRev">Odwróć kierunek</button>${r.rp ? '<button id="bRz">Zeruj render</button>' : ''}${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}<button id="bDel" class="warn">Usuń drogę</button></div>`;
+  if (r.osm) { const bt = baseTags(r), et = effTags(r); h += `<details ${r.tg && Object.keys(r.tg).length ? 'open' : ''}><summary>Tagi OSM tej drogi${r.tg && Object.keys(r.tg).length ? ' (zmienione: ' + Object.keys(r.tg).length + ')' : ''}</summary>` + TAGK.map(([k, lab], i) => { const ch = r.tg && k in r.tg; return `<div class="row"><label style="${ch ? 'color:#e58a00;font-weight:600' : ''}">${lab} <input id="tg${i}" data-k="${k}" value="${(et[k] || '').replace(/"/g, '&quot;')}" placeholder="${bt[k] ? '' : 'brak tagu'}" style="width:190px"></label></div>`; }).join('') + `<div class="small">Zmiana przelicza render od razu. Do OSM trafia przez „Wyślij do OSM” (zmieniane są tylko pola oznaczone na pomarańczowo).</div>` + (r.tg && Object.keys(r.tg).length ? '<div class="row"><button id="bTgReset">Cofnij tagi</button></div>' : '') + '</details>';
+    bind.push(() => { TAGK.forEach(([k], i) => { const inp = $('tg' + i); if (!inp) return; inp.onchange = () => mut(() => { const v = inp.value.trim(), b = baseTags(r)[k] || ''; r.tg = r.tg || {}; if (v === b) delete r.tg[k]; else r.tg[k] = v === '' ? null : v; if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); }); }); const br = $('bTgReset'); if (br) br.onclick = () => mut(() => { delete r.tg; applyTags(r); }); }); }
   el.innerHTML = h; bind.forEach(f => f());
   $('pc').onchange = () => mut(() => { r.centre = $('pc').value; });
   if ($('bRz')) $('bRz').onclick = () => mut(() => { delete r.rp; });
@@ -647,25 +654,28 @@ if (!EMBED) (() => {
     S.doc.road.forEach(r => { if (!r.osm) return; r.nk.forEach((k, i) => { if (!k) return; const [lo, la] = k.split(',').map(Number), u = unproj(r.pts[i]), d = Math.hypot((u.lon - lo) * 111320 * Math.cos(la * Math.PI / 180), (u.lat - la) * 110540); if (d < 0.15) return; const o = mv.get(k); if (o) { if (Math.hypot((u.lon - o.lon) * 70000, (u.lat - o.lat) * 110540) > 0.3) conflict++; o.ways.add(r.osm); } else mv.set(k, { lon: u.lon, lat: u.lat, d, ways: new Set([r.osm]) }); }); });
     return { mv, conflict };
   }
-  let armed = 0; setInterval(() => { const n = moves().mv.size; if (!armed) st(n ? `Przesuniętych węzłów OSM: ${n}` : 'Brak przesuniętych węzłów OSM.'); }, 2000);
+  function tagChanges() { const m = new Map(); S.doc.road.forEach(r => { if (r.osm && r.tg && Object.keys(r.tg).length) m.set(r.osm, { ...(m.get(r.osm) || {}), ...r.tg }); }); return m; }
+  let armed = 0; setInterval(() => { const n = moves().mv.size, t = tagChanges().size; if (!armed) st(n || t ? `Do wysłania: węzłów ${n}, dróg z tagami ${t}` : 'Brak zmian do wysłania.'); }, 2000);
   $('oSend').onclick = async () => {
     const T = tok(); if (!T) { st('Najpierw się zaloguj.'); return; }
-    const { mv, conflict } = moves(); if (!mv.size) { st('Nic do wysłania.'); return; }
-    if (!armed) { armed = Date.now(); const mx = Math.max(...[...mv.values()].map(v => v.d)); st(`Wysłać ${mv.size} węzłów do OSM (największe przesunięcie ${mx.toFixed(1)} m)${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
+    const { mv, conflict } = moves(), tgc = tagChanges(); if (!mv.size && !tgc.size) { st('Nic do wysłania.'); return; }
+    if (!armed) { armed = Date.now(); const mx = mv.size ? Math.max(...[...mv.values()].map(v => v.d)) : 0; st(`Wysłać do OSM: węzłów ${mv.size}${mv.size ? ` (największe przesunięcie ${mx.toFixed(1)} m)` : ''}, tagów dróg ${tgc.size}${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
     if (Date.now() - armed > 20000) { armed = 0; return; } armed = 0; if (conflict) { st('Sprzeczne pozycje tego samego węzła – popraw i spróbuj ponownie.'); return; }
     const H = { Authorization: 'Bearer ' + T };
     try {
-      st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...mv.values()].flatMap(v => [...v.ways]))], nodes = new Map();
-      for (const id of wayIds) { const r = await fetch(`${API}/way/${id}/full.json`, { headers: H }); if (!r.ok) throw new Error('way ' + id + ': ' + r.status); for (const e of (await r.json()).elements) if (e.type === 'node') nodes.set(key(e.lon, e.lat), e); }
+      st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...[...mv.values()].flatMap(v => [...v.ways]), ...tgc.keys()])], nodes = new Map(), wayEl = new Map();
+      for (const id of wayIds) { const r = await fetch(`${API}/way/${id}/full.json`, { headers: H }); if (!r.ok) throw new Error('way ' + id + ': ' + r.status); for (const e of (await r.json()).elements) { if (e.type === 'node') nodes.set(key(e.lon, e.lat), e); else if (e.type === 'way') wayEl.set(e.id, e); } }
       const mod = [], miss = []; for (const [k, v] of mv) { const n = nodes.get(k); if (n) mod.push([n, v, k]); else miss.push(k); }
-      if (!mod.length) throw new Error('żaden węzeł nie pasuje do aktualnych danych OSM (ktoś już je zmienił lub zostały wysłane)');
+      const wmod = []; for (const [id, tg] of tgc) { const w = wayEl.get(id); if (!w) continue; const nt = { ...(w.tags || {}) }; for (const [k, v] of Object.entries(tg)) { if (v === null || v === '') delete nt[k]; else nt[k] = v; } if (JSON.stringify(Object.entries(nt).sort()) !== JSON.stringify(Object.entries(w.tags || {}).sort())) wmod.push([w, nt]); }
+      if (!mod.length && !wmod.length) throw new Error('nic nie pasuje do aktualnych danych OSM (ktoś już to zmienił lub zostało wysłane)');
       const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       st('Tworzę zestaw zmian…'); const cs = await (await fetch(`${API}/changeset/create`, { method: 'PUT', headers: { ...H, 'Content-Type': 'text/xml' }, body: `<osm><changeset><tag k="created_by" v="mapa-szlakow edytor"/><tag k="comment" v="${esc($('oCom').value || 'Poprawa geometrii')}"/><tag k="source" v="Geoportal ortofotomapa"/></changeset></osm>` }).then(r => { if (!r.ok) throw new Error('changeset: ' + r.status); return r.text(); })).trim();
-      const xml = `<osmChange version="0.6" generator="mapa-szlakow"><modify>${mod.map(([n, v]) => `<node id="${n.id}" version="${n.version}" lat="${v.lat.toFixed(7)}" lon="${v.lon.toFixed(7)}" changeset="${cs}">${Object.entries(n.tags || {}).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</node>`).join('')}</modify></osmChange>`;
+      const xml = `<osmChange version="0.6" generator="mapa-szlakow"><modify>${wmod.map(([w, nt]) => `<way id="${w.id}" version="${w.version}" changeset="${cs}">${w.nodes.map(n => `<nd ref="${n}"/>`).join('')}${Object.entries(nt).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</way>`).join('')}${mod.map(([n, v]) => `<node id="${n.id}" version="${n.version}" lat="${v.lat.toFixed(7)}" lon="${v.lon.toFixed(7)}" changeset="${cs}">${Object.entries(n.tags || {}).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</node>`).join('')}</modify></osmChange>`;
       st('Wysyłam…'); const up = await fetch(`${API}/changeset/${cs}/upload`, { method: 'POST', headers: { ...H, 'Content-Type': 'text/xml' }, body: xml }); if (!up.ok) throw new Error('upload: ' + up.status + ' ' + (await up.text()).slice(0, 160));
       await fetch(`${API}/changeset/${cs}/close`, { method: 'PUT', headers: H });
       for (const [, v, k] of mod) S.doc.road.forEach(r => r.nk.forEach((kk, i) => { if (kk === k) r.nk[i] = key(v.lon, v.lat); }));
-      save(); touch(); st(`Wysłano ${mod.length} węzłów${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
+      for (const [w, nt] of wmod) { const o = osmWay(w.id); if (o) o.t = nt; S.doc.road.forEach(r => { if (r.osm === w.id) delete r.tg; }); }
+      save(); touch(); st(`Wysłano ${mod.length} węzłów i tagi ${wmod.length} dróg${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
     } catch (e) { st('Błąd wysyłki: ' + e.message); }
   };
 })();

@@ -68,7 +68,7 @@ const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', seco
 const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street', 'service', 'busway']);
 const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse']);
 const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę']];
-const S = { org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
+const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
 let W = 0, H = 0, DPR = 1, L = null;
 
 // ---------- geometria ----------
@@ -94,11 +94,11 @@ function dense(P, step) {
   for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], n = Math.max(1, Math.round(dist(a, b) / step)); for (let j = 1; j <= n; j++) out.push([a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n]); }
   return out;
 }
-function smoothDense(P0, step) { // centripetalna krzywa Catmull-Rom przez wierzchołki (węzły zostają na miejscu)
-  const P = P0.filter((p, i) => i === 0 || dist(p, P0[i - 1]) > 1e-6); if (P.length < 3 || !$('cSm').checked) return dense(P0, step);
+function smoothDense(P0, step, tin, tout) { // centripetalna krzywa Catmull-Rom przez wierzchołki (węzły zostają na miejscu)
+  const P = P0.filter((p, i) => i === 0 || dist(p, P0[i - 1]) > 1e-6); if (P.length < 2 || !$('cSm').checked || (P.length < 3 && !tin && !tout)) return dense(P0, step);
   const out = [P[0]], mix = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
   for (let i = 0; i < P.length - 1; i++) {
-    const p1 = P[i], p2 = P[i + 1], p0 = i > 0 ? P[i - 1] : [2 * p1[0] - p2[0], 2 * p1[1] - p2[1]], p3 = i + 2 < P.length ? P[i + 2] : [2 * p2[0] - p1[0], 2 * p2[1] - p1[1]];
+    const p1 = P[i], p2 = P[i + 1], L12 = dist(p1, p2), p0 = i > 0 ? P[i - 1] : (tin ? [p1[0] - tin[0] * L12, p1[1] - tin[1] * L12] : [2 * p1[0] - p2[0], 2 * p1[1] - p2[1]]), p3 = i + 2 < P.length ? P[i + 2] : (tout ? [p2[0] + tout[0] * L12, p2[1] + tout[1] * L12] : [2 * p2[0] - p1[0], 2 * p2[1] - p1[1]]);
     const t0 = 0, t1 = t0 + Math.sqrt(dist(p0, p1)), t2 = t1 + Math.sqrt(dist(p1, p2)), t3 = t2 + Math.sqrt(dist(p2, p3)), n = Math.max(1, Math.ceil(dist(p1, p2) / step));
     for (let j = 1; j <= n; j++) {
       const t = t1 + (t2 - t1) * j / n; if (j === n) { out.push(p2); continue; }
@@ -164,8 +164,8 @@ async function loadLink(txt) {
 }
 
 // ---------- układ automatyczny ----------
-function comp(r) {
-  const Q = smoothDense(r.pts, 2), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+function comp(r, h) {
+  const Q = smoothDense(r.pts, 2, h && h.tin, h && h.tout), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg) => offsetPts(o.Q, o.d.map((v, i) => v + sg * o.w[i] / 2));
@@ -176,7 +176,15 @@ function endWidth(c, st, f) { const n = c.Q.length, len = c.cum[n - 1]; for (let
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
-  const C = R.map(comp), handled = new Set(), gores = [], cutIn = [];
+  const C0 = R.map(r => comp(r)), hints = {};
+  for (const [k, G] of ends) { // styczność ramp do jezdni głównej w węźle rozwidlenia/zlania
+    if (!(G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3)) continue;
+    const U = G.map(e => unitFrom(C0[e.i], e.st)), ln = G.map(e => R[e.i].lanes), mx = Math.max(...ln); let xi = 0, best = 9;
+    U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } });
+    if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
+    if (best < -1.0 && ln[xi] >= Math.max(...ln.filter((_, a) => a !== xi))) G.forEach((e, a) => { if (a === xi) return; const h = hints[e.i] || (hints[e.i] = {}), t = [-U[xi][0], -U[xi][1]]; if (e.st) h.tin = t; else h.tout = [-t[0], -t[1]]; });
+  }
+  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [];
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
@@ -339,7 +347,7 @@ function render() {
     ctx.font = '10px system-ui'; ctx.textAlign = 'center';
     D.road.forEach((r, i) => {
       const c = HW_COL[(r.hw || '').replace('_link', '')] || '#6a7f94', isSel = i === S.sel;
-      pathOf(ctx, smoothDense(r.pts, 3), false); ctx.strokeStyle = isSel ? '#ffd23f' : c; ctx.lineWidth = isSel ? 3 : 1.8; ctx.stroke();
+      pathOf(ctx, smoothDense(r.pts, 3, (S.hints[i] || {}).tin, (S.hints[i] || {}).tout), false); ctx.strokeStyle = isSel ? '#ffd23f' : c; ctx.lineWidth = isSel ? 3 : 1.8; ctx.stroke();
       if (k > 6 || isSel) r.pts.forEach((p, vi) => { const s = w2s(p); if (s[0] < -10 || s[1] < -10 || s[0] > W + 10 || s[1] > H + 10) return; ctx.beginPath(); ctx.arc(s[0], s[1], isSel ? (vi === S.vsel ? 7 : 5) : (r.nk[vi] ? 3.5 : 2.5), 0, 7); ctx.fillStyle = isSel ? (vi === S.vsel ? '#ff5a36' : '#ffd23f') : '#fff'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.stroke(); });
       if (isSel) for (let vi = 0; vi < r.pts.length - 1; vi++) { const a = r.pts[vi], b = r.pts[vi + 1], m = w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); ctx.beginPath(); ctx.arc(m[0], m[1], 4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke(); }
       if (isSel || k > 9) { const mid = w2s(r.pts[Math.floor(r.pts.length / 2)]); if (mid[0] > 0 && mid[0] < W && mid[1] > 0 && mid[1] < H) { const label = [r.name, r.hw, r.lanes + ' pasy'].filter(Boolean).join(' · '); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.strokeText(label, mid[0], mid[1] - 6); ctx.fillStyle = c; ctx.fillText(label, mid[0], mid[1] - 6); } }

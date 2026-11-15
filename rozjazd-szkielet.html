@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Szkielet rozjazdu 2→1+1</title>
+<style>
+:root{--bg:#f4f5f7;--fg:#1d2733;--mut:#64707d;--card:#fff;--bd:#d6dbe1;--ac:#2f6fae}
+@media (prefers-color-scheme:dark){:root{--bg:#171b20;--fg:#e8ecf0;--mut:#98a3ae;--card:#222830;--bd:#38414b;--ac:#6aa7e6}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 system-ui,sans-serif}
+header{padding:10px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{font-size:16px;margin:0 0 4px}p{margin:0;color:var(--mut);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--bd)}
+button{font:inherit;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+label{display:inline-flex;gap:6px;align-items:center;color:var(--fg)}input[type=range]{width:120px}
+canvas{display:block;width:100%;height:calc(100vh - 150px);min-height:420px;touch-action:none;background:#e9ebdf}
+#info{padding:6px 16px;color:var(--mut);font-size:12px}
+</style></head><body>
+<header><h1>Szkielet rozjazdu 2→1+1</h1>
+<p>Dwa pasy = referencja (oś OSM w środku, każdy pas ma tę samą szerokość). Odnogi startują przyklejone, po ±pół pasa od osi, i płynnie schodzą na środek własnej jezdni. Przeciągaj białe kółka.</p></header>
+<div class="bar" id="bar"></div>
+<canvas id="cv"></canvas>
+<div id="info"></div>
+<script>
+const $=id=>document.getElementById(id), cv=$('cv'), ctx=cv.getContext('2d');
+let W=0,H=0,DPR=1,K=7,OX=0,OY=0; // K px/m, (OX,OY) = pozycja wezla na ekranie
+const PRESETS={
+ 'Prosto + odnoga w prawo':{x:[0,70],a:[[-1,-35],[-3,-90]],b:[[7,-26],[22,-48],[40,-60]]},
+ 'Symetryczne Y':{x:[0,70],a:[[-12,-28],[-26,-56]],b:[[12,-28],[26,-56]]},
+ 'Lekki łuk w lewo + ostra odnoga':{x:[0,70],a:[[-4,-30],[-14,-60]],b:[[10,-22],[30,-34],[52,-38]]},
+ 'Przykład ze zrzutu':{x:[4,70],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
+ 'Odnoga prawie równolegle':{x:[0,70],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
+};
+const S={w:3.75,T:70,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:true,preset:'Prosto + odnoga w prawo'};
+function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.slice(),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
+// ---------- geometria ----------
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],add=(a,b)=>[a[0]+b[0],a[1]+b[1]],mul=(a,k)=>[a[0]*k,a[1]*k],len=a=>Math.hypot(a[0],a[1]),nrm=a=>{const l=len(a)||1;return[a[0]/l,a[1]/l]};
+const sm5=t=>{t=Math.max(0,Math.min(1,t));return t*t*t*(t*(6*t-15)+10)};
+function spline(pts){ // Catmull-Rom przez punkty -> gesta lamana
+  const n=pts.length,P=[add(pts[0],sub(pts[0],pts[1]))].concat(pts,[add(pts[n-1],sub(pts[n-1],pts[n-2]))]),Q=[pts[0]];
+  for(let i=1;i<P.length-2;i++){const p0=P[i-1],p1=P[i],p2=P[i+1],p3=P[i+2];for(let k=1;k<=24;k++){const t=k/24,t2=t*t,t3=t2*t;Q.push([0,1].map(j=>0.5*((2*p1[j])+(-p0[j]+p2[j])*t+(2*p0[j]-5*p1[j]+4*p2[j]-p3[j])*t2+(-p0[j]+3*p1[j]-3*p2[j]+p3[j])*t3)));}}
+  return Q;}
+function resample(Q,ds){const out=[Q[0]],cum=[0];let acc=0,next=ds;let c=0;for(let i=1;i<Q.length;i++){const a=Q[i-1],b=Q[i],l=len(sub(b,a));while(c+l>=next){const f=(next-c)/l;out.push([a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f]);cum.push(next);next+=ds;}c+=l;}
+  out.push(Q[Q.length-1]);cum.push(c);return{P:out,s:cum};}
+function tangents(P){return P.map((p,i)=>nrm(sub(P[Math.min(P.length-1,i+1)],P[Math.max(0,i-1)])));}
+const nOf=t=>[-t[1],t[0]];
+function offsetLine(P,T,d){return P.map((p,i)=>{const n=nOf(T[i]);return[p[0]+n[0]*d[i],p[1]+n[1]*d[i]];});}
+function build(){
+  const w=S.w,node=[0,0],A=resample(spline([node,...S.P.a]),0.5),B=resample(spline([node,...S.P.b]),0.5),X=resample(spline([node,S.P.x]),0.5);
+  const tA=tangents(A.P),tB=tangents(B.P),tX=tangents(X.P);
+  // strona, w ktora odnoga ucieka (od drugiej odnogi)
+  const outer=(Pa,ta,Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)],n=nOf(ta[0]);return(n[0]*bp[0]+n[1]*bp[1])>0?-1:1;};
+  const sA=outer(A.P,tA,B.P),sB=outer(B.P,tB,A.P);
+  const arm=(R,t,sg)=>{const off=R.s.map(s=>sg*(w/2)*(1-sm5(s/S.T)));const C=offsetLine(R.P,t,off),tc=tangents(C);return{C,tc,L:offsetLine(C,tc,C.map(()=>w/2)),Rr:offsetLine(C,tc,C.map(()=>-w/2)),sg,s:R.s,ax:R.P};};
+  const a=arm(A,tA,sA),b=arm(B,tB,sB);
+  // X: oś od wezla w dol; polygon 2w
+  const xl=offsetLine(X.P,tX,X.P.map(()=>w)),xr=offsetLine(X.P,tX,X.P.map(()=>-w));
+  return{a,b,x:{P:X.P,t:tX,L:xl,R:xr},w};
+}
+// ---------- rysowanie ----------
+const w2s=p=>[OX+p[0]*K,OY+p[1]*K];
+function path(P,close){ctx.beginPath();P.forEach((p,i)=>{const q=w2s(p);i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});if(close)ctx.closePath();}
+function stroke(P,col,wm,dash){path(P);ctx.strokeStyle=col;ctx.lineWidth=Math.max(1,wm*K);ctx.setLineDash(dash?dash.map(v=>v*K):[]);ctx.lineCap='butt';ctx.lineJoin='round';ctx.stroke();ctx.setLineDash([]);}
+function render(){
+  if(!S.P)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
+  const G=build(),w=S.w,ROAD='#7c8083',LINE='#f2f2f0';
+  // asfalt
+  const fill=(L,R)=>{path(L.concat(R.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();};
+  fill(G.x.L,G.x.R);fill(G.a.L,G.a.Rr);fill(G.b.L,G.b.Rr);
+  // lata na styku
+  const pts=[G.x.L[0],G.x.R[0],G.a.L[0],G.a.Rr[0],G.b.L[0],G.b.Rr[0]];const cx=pts.reduce((s,p)=>s+p[0],0)/6,cy=pts.reduce((s,p)=>s+p[1],0)/6;
+  pts.sort((p,q)=>Math.atan2(p[1]-cy,p[0]-cx)-Math.atan2(q[1]-cy,q[0]-cx));path(pts,true);ctx.fillStyle=ROAD;ctx.fill();
+  // klin (miedzy wewnetrznymi krawedziami odnog)
+  const iA=armInner(G.a,0.2),iB=armInner(G.b,0.2),N=Math.min(iA.length,iB.length);
+  const A2=[],B2=[],gap=[];for(let i=0;i<N;i++){const g=len(sub(iA[i],iB[i]));gap.push(g);const u=sm5(Math.max(0,Math.min(1,(g-0.45)/0.8))),m=[(iA[i][0]+iB[i][0])/2,(iA[i][1]+iB[i][1])/2];A2.push([m[0]+(iA[i][0]-m[0])*u,m[1]+(iA[i][1]-m[1])*u]);B2.push([m[0]+(iB[i][0]-m[0])*u,m[1]+(iB[i][1]-m[1])*u]);}
+  let ie=N-1;for(let i=0;i<N;i++)if(gap[i]>5){ie=i;break;}
+  path(A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse()),true);ctx.fillStyle=ROAD;ctx.fill();
+  // szewrony
+  if(S.chev){let last=-9;ctx.save();path(A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse()),true);ctx.clip();
+    for(let i=0;i<N;i++){const s=i*0.5;if(gap[i]<1.6||gap[i]>4.4||s-last<1.1)continue;const d=Math.round(0.45*gap[i]/0.5)*(S.mg?-1:1),j=Math.max(0,Math.min(N-1,i+d)),ap=[(A2[i][0]+B2[i][0])/2,(A2[i][1]+B2[i][1])/2];const ex=(p)=>[ap[0]+(p[0]-ap[0])*1.15,ap[1]+(p[1]-ap[1])*1.15];stroke([ex(A2[j]),ap,ex(B2[j])],LINE,0.55);last=s;}ctx.restore();}
+  // linie: srodkowa X (przerywana), krawedzie
+  stroke(G.x.P.map((p,i)=>p),LINE,0.12,[3,6]);
+  stroke(A2,LINE,0.14);stroke(B2,LINE,0.14);
+  const xe=(sd)=>G.x.P.map((p,i)=>{const n=nOf(G.x.t[i]);return[p[0]+n[0]*sd*(w-0.2),p[1]+n[1]*sd*(w-0.2)];});
+  const xl=xe(+1),xr=xe(-1);
+  [G.a,G.b].forEach(arm=>{
+    const sd=arm.sg>0?1:-1,e=armOuterSide(arm,0.2,sd);
+    // X po tej samej stronie ekranu: porownanie punktu startowego
+    const cand=[xl,xr],best=cand.reduce((a,c)=>len(sub(c[0],e[0]))<len(sub(a[0],e[0]))?c:a);
+    stroke(best.slice().reverse().concat(e.slice(1)),LINE,0.14);});
+  if(S.blue){[G.x.L,G.x.R,G.a.L,G.a.Rr,G.b.L,G.b.Rr].forEach(P=>stroke(P,'rgba(47,139,255,.9)',0.1));}
+  if(S.sk){stroke(G.a.C,'#ffb000',0.12);stroke(G.b.C,'#ffb000',0.12);}
+  if(S.ax){[[ [0,0],...S.P.a ],[ [0,0],...S.P.b ],[[0,0],S.P.x]].forEach(P=>stroke(spline(P),'#e0245e',0.08));}
+  // uchwyty
+  ctx.fillStyle='#fff';ctx.strokeStyle='#e0245e';ctx.lineWidth=2;[...S.P.a,...S.P.b,S.P.x].forEach(p=>{const q=w2s(p);ctx.beginPath();ctx.arc(q[0],q[1],6,0,7);ctx.fill();ctx.stroke();});
+  const nq=w2s([0,0]);ctx.beginPath();ctx.arc(nq[0],nq[1],5,0,7);ctx.fillStyle='#e0245e';ctx.fill();
+}
+function armInner(arm,inset){ // krawedz od strony drugiej odnogi (przeciwna do uciekajacej)
+  const d=arm.sg>0?-(S.w/2-inset):(S.w/2-inset);return offsetLine(arm.C,arm.tc,arm.C.map(()=>d));}
+function armOuterSide(arm,inset,sd){return offsetLine(arm.C,arm.tc,arm.C.map(()=>sd*(S.w/2-inset)));}
+// ---------- UI i uchwyty ----------
+function ui(){const b=$('bar');b.innerHTML='';
+  Object.keys(PRESETS).forEach(n=>{const e=document.createElement('button');e.textContent=n;if(n===S.preset)e.className='on';e.onclick=()=>load(n);b.appendChild(e);});
+  const sl=(lab,k,mn,mx,st)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+S[k]+'> <span>'+S[k]+'</span>';l.querySelector('input').oninput=e=>{S[k]=+e.target.value;l.querySelector('span').textContent=S[k];render();};b.appendChild(l);};
+  sl('długość przejścia T [m]','T',10,160,5);sl('szerokość pasa [m]','w',2.5,4.2,0.05);
+  const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
+  ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('chevrony','chev');ck('chevrony w drugą stronę','mg');}
+S.w=3.75;
+function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;render();}
+let drag=null;
+function hit(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,bd=18;const all=[['a',S.P.a],['b',S.P.b]];all.forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-x,q[1]-y);if(d<bd){bd=d;best=[k,i];}}));const q=w2s(S.P.x),d=Math.hypot(q[0]-x,q[1]-y);if(d<bd){best=['x',0];}return best;}
+cv.onpointerdown=e=>{drag=hit(e);if(drag)cv.setPointerCapture(e.pointerId);};
+cv.onpointermove=e=>{if(!drag)return;const r=cv.getBoundingClientRect(),p=[(e.clientX-r.left-OX)/K,(e.clientY-r.top-OY)/K];if(drag[0]==='x')S.P.x=p;else S.P[drag[0]][drag[1]]=p;render();};
+cv.onpointerup=()=>{drag=null;};
+addEventListener('resize',fit);load(S.preset);fit();
+window.SK={S,build,render,load};
+</script></body></html>

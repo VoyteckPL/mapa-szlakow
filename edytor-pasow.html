@@ -323,7 +323,7 @@ function layout() {
             const lerp2 = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; let last = -99;
             for (let ri = 0; ri < rows.length && chev.length < 12; ri++) {
               const r0 = rows[ri]; if (r0.g < 1.6 || r0.g > 4.4 || r0.s - last < 1.1) continue; const mg = !!X.st, sLo = rows[0].s, s2 = mg ? Math.max(r0.s - 0.45 * r0.g, sLo) : Math.min(r0.s + 0.45 * r0.g, smax), a2 = ip(Al, s2), t1 = ip(Al, r0.s), t2 = ip(Bl, r0.s), ap = lerp2(t1, t2, 0.5);
-              let bb = ip(Bl, s2), bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; mg ? ss >= sLo : ss <= smax; ss += mg ? -0.04 : 0.04) { const pb = ip(Bl, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } }
+              const bb = ip(Bl, s2); // oba ramiona koncza sie w tym samym s: symetryczny, rowny szewron
               chev.push([lerp2(ap, a2, 1.12), ap, lerp2(ap, bb, 1.12)]); last = r0.s;
             }
           }

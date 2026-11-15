@@ -162,7 +162,7 @@ function endWidth(c, st, f) { const n = c.Q.length, len = c.cum[n - 1]; for (let
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
-  const C = R.map(comp), handled = new Set(), gores = [];
+  const C = R.map(comp), handled = new Set(), gores = [], cutIn = [];
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
@@ -187,18 +187,29 @@ function layout() {
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
         for (const e of [yl, yr]) { C[e.i].w.fill(rw(R[e.i])); C[e.i].e.fill(0); }
         const lY = [yl, yr].map(e => R[e.i].lanes), uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1; // 3 -> 2+1: główne pasy na osi, pas zjazdu bokiem
-        [[yl, -1], [yr, 1]].forEach(([e, sg], q) => { const c = C[e.i], T = Math.min(30, c.cum[c.cum.length - 1] / 2.2), wM = rw(R[[yl, yr][mi].i]), wR = rw(R[[yl, yr][1 - mi].i]), sh = uneq ? (q === mi ? 0 : sg * (wM + wR) / 2) : sg * (wX - rw(R[e.i])) / 2; endShift(c, e.st, s => s < T ? sh * (1 - sm(s / T)) : 0); });
+        const wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
+        const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + m[0] * sx, n0[1] + m[1] * sx], t: m }; };
+        [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
+          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(22, len * 0.3), T2 = Math.min(35, len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
+          if (!sh) return;
+          for (let jx = 0; jx < n; jx++) {
+            const sx = o.cum[jx], b = sx <= P ? 1 : 1 - sm((sx - P) / T2); if (b <= 0) continue;
+            const rf = ref(sx), tg = [o.Q[Math.min(n - 1, jx + 1)][0] - o.Q[Math.max(0, jx - 1)][0], o.Q[Math.min(n - 1, jx + 1)][1] - o.Q[Math.max(0, jx - 1)][1]], tl = Math.hypot(...tg) || 1, nq = [-tg[1] / tl, tg[0] / tl];
+            const T = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; let v = ((T[0] - o.Q[jx][0]) * nq[0] + (T[1] - o.Q[jx][1]) * nq[1]) * b; v = Math.max(-40, Math.min(40, v));
+            const jj = e.st ? jx : n - 1 - jx; c.d[jj] += e.st ? v : -v;
+          }
+        });
         if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
-        const rows = []; let started = false;
-        for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 0.25) started = true; if (started) { if (g > 9) break; rows.push({ s, a, b, g }); } }
-        if (rows.length > 2) {
+        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 9) break; rows.push({ s, a, b, g }); }
+        if (rows.length > 2 && rows.some(r => r.g > 1)) {
+          const sEnd = rows[rows.length - 1].s + 1; cutIn.push({ i: yl.i, ss: yl.st ? 1 : -1, st: yl.st, s: sEnd }, { i: yr.i, ss: yr.st ? -1 : 1, st: yr.st, s: sEnd });
           const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];
           if (G.some(e => /^(motorway|trunk)/.test(R[e.i].hw))) {
             let last = -99; const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
             for (let ri = 0; ri < rows.length && chev.length < 5; ri++) {
               const r0 = rows[ri]; if (r0.g < 2.4 || r0.s - last < 6) continue; const s2 = Math.min(r0.s + 0.6 * r0.g, smax), a2 = atS(A, cA, s2), b2 = atS(B, cB, s2);
-              chev.push([lerp(a2, b2, 0.12), lerp(r0.a, r0.b, 0.5), lerp(a2, b2, 0.88)]); last = r0.s;
+              chev.push([a2, lerp(r0.a, r0.b, 0.5), b2]); last = r0.s;
             }
           }
           gores.push({ poly, A: rows.map(r => r.a), B: rows.map(r => r.b), chev });
@@ -213,7 +224,7 @@ function layout() {
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: r.pts[j], rad: rad + 1.5 }); });
     const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad));
-    const addLine = (P, st) => { let run = []; for (let j = 0; j < n; j++) { if (keep[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
+    const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
     const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
     polys.push({ P: Lf.concat(Rt.slice().reverse()), kerb: r.kerb });
@@ -223,7 +234,10 @@ function layout() {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1');
     }
-    if (r.edge) { addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j) + 0.2)), 'p2'); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j) - 0.2)), 'p2'); }
+    if (r.edge) {
+      const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));
+      addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j) + 0.2)), 'p2', kpe(-1)); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j) - 0.2)), 'p2', kpe(1));
+    }
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const nb = nl - (r.oneway ? nl : r.nf);
       if (parts.length === (r.oneway ? nl : r.nf) && len > 25) {

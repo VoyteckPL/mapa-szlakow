@@ -139,22 +139,29 @@ async function loadOsmAround(lat, lon, box) {
   const tx = Math.floor(lon / 0.02), ty = Math.floor(lat / 0.01); let fail = 0;
   const [xa, xb, ya, yb] = box || [tx - 1, tx + 1, ty - 1, ty + 1];
   for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) {
-    const k = x + '_' + y; if (S.osm.tiles.has(k)) continue; S.osm.tiles.add(k);
-    try { const r = await fetch(`data/roads/gdynia/${k}.json`); if (!r.ok) continue; for (const w of await r.json()) if (!S.osm.ways.has(w.i)) S.osm.ways.set(w.i, { id: w.i, t: w.t, g: w.g.map(c => proj(c[0], c[1])), nk: w.g.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); } catch (e) { fail++; }
+    const k = x + '_' + y; if (S.osm.tiles.has(k)) continue; let done = false;
+    for (let at = 0; at < 3 && !done; at++) {
+      try { const r = await fetch(`data/roads/gdynia/${k}.json`); if (r.status === 404) { done = true; break; } if (!r.ok) throw new Error(r.status); for (const w of await r.json()) if (!S.osm.ways.has(w.i)) S.osm.ways.set(w.i, { id: w.i, t: w.t, g: w.g.map(c => proj(c[0], c[1])), nk: w.g.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); done = true; } catch (e) { await new Promise(r => setTimeout(r, 400 * (at + 1))); }
+    }
+    if (done) S.osm.tiles.add(k); else fail++;
   }
   say(`OSM: ${S.osm.ways.size} dróg w pamięci` + (fail ? ' (część kafelków niedostępna)' : '')); render();
 }
 function importView(margin = 40) {
   const a = s2w([0, 0]), b = s2w([W, H]), x0 = Math.min(a[0], b[0]) - margin, x1 = Math.max(a[0], b[0]) + margin, y0 = Math.min(a[1], b[1]) - margin, y1 = Math.max(a[1], b[1]) + margin;
-  const have = new Set(S.doc.road.map(r => r.osm)); let n = 0;
+  const cov = new Map(); for (const r of S.doc.road) { if (!cov.has(r.osm)) cov.set(r.osm, new Set()); for (const k of r.nk) cov.get(r.osm).add(k); } // wezly juz zaimportowane (droga mogla byc wczesniej wczytana tylko czesciowo)
+  let n = 0, full = false;
   for (const o of S.osm.ways.values()) {
-    const hw = (o.t.highway || '').replace('_link', ''); if (!OKHW.has(hw) || have.has(o.id) || o.t.area === 'yes' || ['parking_aisle', 'driveway'].includes(o.t.service)) continue;
-    const ins = o.g.map(p => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1), lo = ins.indexOf(true); if (lo < 0) continue;
-    let i0 = lo, i1 = lo; for (let i = lo; i < ins.length; i++) { if (ins[i]) i1 = i; else if (i > i1 + 1) break; }
-    const A = Math.max(0, i0 - 1), B = Math.min(o.g.length - 1, i1 + 1); if (B <= A) continue;
-    if (S.doc.road.length >= 500) break; S.doc.road.push(makeRoad(o, A, B)); n++;
+    const hw = (o.t.highway || '').replace('_link', ''); if (!OKHW.has(hw) || o.t.area === 'yes' || ['parking_aisle', 'driveway'].includes(o.t.service)) continue;
+    const have = cov.get(o.id), need = o.g.map((p, i) => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1 && !(have && have.has(o.nk[i])));
+    for (let i = 0; i < need.length; i++) {
+      if (!need[i]) continue; let j = i; while (j + 1 < need.length && need[j + 1]) j++;
+      const A = Math.max(0, i - 1), B = Math.min(o.g.length - 1, j + 1); i = j;
+      if (B <= A) continue; if (S.doc.road.length >= 500) { full = true; break; } S.doc.road.push(makeRoad(o, A, B)); n++;
+    }
+    if (full) break;
   }
-  S.undo = []; save(); touch(); ui(); say(`Wczytano ${n} dróg z widoku (łącznie ${S.doc.road.length}).`);
+  S.undo = []; save(); touch(); ui(); say(`Wczytano ${n} dróg z widoku (łącznie ${S.doc.road.length}).` + (full ? ' Limit 500 dróg – przybliż widok.' : ''));
 }
 function osmAt(w, tol) { let best = null, bd = tol; for (const o of S.osm.ways.values()) for (let j = 1; j < o.g.length; j++) { const d = segDist(w, o.g[j - 1], o.g[j]); if (d < bd) { bd = d; best = o; } } return best; }
 function parseLink(t) {
@@ -216,7 +223,9 @@ function layout() {
         const cr = Ys.map(e => { const u = unitFrom(C[e.i], e.st); return m[0] * u[1] - m[1] * u[0]; });
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
         for (const e of [yl, yr]) { C[e.i].w.fill(rw(R[e.i])); C[e.i].e.fill(0); }
-        const lY = [yl, yr].map(e => R[e.i].lanes), uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1; // 3 -> 2+1: główne pasy na osi, pas zjazdu bokiem
+        const lY = [yl, yr].map(e => R[e.i].lanes), uX0 = unitFrom(C[X.i], X.st, 8), angE = [yl, yr].map(e => { const t = unitFrom(C[e.i], e.st, 8); return Math.acos(Math.max(-1, Math.min(1, -(t[0] * uX0[0] + t[1] * uX0[1])))) * 180 / Math.PI; });
+        // rozjazd asymetryczny: jeden wylot idzie prosto (os OSM = przedluzenie dwupasowej), drugi odchodzi pod katem -> prosty zostaje na osi, odchodzacy dochodzi z boku (jak przy 3->2+1)
+        const asym = lY[0] === lY[1] && Math.min(...angE) < 6 && Math.max(...angE) > 12, uneq = lY[0] !== lY[1] || asym, mi = asym ? (angE[0] < angE[1] ? 0 : 1) : (lY[0] > lY[1] ? 0 : 1); // 3 -> 2+1: główne pasy na osi, pas zjazdu bokiem
         const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {

@@ -49,6 +49,12 @@
       <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render: <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
     </div>
     <div id="props"></div>
+    <details id="osmx"><summary>Wyślij do OSM</summary>
+      <div class="row"><label>Client ID <input id="oCid" style="width:180px" placeholder="z osm.org → Aplikacje OAuth 2"></label><button id="oLog">Zaloguj</button><span id="oWho"></span></div>
+      <div class="row"><label>Opis zmiany <input id="oCom" style="width:230px" value="Wygładzenie geometrii rozjazdu (dopasowanie do ortofoto)"></label></div>
+      <div class="row"><button id="oSend">Wyślij do OSM</button><span id="oSt" style="font-size:12px"></span></div>
+      <div style="font-size:12px;opacity:.75">Wysyłane są tylko przesunięte węzły osi OSM (oś, nie „render”). Wymaga zalogowania; wysyłka dopiero po drugim kliknięciu.</div>
+    </details>
     <details><summary>Dane</summary>
       <div class="row"><button id="bExp">Eksport JSON</button><button id="bImpJ">Wczytaj JSON</button><button id="bPng">Zapisz PNG</button><button id="bClr" class="warn">Wyczyść</button></div>
       <textarea id="io"></textarea>
@@ -605,6 +611,52 @@ window.addEventListener('resize', resize);
   if (parseLink(location.hash) && /#map=/.test(h) && !(!EMBED && sv && sv.doc && sv.doc.road && sv.h === location.hash)) { $('lnk').value = location.hash; await loadLink(h); if (EDIT) { S.orig = new Map(S.doc.road.map(r => [r.osm + '|' + r.nk[0] + '|' + r.nk[r.nk.length - 1], JSON.stringify(r.pts)])); applyEmb(); } return; }
   try { const s = EMBED ? null : sv; if (s && s.doc && s.doc.road) { S.doc = s.doc; S.view = s.view; S.org = s.org; $('lnk').value = s.h || ''; { const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])); await loadOsmAround(S.org.lat, S.org.lon, [Math.floor(Math.min(a.lon, b.lon) / 0.02), Math.floor(Math.max(a.lon, b.lon) / 0.02), Math.floor(Math.min(a.lat, b.lat) / 0.01), Math.floor(Math.max(a.lat, b.lat) / 0.01)]); } touch(); say(`Przywrócono ${S.doc.road.length} dróg.`); return; } } catch (e) {}
   say('Wklej link z openstreetmap.org i naciśnij Wczytaj.'); render();
+})();
+
+// ---------- zapis do OSM (OAuth2 PKCE, API 0.6) ----------
+if (!EMBED) (() => {
+  const OSM = 'https://www.openstreetmap.org', API = 'https://api.openstreetmap.org/api/0.6', REDIR = location.origin + location.pathname;
+  const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }, del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
+  const st = t => { $('oSt').textContent = t; }, b64 = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  $('oCid').value = ls.get('osm-cid') || ''; $('oCid').onchange = () => ls.set('osm-cid', $('oCid').value.trim());
+  const tok = () => ls.get('osm-tok'), who = () => { $('oWho').textContent = tok() ? ' ✓ zalogowano' : ''; $('oLog').textContent = tok() ? 'Wyloguj' : 'Zaloguj'; }; who();
+  $('oLog').onclick = async () => {
+    if (tok()) { ls.del('osm-tok'); who(); return; }
+    const cid = $('oCid').value.trim(); if (!cid) { st('Wpisz Client ID.'); return; } ls.set('osm-cid', cid);
+    const ver = b64(crypto.getRandomValues(new Uint8Array(32))), ch = b64(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ver)));
+    sessionStorage.setItem('osm-ver', ver); sessionStorage.setItem('osm-hash', location.hash); try { save(); } catch (e) {}
+    location.href = `${OSM}/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(cid)}&redirect_uri=${encodeURIComponent(REDIR)}&scope=${encodeURIComponent('write_api read_prefs')}&code_challenge=${ch}&code_challenge_method=S256`;
+  };
+  (async () => { const m = /[?&]code=([^&]+)/.exec(location.search); if (!m) return; const ver = sessionStorage.getItem('osm-ver'), h = sessionStorage.getItem('osm-hash') || '';
+    history.replaceState(null, '', location.pathname + h); if (!ver) return;
+    try { const r = await fetch(`${OSM}/oauth2/token`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', code: decodeURIComponent(m[1]), redirect_uri: REDIR, client_id: ls.get('osm-cid') || '', code_verifier: ver }) }); const j = await r.json(); if (!j.access_token) throw new Error(JSON.stringify(j)); ls.set('osm-tok', j.access_token); who(); $('osmx').open = true; st('Zalogowano.'); } catch (e) { st('Logowanie nieudane: ' + e.message); } })();
+  const key = (lon, lat) => lon.toFixed(7) + ',' + lat.toFixed(7);
+  function moves() { // przesunięte węzły OSM: klucz = pierwotne współrzędne, nowe = oś
+    const mv = new Map(); let conflict = 0, nodeless = 0;
+    S.doc.road.forEach(r => { if (!r.osm) return; r.nk.forEach((k, i) => { if (!k) return; const [lo, la] = k.split(',').map(Number), u = unproj(r.pts[i]), d = Math.hypot((u.lon - lo) * 111320 * Math.cos(la * Math.PI / 180), (u.lat - la) * 110540); if (d < 0.15) return; const o = mv.get(k); if (o) { if (Math.hypot((u.lon - o.lon) * 70000, (u.lat - o.lat) * 110540) > 0.3) conflict++; o.ways.add(r.osm); } else mv.set(k, { lon: u.lon, lat: u.lat, d, ways: new Set([r.osm]) }); }); });
+    return { mv, conflict };
+  }
+  let armed = 0; setInterval(() => { const n = moves().mv.size; if (!armed) st(n ? `Przesuniętych węzłów OSM: ${n}` : 'Brak przesuniętych węzłów OSM.'); }, 2000);
+  $('oSend').onclick = async () => {
+    const T = tok(); if (!T) { st('Najpierw się zaloguj.'); return; }
+    const { mv, conflict } = moves(); if (!mv.size) { st('Nic do wysłania.'); return; }
+    if (!armed) { armed = Date.now(); const mx = Math.max(...[...mv.values()].map(v => v.d)); st(`Wysłać ${mv.size} węzłów do OSM (największe przesunięcie ${mx.toFixed(1)} m)${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
+    if (Date.now() - armed > 20000) { armed = 0; return; } armed = 0; if (conflict) { st('Sprzeczne pozycje tego samego węzła – popraw i spróbuj ponownie.'); return; }
+    const H = { Authorization: 'Bearer ' + T };
+    try {
+      st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...mv.values()].flatMap(v => [...v.ways]))], nodes = new Map();
+      for (const id of wayIds) { const r = await fetch(`${API}/way/${id}/full.json`, { headers: H }); if (!r.ok) throw new Error('way ' + id + ': ' + r.status); for (const e of (await r.json()).elements) if (e.type === 'node') nodes.set(key(e.lon, e.lat), e); }
+      const mod = [], miss = []; for (const [k, v] of mv) { const n = nodes.get(k); if (n) mod.push([n, v, k]); else miss.push(k); }
+      if (!mod.length) throw new Error('żaden węzeł nie pasuje do aktualnych danych OSM (ktoś już je zmienił lub zostały wysłane)');
+      const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      st('Tworzę zestaw zmian…'); const cs = await (await fetch(`${API}/changeset/create`, { method: 'PUT', headers: { ...H, 'Content-Type': 'text/xml' }, body: `<osm><changeset><tag k="created_by" v="mapa-szlakow edytor"/><tag k="comment" v="${esc($('oCom').value || 'Poprawa geometrii')}"/><tag k="source" v="Geoportal ortofotomapa"/></changeset></osm>` }).then(r => { if (!r.ok) throw new Error('changeset: ' + r.status); return r.text(); })).trim();
+      const xml = `<osmChange version="0.6" generator="mapa-szlakow"><modify>${mod.map(([n, v]) => `<node id="${n.id}" version="${n.version}" lat="${v.lat.toFixed(7)}" lon="${v.lon.toFixed(7)}" changeset="${cs}">${Object.entries(n.tags || {}).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</node>`).join('')}</modify></osmChange>`;
+      st('Wysyłam…'); const up = await fetch(`${API}/changeset/${cs}/upload`, { method: 'POST', headers: { ...H, 'Content-Type': 'text/xml' }, body: xml }); if (!up.ok) throw new Error('upload: ' + up.status + ' ' + (await up.text()).slice(0, 160));
+      await fetch(`${API}/changeset/${cs}/close`, { method: 'PUT', headers: H });
+      for (const [, v, k] of mod) S.doc.road.forEach(r => r.nk.forEach((kk, i) => { if (kk === k) r.nk[i] = key(v.lon, v.lat); }));
+      save(); touch(); st(`Wysłano ${mod.length} węzłów${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
+    } catch (e) { st('Błąd wysyłki: ' + e.message); }
+  };
 })();
 </script>
 </body>

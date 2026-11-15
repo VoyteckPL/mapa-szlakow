@@ -341,10 +341,7 @@ function layout() {
     if (r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
-      if (forkX.has(i)) { // przed rozjazdem linia pasów staje się ciągła i przechodzi w linie klina
-        const len = c.cum[n - 1], near = j => (forkX.get(i) ? c.cum[j] : len - c.cum[j]) < 14;
-        addLine(DL, dst, keep.map((kk, j) => kk && !near(j))); addLine(DL, 'p2', keep.map((kk, j) => kk && (near(j) || (j + 1 < n && near(j + 1)) || (j > 0 && near(j - 1)))));
-      } else addLine(DL, dst);
+      addLine(DL, dst); // linia pasow przed rozjazdem tez przerywana, jak reszta drogi
     }
     if (r.edge) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));

@@ -52,7 +52,7 @@
       <div class="row"><label>krycie pasów <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label></div>
     </details>
     <details><summary>Ustawienia zaawansowane</summary>
-      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>długość przejścia <input type="range" id="fT" min="10" max="160" step="5" value="20" style="width:110px"> <span id="fTv">20</span> m</label><label>promień łuku jezdni <input type="range" id="fR" min="0" max="150" step="5" value="80" style="width:110px"> <span id="fRv">80</span> m</label></div>
+      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>długość przejścia <input type="range" id="fT" min="10" max="160" step="5" value="35" style="width:110px"> <span id="fTv">35</span> m</label><label>promień łuku jezdni <input type="range" id="fR" min="0" max="150" step="5" value="80" style="width:110px"> <span id="fRv">80</span> m</label></div>
       <div class="row"><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label></div>
     </details>
     <h4 style="margin-top:14px">Wybrana droga</h4>
@@ -217,6 +217,7 @@ function endWidth(c, st, f) { const n = c.Q.length, len = c.cum[n - 1]; for (let
 
 
 // ---------- rozjazd na szkielecie (przeniesiony z rozjazd-szkielet.html) ----------
+const SHOW_CHEV = false;
 function skelFork(X, yl, yr, C, R, gores) {
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], add = (a, b) => [a[0] + b[0], a[1] + b[1]], mul = (a, k) => [a[0] * k, a[1] * k], nrm = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; }, nOf = t => [-t[1], t[0]];
   const dens = (Q, ds) => { const c = cumOf(Q), L = c[c.length - 1], out = []; for (let s = 0; s < L; s += ds) out.push(atS(Q, c, s)); out.push(Q[Q.length - 1]); return out; };
@@ -239,6 +240,7 @@ function skelFork(X, yl, yr, C, R, gores) {
     c.Q = Q; c.w = Q.map(() => o.l * w); c.d = Q.map(() => 0); c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q);
   }
   { const c = C[X.i], dc = (xN - nX * w / 2) * (X.st ? 1 : -1); c.w = c.Q.map(() => nX * w); c.d = c.Q.map(() => dc); c.e = c.Q.map(() => 0); c.tf = undefined; }
+  if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem
   // klin z szewronami (wariant 1: ramiona konczace sie rowno z krawedzia), rowne odstepy wzdluz osi klina
   const A = arms[0], B = arms[1], edge = (o, sg) => offsetPts(o.Cd, sg * o.l * w / 2), ia = edge(A, A.sg > 0 ? -1 : 1), ib = edge(B, B.sg > 0 ? -1 : 1);
   const SP = 1.7, AL = 58 * Math.PI / 180, NCH = 8;

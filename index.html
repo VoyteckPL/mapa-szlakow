@@ -476,6 +476,7 @@ function rebuild() {
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
+  map.getSource('roads').setData({ type: 'FeatureCollection', features: buildCarriageways(sideItems, ways) });
   // Schemat znaków: dla całego ciągu (kilka odcinków OSM połączonych bez rozgałęzień) znak na początku,
   // na końcu i – gdy ciąg ma ponad 110 m – w równych odstępach pośrodku (nie gęściej niż co ~55 m).
   const signAt = (len, step = 110) => { // step: największy odstęp między znakami (C-13: 110 m, pasy/sierżanty: 80 m)
@@ -560,7 +561,7 @@ const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3
 // Rzeczywista szerokość elementu infrastruktury w metrach (tag width / cycleway:width albo wartość typowa).
 const WIDTH_M = { droga: 2.4, ciag: 2.8, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.4 };
 // Wygląd „rzeczywisty” (tylko na największym zoomie): nawierzchnia z tagu surface / cycleway:surface.
-// Droga dla rowerów domyślnie czerwona, ciąg pieszo-rowerowy szary.
+// Wszystko niebieskie (DDR ciemniej, ciąg jaśniej); bez tagu: DDR asfalt, ciąg kostka.
 function realSurface(cls, t) {
   if (cls !== 'droga' && cls !== 'ciag') return '';
   const s = (t['cycleway:surface'] || t.surface || '').toLowerCase();
@@ -570,8 +571,7 @@ function realSurface(cls, t) {
   else if (/^(concrete|concrete:lanes)$/.test(s)) kind = 'beton';
   else if (/^(compacted|fine_gravel|gravel|dirt|ground|earth|unpaved|pebblestone|sand)$/.test(s)) kind = 'szuter';
   else kind = cls === 'droga' ? 'asfalt' : 'kostka';
-  const col = (kind === 'asfalt' || kind === 'kostka') && cls === 'droga' ? '-red' : (kind === 'asfalt' || kind === 'kostka') ? '-grey' : '';
-  return 'nav-' + kind + col;
+  return 'nav-' + kind + '-' + cls;
 }
 function widthM(cls, t) { // jednolita szerokość dla klasy (tagi width dawały różnie grube DDR obok siebie)
   return WIDTH_M[cls];
@@ -608,6 +608,52 @@ function offsetLine(coords, d) {
 // 3) jeśli na końcu ciągu w osi ulicy zaczyna się droga dla rowerów / przejazd, przesunięcie maleje do zera
 //    na ostatnich ~15 m, więc pas płynnie przechodzi w tę drogę.
 const SMOOTH_M = 12, TAPER_M = 15;
+// Największy zoom: jezdnia ulicy, na której są pasy rowerowe / sierżanty / buspasy, z liniami podziału pasów ruchu.
+// Liczba pasów z tagów lanes, lanes:forward, lanes:backward (bez tagów: 1 na jednokierunkowej, 2 na dwukierunkowej);
+// ruch prawostronny, więc pasy „forward” leżą po prawej stronie kierunku narysowania drogi.
+// Linie: P-1 (przerywana) między pasami w tym samym kierunku, oś jezdni przerywana przy ≤ 3 pasach,
+// podwójna ciągła (P-4) przy 4 i więcej; linia krawędziowa ciągła tylko po stronie bez pasa rowerowego.
+function buildCarriageways(items, ways) {
+  const roads = new Map();
+  for (const it of items) {
+    const id = it.props.way;
+    if (!roads.has(id)) roads.set(id, { coords: it.coords, tags: (ways.get(id) || {}).tags || {}, offM: it.offM, sides: new Set() });
+    roads.get(id).sides.add(it.props.side);
+  }
+  const out = [];
+  const feat = (coords, props) => out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords },
+    properties: props });
+  const int = v => { const n = parseInt(v, 10); return n > 0 && n < 10 ? n : 0; };
+  for (const [id, r] of roads) {
+    const t = r.tags, c = r.coords;
+    if (c.length < 2 || lineLength(c) < 5) continue;
+    const half = Math.max(2, r.offM - 0.8); // krawędź jezdni = wewnętrzna krawędź pasa rowerowego (patrz laneOffsetM)
+    const oneway = ['yes', '1', 'true', '-1'].includes(t.oneway);
+    let n = int(t.lanes), f = int(t['lanes:forward']), b = int(t['lanes:backward']);
+    if (oneway) { n = n || 1; f = t.oneway === '-1' ? 0 : n; b = n - f; }
+    else {
+      if (!n) n = f + b || 2;
+      if (!f && !b) { f = Math.ceil(n / 2); b = n - f; } else if (!f) f = Math.max(0, n - b); else if (!b) b = Math.max(0, n - f);
+      n = f + b || 1;
+    }
+    // nawierzchnia jezdni: szary asfalt (albo kostka); asfalt sięga do zewnętrznej krawędzi pasa rowerowego
+    const L = r.sides.has(-1) ? r.offM + 0.95 : half, R = r.sides.has(1) ? r.offM + 0.95 : half;
+    const surf = /^(paving_stones|sett|cobblestone|unhewn_cobblestone|bricks)/.test(t.surface || '') ? 'kostka' : 'asfalt';
+    feat(offsetLine(c, (R - L) / 2), { cls: 'jezdnia', way: id, wm: L + R, real: 'nav-jezdnia-' + surf, lanes: n });
+    // linie podziału pasów ruchu (pozycja od lewej krawędzi, w metrach od osi)
+    const lw = 2 * half / n;
+    for (let k = 1; k < n; k++) {
+      const d = -half + k * lw;
+      if (k === b && f && b) {
+        if (n >= 4) for (const e of [-0.12, 0.12]) feat(offsetLine(c, d + e), { cls: 'jezdnia-linia', way: id, kind: 'ciagla' });
+        else feat(offsetLine(c, d), { cls: 'jezdnia-linia', way: id, kind: 'os' });
+      } else feat(offsetLine(c, d), { cls: 'jezdnia-linia', way: id, kind: 'p1' });
+    }
+    // linia krawędziowa tam, gdzie nie ma pasa rowerowego (przy pasie rowerowym granicę wyznacza jego linia)
+    for (const s of [-1, 1]) if (!r.sides.has(s)) feat(offsetLine(c, s * (half - 0.25)), { cls: 'jezdnia-linia', way: id, kind: 'krawedz' });
+  }
+  return out;
+}
 function buildLaneChains(items, centerFeatures) {
   const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
   const nodeKey = c => c[0].toFixed(7) + ',' + c[1].toFixed(7);
@@ -1021,6 +1067,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addSource('routes', { type: 'geojson', data: { type: 'FeatureCollection', features: [] },
     attribution: 'Szlaki i drogi rowerowe: © OpenStreetMap (ODbL) via Overpass API' });
   map.addSource('infra', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addSource('roads', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }); // jezdnie z pasami ruchu (największy zoom)
 
   // infrastruktura (pod szlakami); pasy po stronie jezdni wg tagów left/right
   addInfraImages();
@@ -1036,6 +1083,21 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
       22, stop(['*', ['get', 'wm'], PX_PER_M(22) * 0.85])];
   };
   const isCls = (...c) => ['in', ['get', 'cls'], ['literal', c]];
+  // jezdnia z pasami ruchu (tylko największy zoom, pod całą infrastrukturą rowerową)
+  const ROAD_Z = 18;
+  const M = (m) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', m, PX_PER_M(17)], 22, ['*', m, PX_PER_M(22)]];
+  map.addLayer({ id: 'road-surface', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'),
+    layout: { 'line-cap': 'round', 'line-join': 'round' }, // zaokrąglenie zakrywa szczelinę między kolejnymi odcinkami ulicy
+    paint: { 'line-pattern': ['get', 'real'], 'line-width': M(['get', 'wm']) } });
+  const MARK_W = M(0.12);
+  map.addLayer({ id: 'road-lines-dash', type: 'line', source: 'roads', minzoom: ROAD_Z,
+    filter: ['all', isCls('jezdnia-linia'), ['in', ['get', 'kind'], ['literal', ['p1', 'os']]]],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': '#f2f2f2', 'line-opacity': 0.9, 'line-width': MARK_W, 'line-dasharray': ['literal', [25, 50]] } }); // kreska ok. 3 m, przerwa 6 m
+  map.addLayer({ id: 'road-lines-solid', type: 'line', source: 'roads', minzoom: ROAD_Z,
+    filter: ['all', isCls('jezdnia-linia'), ['in', ['get', 'kind'], ['literal', ['ciagla', 'krawedz']]]],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': '#f2f2f2', 'line-opacity': 0.9, 'line-width': MARK_W } });
   // „krawężnik”: cienka szara obwódka wokół dróg dla rowerów i ciągów
   map.addLayer({ id: 'infra-casing', type: 'line', source: 'infra', minzoom: 13, filter: isCls('droga', 'ciag'),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1175,7 +1237,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['road-surface', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
@@ -1352,13 +1414,21 @@ const kostka = (base, joint, shades) => canvasIcon(32, 32, (g, w, h) => {
   for (let y = 0, row = 0; y < h; y += bh, row++)
     for (let x = (row % 2) * -bw / 2; x < w; x += bw) { g.fillStyle = shades[(k++ * 7 + row) % shades.length]; g.fillRect(x + 0.35, y + 0.35, bw - 0.7, bh - 0.7); }
 });
+const beton = (base, specks, joint) => canvasIcon(32, 32, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); noise(g, w, h, 260, specks, 0.8); g.fillStyle = joint; g.fillRect(31.4, 0, 0.6, h); });
+const szuter = (base, specks) => canvasIcon(32, 32, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); noise(g, w, h, 500, specks, 0.9); });
+// wszystko niebieskie: droga dla rowerów ciemniejszy niebieski, ciąg pieszo-rowerowy jaśniejszy; faktura wg nawierzchni
 const NAV = {
-  'nav-asfalt-red': asphalt('#a8453c', ['#8f3a33', '#b8564c', '#9c3f37', '#c0665b']),
-  'nav-asfalt-grey': asphalt('#5f6266', ['#55585c', '#6b6e72', '#4c4f53', '#76797d']),
-  'nav-kostka-red': kostka('#a5483f', '#c9b9b2', ['#a5483f', '#b0544a', '#9a4239', '#ad4d43']),
-  'nav-kostka-grey': kostka('#8e9296', '#cfd1d3', ['#8e9296', '#999da1', '#868a8e', '#a2a5a8']),
-  'nav-beton': canvasIcon(32, 32, (g, w, h) => { g.fillStyle = '#b9b7b1'; g.fillRect(0, 0, w, h); noise(g, w, h, 260, ['#aeaca6', '#c4c2bc'], 0.8); g.fillStyle = '#9d9b96'; g.fillRect(31.4, 0, 0.6, h); }),
-  'nav-szuter': canvasIcon(32, 32, (g, w, h) => { g.fillStyle = '#c8b28a'; g.fillRect(0, 0, w, h); noise(g, w, h, 500, ['#b29a72', '#d8c4a0', '#a38b65', '#e0cfae'], 0.9); }),
+  'nav-asfalt-droga': asphalt('#2c5f9e', ['#25538c', '#3569aa', '#284f86', '#3d72b2']),
+  'nav-kostka-droga': kostka('#2f63a3', '#a9bed6', ['#2f63a3', '#386cad', '#2a5a96', '#3368a8']),
+  'nav-beton-droga': beton('#4a78b0', ['#4270a8', '#5582ba'], '#3a6398'),
+  'nav-szuter-droga': szuter('#5b84b6', ['#4c76aa', '#6a92c2', '#45699b', '#7aa0cc']),
+  'nav-asfalt-ciag': asphalt('#6b9ccc', ['#6292c2', '#76a6d4', '#5a8aba', '#82afdb']),
+  'nav-kostka-ciag': kostka('#72a2d0', '#d2e0ee', ['#72a2d0', '#7cabd8', '#6898c6', '#78a7d4']),
+  'nav-beton-ciag': beton('#86afd6', ['#7ea7ce', '#90b8de'], '#6f98c2'),
+  'nav-szuter-ciag': szuter('#8db3d8', ['#7fa6cc', '#9cbfe2', '#7399c0', '#a8c8e6']),
+  // jezdnia pod pasami rowerowymi (szara, jak w rzeczywistości)
+  'nav-jezdnia-asfalt': asphalt('#6a6d71', ['#606367', '#74777b', '#5a5d61', '#7e8185']),
+  'nav-jezdnia-kostka': kostka('#7d8185', '#a9acaf', ['#7d8185', '#878b8f', '#74787c', '#8a8d91']),
 };
 Object.assign(ICONS, NAV);
 function addInfraImages() {

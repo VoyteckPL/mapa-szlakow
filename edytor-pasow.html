@@ -52,7 +52,7 @@
       <div class="row"><label>krycie pasów <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label></div>
     </details>
     <details><summary>Ustawienia zaawansowane</summary>
-      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>dojście do osi <input type="number" id="fT" value="20" step="1" style="width:56px"> m</label></div>
+      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>długość przejścia <input type="range" id="fT" min="10" max="160" step="5" value="20" style="width:110px"> <span id="fTv">20</span> m</label><label>promień łuku jezdni <input type="range" id="fR" min="0" max="150" step="5" value="80" style="width:110px"> <span id="fRv">80</span> m</label></div>
       <div class="row"><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label></div>
     </details>
     <h4 style="margin-top:14px">Wybrana droga</h4>
@@ -80,7 +80,7 @@ const FORK_TYPES = { 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glo
 const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search), EKEY = (() => { const m = /#map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); return m ? 'rozj-' + m[1] + '/' + m[2] : 'rozj-x'; })(); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = true, FORK_MARKS = false, P9_TAPER = false;
-const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
+const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.2 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
 const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5, living_street: 2.25, service: 4, busway: 3.25 };
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
@@ -194,8 +194,20 @@ async function loadLink(txt) {
 }
 
 // ---------- układ automatyczny ----------
+function filletPts(pts, r) { // zaokragla zalamania lamanej lukami o promieniu r (os OSM zostaje ostra; zaokraglona jest tylko jezdnia)
+  if (pts.length < 3 || r <= 0) return pts.map(q => q.slice()); const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], len = a => Math.hypot(a[0], a[1]), nrm = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, out = [pts[0].slice()];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1], d1 = nrm(sub(p0, p1)), d2 = nrm(sub(p2, p1)), l1 = len(sub(p0, p1)), l2 = len(sub(p2, p1));
+    const cs = Math.max(-1, Math.min(1, d1[0] * d2[0] + d1[1] * d2[1])), ang = Math.acos(cs); if (ang > 3.1 || ang < 0.02) { out.push(p1.slice()); continue; }
+    let tl = r / Math.tan(ang / 2); const lim = Math.min(l1 * (i === 1 ? 0.9 : 0.5), l2 * (i === pts.length - 2 ? 0.9 : 0.5)); let rr = r; if (tl > lim) { tl = lim; rr = tl * Math.tan(ang / 2); }
+    const a = [p1[0] + d1[0] * tl, p1[1] + d1[1] * tl], b = [p1[0] + d2[0] * tl, p1[1] + d2[1] * tl], bis = nrm([d1[0] + d2[0], d1[1] + d2[1]]), c = [p1[0] + bis[0] * rr / Math.sin(ang / 2), p1[1] + bis[1] * rr / Math.sin(ang / 2)];
+    const a0 = Math.atan2(a[1] - c[1], a[0] - c[0]), a1 = Math.atan2(b[1] - c[1], b[0] - c[0]); let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const n = Math.max(2, Math.ceil(Math.abs(da) * rr / 0.5)); for (let k = 0; k <= n; k++) { const t = a0 + da * k / n; out.push([c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)]); }
+  }
+  out.push(pts[pts.length - 1].slice()); return out;
+}
 function comp(r, h) {
-  const Q = smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+  const Q = /^(motorway|trunk)/.test(r.hw || '') ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80)), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg, ins = 0) => offsetPts(o.Q, o.d.map((v, i) => v + sg * (o.w[i] / 2 - ins)));
@@ -205,7 +217,6 @@ function endWidth(c, st, f) { const n = c.Q.length, len = c.cum[n - 1]; for (let
 
 
 // ---------- rozjazd na szkielecie (przeniesiony z rozjazd-szkielet.html) ----------
-const SKEL = true;
 function skelFork(X, yl, yr, C, R, gores) {
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], add = (a, b) => [a[0] + b[0], a[1] + b[1]], mul = (a, k) => [a[0] * k, a[1] * k], nrm = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; }, nOf = t => [-t[1], t[0]];
   const dens = (Q, ds) => { const c = cumOf(Q), L = c[c.length - 1], out = []; for (let s = 0; s < L; s += ds) out.push(atS(Q, c, s)); out.push(Q[Q.length - 1]); return out; };
@@ -299,85 +310,7 @@ function layout() {
         const mu = [U[0][0] + U[1][0] + U[2][0] - U[xi][0], U[0][1] + U[1][1] + U[2][1] - U[xi][1]], ml = Math.hypot(...mu) || 1, m = [mu[0] / ml, mu[1] / ml], nR = [-m[1], m[0]];
         const cr = Ys.map(e => { const u = unitFrom(C[e.i], e.st); return m[0] * u[1] - m[1] * u[0]; });
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
-        if (SKEL) { skelFork(X, yl, yr, C, R, gores); continue; }
-        for (const e of [yl, yr]) { C[e.i].w.fill(rw(R[e.i])); C[e.i].e.fill(0); }
-        const lY = [yl, yr].map(e => R[e.i].lanes), uX0 = unitFrom(C[X.i], X.st, 8), angE = [yl, yr].map(e => { const t = unitFrom(C[e.i], e.st, 8); return Math.acos(Math.max(-1, Math.min(1, -(t[0] * uX0[0] + t[1] * uX0[1])))) * 180 / Math.PI; });
-        // rozjazd "prosty + odchodzacy": jeden wylot idzie prosto (os OSM = przedluzenie dwupasowej), drugi odchodzi pod katem. Dwupasowa zostaje symetryczna; oba wyloty ida wlasnymi osiami OSM, a ich szerokosc zwezamy od szerokosci dwupasowej
-        const asym = ROZBIEZNY && lY[0] === lY[1] && Math.min(...angE) < 6 && Math.max(...angE) > 12, uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1;
-        const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
-        const uMn = uneq ? (() => { const f = atS(oMn.Q, oMn.cum, Math.min(oMn.cum[oMn.cum.length - 1] * 0.4, 40)), l = dist(n0, f) || 1; return [(f[0] - n0[0]) / l, (f[1] - n0[1]) / l]; })() : uXr, ref = sx => ({ p: [n0[0] + uMn[0] * sx, n0[1] + uMn[1] * sx], t: uMn });
-        [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
-          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = uneq && q === mi ? Math.min(len * 0.4, 40) : Math.min(+$('fP').value, len * 0.3); let T2 = Math.min(Math.max(uneq ? (q === mi ? 24 : 56) : 16, +$("fT").value), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
-          if (asym && angE[q] < 6) { // wylot prosty: pas rzeczywiscie lezy obok osi OSM (os OSM = przedluzenie srodka dwupasowej) - stale przesuniecie, powrot do osi dopiero przy koncu odcinka
-            const Tend = Math.min(30, len * 0.5); for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx, u = sx <= len - Tend ? 0 : (sx - (len - Tend)) / Tend, f = 1 - u * u * (3 - 2 * u); c.d[jj] += (e.st ? 1 : -1) * sh * f; } return;
-          }
-          if (!sh && !(uneq && q === mi)) return; // glowne pasy (2 pasy po stronie 3->2+1) ida prosto przedluzeniem osi 3-pasowej, dopiero potem lagodnie wracaja do osi OSM
-          if (uneq && q === mi) { // glowne pasy: idealnie prosta od wezla az do ~90 m, odchylenia osi OSM znikaja (wracamy do osi dopiero na koncu)
-            const L = Math.min(len * 0.8, 90), f = atS(o.Q, o.cum, L), l0 = dist(o.Q[0], f) || 1, u = [(f[0] - o.Q[0][0]) / l0, (f[1] - o.Q[0][1]) / l0]; let mxd = 0;
-            for (let jx = 0; jx < n; jx++) if (o.cum[jx] < L) mxd = Math.max(mxd, Math.abs((o.Q[jx][0] - o.Q[0][0]) * u[1] - (o.Q[jx][1] - o.Q[0][1]) * u[0]));
-            if (mxd < 1.5) { for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx]; if (sx >= L) continue; const jj = e.st ? jx : n - 1 - jx, pl = [o.Q[0][0] + u[0] * sx, o.Q[0][1] + u[1] * sx], t = Math.max(0, (sx - 0.55 * L) / (0.45 * L)), w = t * t * (3 - 2 * t); c.Q[jj] = [pl[0] + (o.Q[jx][0] - pl[0]) * w, pl[1] + (o.Q[jx][1] - pl[1]) * w]; } c.cum = cumOf(c.Q); return; }
-          }
-          // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
-          const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = ROZBIEZNY && angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
-          const Q0 = o.Q.map(q => q.slice()); // ścieżka wylotu: równolegle (P) do przedłużenia dwupasowej, potem krzywa Hermite'a do osi OSM (styczna z obu stron)
-          const TW = uneq && q !== mi ? 12 : 6; { let sk = 0; for (let j = 1; j < n - 1; j++) { if (o.cum[j] > 24) break; const a1 = [o.Q[j][0] - o.Q[j - 1][0], o.Q[j][1] - o.Q[j - 1][1]], a2 = [o.Q[j + 1][0] - o.Q[j][0], o.Q[j + 1][1] - o.Q[j][1]], l1 = Math.hypot(...a1), l2 = Math.hypot(...a2); if (l1 > 0 && l2 > 0 && Math.acos(Math.max(-1, Math.min(1, (a1[0] * a2[0] + a1[1] * a2[1]) / (l1 * l2)))) > 0.14) sk = o.cum[j]; } if (sk > 0) T2 = Math.min(Math.max(T2, sk + 6 - P), 32, len * 0.5); } const par = asym && diverge, Pe = par ? (() => { const bL = atS(o.Q, o.cum, Math.min(30, len)), lL = dist(o.Q[0], bL) || 1, cs = ((bL[0] - o.Q[0][0]) * uXr[0] + (bL[1] - o.Q[0][1]) * uXr[1]) / lL, aL = Math.acos(Math.max(-1, Math.min(1, cs))); return Math.min(12, Math.abs(sh) / Math.max(0.12, Math.sin(aL))); })() : (diverge ? 0 : P), T2e = diverge ? Math.min(T2, 10) : T2, sb = Pe + T2e, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, Math.min(len, sb + TW)), Bm = atS(Q0, o.cum, Math.max(0, sb - TW)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
-          const rfP0 = ref(Pe), rfP = diverge && !par ? { p: rfP0.p, t: tY0 } : rfP0, A = [rfP0.p[0] - rfP0.t[1] * sh, rfP0.p[1] + rfP0.t[0] * sh], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
-          for (let jx = 0; jx < n; jx++) {
-            const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx; if (sx >= sb) continue;
-            if (sx <= Pe) { const rf = ref(sx); c.Q[jj] = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; continue; }
-            const u = (sx - Pe) / T2e, h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
-            c.Q[jj] = [h00 * A[0] + h10 * Ls * rfP.t[0] + h01 * B[0] + h11 * Ls * bt[0], h00 * A[1] + h10 * Ls * rfP.t[1] + h01 * B[1] + h11 * Ls * bt[1]];
-          }
-          c.cum = cumOf(c.Q);
-        });
-        if (uneq) { const cX = C[X.i], wM = rw(R[[yl, yr][mi].i]), sgR = mi === 0 ? 1 : -1; cX.w.fill(wM); if (cX.tf) cX.e = cX.tf.map(f => (wX - wM) * f); else cX.e.fill(wX - wM); cX.side = X.st ? -sgR : sgR; }
-        { // wyloty nie moga na siebie nachodzic (np. oba prawie prosto): tam, gdzie odstep krawedzi < 0, rozsuwamy je symetrycznie
-          for (const e of [yl, yr]) { const c = C[e.i]; c.Q = offsetPts(c.Q, c.d); c.d = c.d.map(() => 0); c.cum = cumOf(c.Q); }
-          const oa = orient(C[yl.i], yl.st), ob = orient(C[yr.i], yr.st), wsum = (rw(R[yl.i]) + rw(R[yr.i])) / 2, Lm = Math.min(oa.cum[oa.cum.length - 1], ob.cum[ob.cum.length - 1], 60), N = Math.floor(Lm) + 1, df = [];
-          for (let i = 0; i < N; i++) { const pa = atS(oa.Q, oa.cum, i), pb = atS(ob.Q, ob.cum, i); df.push(Math.max(0, wsum - ((pb[0] - pa[0]) * nR[0] + (pb[1] - pa[1]) * nR[1]))); }
-          if (df.some(v => v > 0.02)) {
-            const mx = df.map((_, i) => Math.max(...df.slice(Math.max(0, i - 3), i + 4))), sm = mx.map((_, i) => { let a = 0, c = 0; for (let k = Math.max(0, i - 3); k <= Math.min(N - 1, i + 3); k++) { a += mx[k]; c++; } return a / c; });
-            const dAt = sv => { if (sv >= N - 1) return 0; const i = Math.floor(sv), f = sv - i; return sm[i] * (1 - f) + sm[i + 1] * f; };
-            [[yl, -1], [yr, 1]].forEach(([e, sg]) => { const c = C[e.i], o = orient(c, e.st), n = o.Q.length; for (let jx = 0; jx < n; jx++) { const isM = uneq && e === [yl, yr][mi]; if (isM) break; const dd = dAt(o.cum[jx]) / (uneq ? 1 : 2); if (!dd) continue; const jj = e.st ? jx : n - 1 - jx; c.Q[jj] = [c.Q[jj][0] + sg * nR[0] * dd, c.Q[jj][1] + sg * nR[1] * dd]; } c.cum = cumOf(c.Q); });
-          }
-        }
-        { // łata na styku dwupasowej i obu wylotów: zasłania szczeliny między obciętymi końcami
-          const nd = orient(C[X.i], X.st), pts6 = [edgeOf(nd, -1)[0], edgeOf(nd, 1)[0]];
-          for (const e of [yl, yr]) { const oy = orient(C[e.i], e.st); pts6.push(edgeOf(oy, -1)[0], edgeOf(oy, 1)[0]); }
-          const cx = pts6.reduce((q, v) => q + v[0] / pts6.length, 0), cy = pts6.reduce((q, v) => q + v[1] / pts6.length, 0);
-          gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [], ly: R[X.i].ly | 0 });
-        }
-        const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
-        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 6) break; rows.push({ s, a, b, g }); }
-        if (rows.length > 2 && rows.some(r => r.g > 1)) {
-          const sEnd = Math.max(0, rows[rows.length - 1].s - 1.5), svA = cA.find(v => v >= sEnd) ?? sEnd, svB = cB.find(v => v >= sEnd) ?? sEnd; cutIn.push({ i: yl.i, ss: yl.st ? 1 : -1, st: yl.st, s: svA - 1e-4 }, { i: yr.i, ss: yr.st ? -1 : 1, st: yr.st, s: svB - 1e-4 });
-          const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];
-          if (CHEVRONS) {
-            let last = -99; const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
-            for (let ri = 0; ri < rows.length && chev.length < 12; ri++) {
-              const r0 = rows[ri]; if (r0.g < 1.6 || r0.g > 4.4 || r0.s - last < 1.1) continue; const mg = !!X.st, sLo = rows[0].s, s2 = mg ? Math.max(r0.s - 0.45 * r0.g, sLo) : Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
-              const ap = lerp(t1, t2, 0.5), ex = (P, Q) => lerp(Q, P, 1.12); let bb = b2, bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; mg ? ss >= sLo : ss <= smax; ss += mg ? -0.04 : 0.04) { const pb = atS(B2, cB, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } } chev.push([ex(a2, ap), ap, ex(bb, ap)]); last = r0.s;
-            }
-          }
-          const sL = rows[rows.length - 1].s, sS = rows[0].s, pa0 = atS(A2, cA, sS), pb0 = atS(B2, cB, sS), c0 = [(pa0[0] + pb0[0]) / 2, (pa0[1] + pb0[1]) / 2], Al = [], Bl = [];
-          const sL2 = Math.max(svA, svB), ssL = []; for (let x = sS; x < sL2; x += 0.5) ssL.push(x); ssL.push(sL2, svA, svB); const ssU = [...new Set(ssL)].sort((x, y) => x - y); for (const ss of ssU) { const u = Math.min(1, (ss - sS) / 5), w = u * u * (3 - 2 * u), pa = atS(A2, cA, ss), pb = atS(B2, cB, ss); let qa = [c0[0] + (pa[0] - c0[0]) * w, c0[1] + (pa[1] - c0[1]) * w], qb = [c0[0] + (pb[0] - c0[0]) * w, c0[1] + (pb[1] - c0[1]) * w];
-            { // linie, ktore sie naturalnie schodza (odstep < ~0.4 m, takze gdy sie krzyzuja) zlewaja sie w jedna linie
-              const gp2 = (qb[0] - qa[0]) * nR[0] + (qb[1] - qa[1]) * nR[1], u2 = Math.max(0, Math.min(1, (gp2 - 0.45) / 0.8)), k2 = u2 * u2 * (3 - 2 * u2), mid = [(qa[0] + qb[0]) / 2, (qa[1] + qb[1]) / 2];
-              if (uneq) { const fx = mi === 0 ? qa : qb, ot = mi === 0 ? qb : qa, nw = [fx[0] + (ot[0] - fx[0]) * k2, fx[1] + (ot[1] - fx[1]) * k2]; if (mi === 0) qb = nw; else qa = nw; } else { qa = [mid[0] + (qa[0] - mid[0]) * k2, mid[1] + (qa[1] - mid[1]) * k2]; qb = [mid[0] + (qb[0] - mid[0]) * k2, mid[1] + (qb[1] - mid[1]) * k2]; }
-            }
-            if (ss <= svA + 1e-9) Al.push(qa); if (ss <= svB + 1e-9) Bl.push(qb); }
-          if (uneq) { const T = mi === 0 ? Bl : Al, org = T.map(q => q.slice()); for (let it = 0; it < 40; it++) { const pr = T.map(q => q.slice()); for (let k = 1; k < T.length - 1; k++) { T[k][0] = (pr[k - 1][0] + 2 * pr[k][0] + pr[k + 1][0]) / 4; T[k][1] = (pr[k - 1][1] + 2 * pr[k][1] + pr[k + 1][1]) / 4; } } for (let k = 0; k < T.length; k++) { const t = Math.max(0, Math.min(1, ((T.length - 1 - k) * 0.5 - 4) / 8)), w0 = t * t * (3 - 2 * t), O = mi === 0 ? Al : Bl, gk = k < O.length ? dist(Al[k], Bl[k]) : 9, tg = Math.max(0, Math.min(1, (gk - 1.0) / 1.5)), w = w0 * (1 - tg * tg * (3 - 2 * tg)); T[k] = [org[k][0] + (T[k][0] - org[k][0]) * w, org[k][1] + (T[k][1] - org[k][1]) * w]; } } // linia rampy: gladki luk bez zalaman
-          if (CHEVRONS) { // szewrony liczone na koncowych (wygladzonych) liniach klina: wierzcholek lezy na srodku miedzy nimi
-            chev.length = 0; const ip = (arr, x) => { const m = arr.length - 1; if (x <= ssU[0]) return arr[0]; if (x >= ssU[m]) return arr[m]; let k = 0; while (ssU[k + 1] < x) k++; const f = (x - ssU[k]) / (ssU[k + 1] - ssU[k]); return [arr[k][0] + (arr[k + 1][0] - arr[k][0]) * f, arr[k][1] + (arr[k + 1][1] - arr[k][1]) * f]; };
-            const lerp2 = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; let last = -99;
-            for (let ri = 0; ri < rows.length && chev.length < 12; ri++) {
-              const r0 = rows[ri]; if (r0.g < 1.6 || r0.g > 4.4 || r0.s - last < 1.1) continue; const mg = !!X.st, sLo = rows[0].s, s2 = mg ? Math.max(r0.s - 0.45 * r0.g, sLo) : Math.min(r0.s + 0.45 * r0.g, smax), a2 = ip(Al, s2), t1 = ip(Al, r0.s), t2 = ip(Bl, r0.s), ap = lerp2(t1, t2, 0.5);
-              const bb = ip(Bl, s2); // oba ramiona koncza sie w tym samym s: symetryczny, rowny szewron
-              chev.push([lerp2(ap, a2, 1.12), ap, lerp2(ap, bb, 1.12)]); last = r0.s;
-            }
-          }
-          gores.push({ poly, A: Al, B: Bl, chev, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
-        }
+        skelFork(X, yl, yr, C, R, gores); continue;
         continue;
       }
     }
@@ -402,9 +335,9 @@ function layout() {
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
       addLine(DL, dst); // linia pasow przed rozjazdem tez przerywana, jak reszta drogi
     }
-    if (r.edge) {
+    if (r.edge || /^(motorway|trunk)/.test(r.hw || '')) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));
-      addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j) + 0.2)), 'p2', kpe(-1)); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j) - 0.2)), 'p2', kpe(1));
+      addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), 'p2', kpe(-1)); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j))), 'p2', kpe(1));
     }
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const NL = Math.max(1, r.lanes | 0), nb = NL - (r.oneway ? NL : r.nf);
@@ -498,12 +431,21 @@ function drawLayer(g) {
   const lys = [...new Set([...L.polys, ...L.gores, ...L.lines, ...L.arrows].map(q => q.ly | 0))].sort((a, b) => a - b);
   for (const ly of lys) drawGroup(g, ly);
 }
+let ASPT = null;
+function asphaltPat(g, k) { // tekstura asfaltu: ziarno + plamy, kafel zakotwiczony w metrach (skaluje sie z zoomem)
+  if (!ASPT) { const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d'), im = x.createImageData(N, N); let sd = 7; const rnd = () => (sd = (sd * 1664525 + 1013904223) >>> 0) / 4294967296;
+    for (let i = 0; i < N * N; i++) { const v = 112 + (rnd() - 0.5) * 26 + (rnd() < 0.04 ? (rnd() - 0.4) * 40 : 0); im.data[i * 4] = v; im.data[i * 4 + 1] = v + 1; im.data[i * 4 + 2] = v + 3; im.data[i * 4 + 3] = 255; }
+    x.putImageData(im, 0, 0);
+    for (let q = 0; q < 26; q++) { const px = rnd() * N, py = rnd() * N, r = 14 + rnd() * 34, a = (rnd() - 0.5) * 0.07; for (const dx of [-N, 0, N]) for (const dy of [-N, 0, N]) { const gr = x.createRadialGradient(px + dx, py + dy, 0, px + dx, py + dy, r), col = a > 0 ? '255,255,255' : '0,0,0'; gr.addColorStop(0, 'rgba(' + col + ',' + Math.abs(a) + ')'); gr.addColorStop(1, 'rgba(' + col + ',0)'); x.fillStyle = gr; x.fillRect(px + dx - r, py + dy - r, 2 * r, 2 * r); } }
+    ASPT = c; }
+  const p = g.createPattern(ASPT, 'repeat'), o = w2s([0, 0]), sc = k / 40; try { p.setTransform(new DOMMatrix([sc, 0, 0, sc, o[0], o[1]])); } catch (e) {} return p;
+}
 function drawGroup(g, ly) {
-  const k = S.view.k; g.lineJoin = 'round'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
+  const k = S.view.k; g.lineJoin = 'round'; const PAT = asphaltPat(g, k) || '#7c8083'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
   if (ly > 0) for (const q of Lp) if (q.br && q.P.length > 2) { g.save(); g.lineCap = 'butt'; g.lineJoin = 'miter'; pathOf(g, q.P, true); g.strokeStyle = 'rgba(20,22,26,.14)'; g.lineWidth = 1.6 * k; g.stroke(); g.restore(); } // cień wiaduktu na niższych drogach
-  for (const q of Lp) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'square'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
-  for (const q of Lp) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); if (ly > 0 && q.br) { g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.strokeStyle = '#9ea2a8'; g.lineWidth = Math.max(1.5, 0.55 * k); g.stroke(); } } }
-  for (const q of Lg) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
+  for (const q of Lp) if (q.P.length > 2 && q.kerb !== false) { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const [col, wd] of [['#6f716c', 0.84], ['#c4c6c0', 0.68]]) { g.strokeStyle = col; g.lineWidth = Math.max(1.5, wd * k); for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } } // krawezniki: waski jasny pasek na zewnatrz konturu (wnetrze przykrywa jezdnia)
+  for (const q of Lp) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill(); g.fillStyle = PAT; g.fill(); g.stroke(); if (ly > 0 && q.br) { g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.strokeStyle = '#9ea2a8'; g.lineWidth = Math.max(1.5, 0.55 * k); g.stroke(); } } }
+  for (const q of Lg) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill(); g.fillStyle = PAT; g.fill(); g.stroke(); }
   for (const q of Lg) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
   const line = (P, st, col) => {
     const sty = LS[st] || LS.p1, one = Q => { pathOf(g, Q, false); g.setLineDash(sty.dash ? sty.dash.map(v => v * k) : []); g.lineWidth = Math.max(1, sty.w * k); g.strokeStyle = col || '#f2f2f2'; g.lineCap = 'butt'; g.stroke(); g.setLineDash([]); };
@@ -692,7 +634,7 @@ $('bImp').onclick = async () => {
   say('Pobieram dane widoku…'); await loadOsmAround((la + lb) / 2, (lo + hi) / 2, box); push(); importView();
 };
 for (const id of ['cTile', 'cLay', 'cAx', 'cBlue', 'rA', 'bm']) $(id).oninput = () => render();
-$('cSm').oninput = () => touch(); $('fP').oninput = $('fT').oninput = () => touch();
+$('cSm').oninput = () => touch(); $('fP').oninput = () => touch(); $('fT').oninput = () => { $('fTv').textContent = $('fT').value; touch(); }; $('fR').oninput = () => { $('fRv').textContent = $('fR').value; touch(); };
 $('bFinish').onclick = finishDraw; $('bCancel').onclick = () => setTool('sel');
 function finishDraw() { if (S.draw && S.draw.pts.length > 1) { push(); S.doc.road.push(newRoad(S.draw.pts, S.draw.nk)); S.sel = S.doc.road.length - 1; } setTool('sel'); save(); touch(); }
 $('bExp').onclick = () => { $('io').value = JSON.stringify({ org: S.org, doc: S.doc }); };

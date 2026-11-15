@@ -46,7 +46,7 @@
     </div>
     <div class="row">
       <label>pasy – krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
-      <label>rozjazd: równolegle <input type="number" id="fP" value="2" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="12" step="1" style="width:56px"> m</label><button id="bImp">Wczytaj drogi z widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
+      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bImp">Wczytaj drogi z widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
     </div>
     <div id="props"></div>
     <details><summary>Dane</summary>
@@ -184,7 +184,7 @@ function layout() {
     if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
     if (best < -1.0 && ln[xi] === 2 && ln.filter((_, a) => a !== xi).every(v => v === 1)) G.forEach((e, a) => { const h = hints[e.i] || (hints[e.i] = {}); h.sm = true; if (a === xi || !HINTS) return; const t = [-U[xi][0], -U[xi][1]]; if (e.st) h.tin = t; else h.tout = [-t[0], -t[1]]; });
   }
-  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [], forks = [];
+  S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), gores = [], cutIn = [], forks = [], forkX = new Map();
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
@@ -205,7 +205,7 @@ function layout() {
       if (U[xi][0] * (U[(xi + 1) % 3][0] + U[(xi + 2) % 3][0]) + U[xi][1] * (U[(xi + 1) % 3][1] + U[(xi + 2) % 3][1]) < -1.0 && R[X.i].lanes >= Math.max(R[Ys[0].i].lanes, R[Ys[1].i].lanes)) {
         handled.add(k);
         if (!(R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1)) continue; // tylko rozjazd 2 -> 1+1 jest renderowany specjalnie
-        forks.push(orient(C[X.i], X.st).Q[0]);
+        forks.push(orient(C[X.i], X.st).Q[0]); forkX.set(X.i, X.st);
         const mu = [U[0][0] + U[1][0] + U[2][0] - U[xi][0], U[0][1] + U[1][1] + U[2][1] - U[xi][1]], ml = Math.hypot(...mu) || 1, m = [mu[0] / ml, mu[1] / ml], nR = [-m[1], m[0]];
         const cr = Ys.map(e => { const u = unitFrom(C[e.i], e.st); return m[0] * u[1] - m[1] * u[0]; });
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
@@ -257,7 +257,11 @@ function layout() {
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.8) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
-      addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1');
+      const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
+      if (forkX.has(i)) { // przed rozjazdem linia pasów staje się ciągła i przechodzi w linie klina
+        const len = c.cum[n - 1], near = j => (forkX.get(i) ? c.cum[j] : len - c.cum[j]) < 14;
+        addLine(DL, dst, keep.map((kk, j) => kk && !near(j))); addLine(DL, 'p2', keep.map((kk, j) => kk && (near(j) || (j + 1 < n && near(j + 1)) || (j > 0 && near(j - 1)))));
+      } else addLine(DL, dst);
     }
     if (r.edge) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));

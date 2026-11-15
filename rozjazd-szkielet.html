@@ -88,23 +88,15 @@ function drawRoad(){
   fill(G.x.L,G.x.R);fill(G.a.L,G.a.Rr);fill(G.b.L,G.b.Rr);
   const pts=[G.x.L[0],G.x.R[0],G.a.L[0],G.a.Rr[0],G.b.L[0],G.b.Rr[0]];const cx=pts.reduce((s,p)=>s+p[0],0)/6,cy=pts.reduce((s,p)=>s+p[1],0)/6;
   pts.sort((p,q)=>Math.atan2(p[1]-cy,p[0]-cx)-Math.atan2(q[1]-cy,q[0]-cx));path(pts,true);ctx.fillStyle=ROAD;ctx.fill();
-  // klin: krawedz Neg odnogi od strony + i krawedz Pos odnogi od strony -
-  const neg=G.a.sg<0?G.a:G.b,pos=neg===G.a?G.b:G.a,inN=offsetLine(neg.C,neg.tc,neg.C.map(()=>neg.W/2-0.2)),inP=offsetLine(pos.C,pos.tc,pos.C.map(()=>-(pos.W/2-0.2))),N=Math.min(inN.length,inP.length);
-  const A2=[],B2=[],gap=[];for(let i=0;i<N;i++){const g=len(sub(inN[i],inP[i]));gap.push(g);const u=sm5(Math.max(0,Math.min(1,(g-0.45)/0.8))),m=[(inN[i][0]+inP[i][0])/2,(inN[i][1]+inP[i][1])/2];A2.push([m[0]+(inN[i][0]-m[0])*u,m[1]+(inN[i][1]-m[1])*u]);B2.push([m[0]+(inP[i][0]-m[0])*u,m[1]+(inP[i][1]-m[1])*u]);}
-  let ie=N-1;for(let i=0;i<N;i++)if(gap[i]>5){ie=i;break;}
-  const wp=A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse());path(wp,true);ctx.fillStyle=ROAD;ctx.fill();
-  if(S.chev){let last=-9;ctx.save();path(wp,true);ctx.clip();
-    for(let i=0;i<N;i++){const s=i*0.5;if(gap[i]<1.6||gap[i]>4.4||s-last<1.1)continue;const d=Math.round(0.45*gap[i]/0.5)*(S.mg?-1:1),j=Math.max(0,Math.min(N-1,i+d)),ap=[(A2[i][0]+B2[i][0])/2,(A2[i][1]+B2[i][1])/2];const ex=(p)=>[ap[0]+(p[0]-ap[0])*1.15,ap[1]+(p[1]-ap[1])*1.15];stroke([ex(A2[j]),ap,ex(B2[j])],LINE,0.55);last=s;}ctx.restore();}
   // linie pasow wewnatrz drog (przerywane), krawedzie, linie klina
   const div=(C,tc,W,l,d)=>{for(let k=1;k<l;k++)stroke(offsetLine(C,tc,C.map(()=>-W/2+k*w)),LINE,0.12,[3,6]);};
   div(G.x.P,G.x.t,0,0);for(let k=1;k<G.nX;k++)stroke(G.x.off(-G.x.xN+k*w),LINE,0.12,[3,6]);
   [G.a,G.b].forEach(o=>div(o.C,o.tc,o.W,o.l));
-  stroke(A2,LINE,0.14);stroke(B2,LINE,0.14);
-  const xe=(q)=>G.x.off(q);const xneg=xe(-G.x.xN+0.2),xpos=xe(G.nX*w-G.x.xN-0.2);
-  [G.a,G.b].forEach(o=>{const sd=o.sg>0?1:-1,e=offsetLine(o.C,o.tc,o.C.map(()=>sd*(o.W/2-0.2))),xs=sd>0?xpos:xneg;stroke(xs.slice().reverse().concat(e.slice(1)),LINE,0.14);});
+  // biale krawedzie jezdni leza dokladnie na niebieskich konturach (bez wcinania do srodka), bez klina
+  const xneg=G.x.L,xpos=G.x.R;
+  [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,innerEdge=o.sg>0?o.Rr:o.L,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.14);stroke(innerEdge,LINE,0.14);});
   if(S.blue){const BL='rgba(47,139,255,.9)';[G.x.L,G.x.R,G.a.L,G.a.Rr,G.b.L,G.b.Rr].forEach(P=>stroke(P,BL,0.1));
-    path(pts,true);ctx.fillStyle='rgba(47,139,255,.18)';ctx.fill();stroke(pts.concat([pts[0]]),BL,0.1);
-    path(wp,true);ctx.fillStyle='rgba(255,140,0,.18)';ctx.fill();stroke(wp.concat([wp[0]]),'rgba(255,140,0,.95)',0.1);}
+    path(pts,true);ctx.fillStyle='rgba(47,139,255,.18)';ctx.fill();stroke(pts.concat([pts[0]]),BL,0.1);}
   if(S.sk){stroke(G.a.C,'#ffb000',0.12);stroke(G.b.C,'#ffb000',0.12);}
   if(S.ax){[[[0,0],...S.P.a],[[0,0],...S.P.b],[[0,0],...S.P.x]].forEach(P=>P.length>1&&stroke(spline(P),'#e0245e',0.08));}
 }

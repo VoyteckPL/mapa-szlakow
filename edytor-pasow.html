@@ -25,10 +25,12 @@
   select { width:auto; }
   input[type=range] { width:110px; }
   label { display:inline-flex; align-items:center; gap:5px; color:var(--mu); font-size:13px; }
-  h4 { margin:10px 0 2px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mu); }
+  h4 { margin:14px 0 2px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mu); }
   details { border-top:1px solid var(--bd); margin-top:10px; padding-top:6px; } summary { cursor:pointer; font-weight:600; }
   textarea { width:100%; height:80px; background:var(--bg); color:var(--tx); border:1px solid var(--bd); border-radius:6px; font:11px monospace; }
   .small { font-size:12px; color:var(--mu); }
+  #panel h4:first-of-type { margin-top:6px; }
+  details > summary { padding:2px 0; }
 </style>
 </head>
 <body>
@@ -37,23 +39,29 @@
   <div id="panel">
     <div class="row"><input type="text" id="lnk" placeholder="Wklej link z openstreetmap.org (…#map=18/54.4985/18.4614)"><button id="bLnk" class="on">Wczytaj</button></div>
     <div class="small" id="st"></div>
+    <h4>Narzędzia</h4>
     <div class="row" id="tools"></div>
     <div class="row" id="drawbar" style="display:none"><button id="bFinish" class="on">Zakończ</button><button id="bCancel" class="warn">Anuluj</button></div>
-    <div class="row">
-      <label><input type="checkbox" id="cTile" checked> podkład</label><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne tło (bez kolorowych dróg)</option><option value="orto" selected>Ortofoto Geoportal (HR)</option></select>
-      <label><input type="checkbox" id="cLay" checked> pasy (auto)</label>
-      <label><input type="checkbox" id="cAx" checked> osie</label><label><input type="checkbox" id="cSm"> wygładź</label>
-    </div>
-    <div class="row">
-      <label>pasy – krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
-      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render: <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
-    </div>
+    <div class="row"><button id="bUndo" title="Cofnij">↶ Cofnij</button><button id="bRedo" title="Ponów">↷ Ponów</button></div>
+    <h4>Dane drogowe z OSM</h4>
+    <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button></div>
+    <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
+    <details open><summary>Wygląd mapy</summary>
+      <div class="row"><label><input type="checkbox" id="cTile" checked> podkład</label><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne tło (bez kolorowych dróg)</option><option value="orto" selected>Ortofoto Geoportal (HR)</option></select></div>
+      <div class="row"><label><input type="checkbox" id="cLay" checked> pasy (render)</label><label><input type="checkbox" id="cAx" checked> osie OSM</label><label><input type="checkbox" id="cSm"> wygładź osie</label></div>
+      <div class="row"><label>krycie pasów <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label></div>
+    </details>
+    <details><summary>Ustawienia zaawansowane</summary>
+      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label></div>
+      <div class="row"><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label></div>
+    </details>
+    <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>
     <details id="osmx"><summary>Wyślij do OSM</summary>
       <div class="row"><label>Client ID <input id="oCid" style="width:180px" placeholder="z osm.org → Aplikacje OAuth 2"></label><button id="oLog">Zaloguj</button><span id="oWho"></span></div>
       <div class="row"><label>Opis zmiany <input id="oCom" style="width:230px" value="Wygładzenie geometrii rozjazdu (dopasowanie do ortofoto)"></label></div>
       <div class="row"><button id="oSend">Wyślij do OSM</button><span id="oSt" style="font-size:12px"></span></div>
-      <div style="font-size:12px;opacity:.75">Wysyłane są tylko przesunięte węzły osi OSM (oś, nie „render”). Wymaga zalogowania; wysyłka dopiero po drugim kliknięciu.</div>
+      <div style="font-size:12px;opacity:.75">Wysyłane są przesunięte węzły osi OSM i zmienione tagi dróg (nie „render”). Wymaga zalogowania; wysyłka dopiero po drugim kliknięciu.</div>
     </details>
     <details><summary>Dane</summary>
       <div class="row"><button id="bExp">Eksport JSON</button><button id="bImpJ">Wczytaj JSON</button><button id="bPng">Zapisz PNG</button><button id="bClr" class="warn">Wyczyść</button></div>
@@ -568,7 +576,7 @@ function showLanePal(x, y) {
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); });
 function props() {
-  const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = ''; return; }
+  const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
   const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { r[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${r[key] ? 'checked' : ''}> ${label}</label>`; };
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { r.lanes = Math.max(1, Math.round(v)); })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'

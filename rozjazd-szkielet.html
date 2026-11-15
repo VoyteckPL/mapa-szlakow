@@ -58,7 +58,10 @@ function build(){
   const tA=tangents(A.P),tB=tangents(B.P),tX=tangents(X.P);
   const e=mul(tX[0],-1),nE=nOf(e); // przedluzenie drogi wjazdowej poza wezel; jej przekroj koncowy jest do niego prostopadly
   const outer=(Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)];return(nE[0]*bp[0]+nE[1]*bp[1])>0?-1:1;}; // strona (znak wzdluz nE), w ktora odnoga ucieka
-  const sA=outer(B.P),sB=outer(A.P),nX=S.nX,lA=Math.min(nX-1,Math.max(1,S.lA)),lB=nX-lA;
+  const lat=Pb=>{const bp=Pb[Math.min(Pb.length-1,30)];return nE[0]*bp[0]+nE[1]*bp[1];};
+  let sA=outer(B.P),sB=outer(A.P);if(sA===sB){ // obie odnogi uciekaja w te sama strone: dalsza zajmuje zewnetrzna strone, druga wewnetrzna
+    const dA=Math.abs(lat(A.P)),dB=Math.abs(lat(B.P));if(dA>=dB)sA=-sA;else sB=-sB;}
+  const nX=S.nX,lA=Math.min(nX-1,Math.max(1,S.lA)),lB=nX-lA;
   const arms=[{R:A,t:tA,sg:sA,l:lA,k:'a'},{R:B,t:tB,sg:sB,l:lB,k:'b'}],neg=arms.find(o=>o.sg<0)||arms[0],pos=arms.find(o=>o!==neg);
   // polozenie osi w przekroju: parzysta liczba pasow - os w srodku; nieparzysta - (n-1) pasow rdzenia na osi, dodatkowy pas z boku mniejszej odnogi (offset)
   let xN=nX*w/2;if(nX%2===1){const extraNeg=neg.l<pos.l;xN=extraNeg?w+(nX-1)*w/2:(nX-1)*w/2;}

@@ -1055,7 +1055,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addLayer({ id: 'infra-real-center', type: 'line', source: 'infra', minzoom: REAL_Z, filter: ['all', isCls('droga'), ['==', ['get', 'dir'], 0]],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#ffffff', 'line-opacity': 0.9, 'line-width': REAL_MARK, 'line-dasharray': [8, 8] } });
-  const PAINT_SIZE = ['interpolate', ['exponential', 2], ['zoom'], REAL_Z, 1.6 * PX_PER_M(REAL_Z) / 24, 22, 1.6 * PX_PER_M(22) / 24];
+  const PAINT_SIZE = ['interpolate', ['exponential', 2], ['zoom'], REAL_Z, 2.2 * PX_PER_M(REAL_Z) / 24, 22, 2.2 * PX_PER_M(22) / 24]; // rower ok. 2,2 m z strzałką
   for (const [id, rot, two] of [['infra-real-bike-f', 0, true], ['infra-real-bike-b', 180, true], ['infra-real-bike-1', 0, false]]) {
     map.addLayer({ id, type: 'symbol', source: 'infra', minzoom: REAL_Z,
       filter: two ? ['all', isCls('droga'), ['==', ['get', 'dir'], 0]] : ['all', isCls('droga'), ['in', ['get', 'dir'], ['literal', [1, -1]]]],
@@ -1064,7 +1064,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
         'icon-image': 'paintbike', 'icon-size': PAINT_SIZE,
         'icon-rotate': two ? rot : ['case', ['==', ['get', 'dir'], -1], 180, 0],
         // dwukierunkowa: każdy rower na swojej (prawej) połowie drogi
-        'icon-offset': two ? [0, 7.5] : [0, 0],
+        'icon-offset': two ? [0, 5.5] : [0, 0],
       } });
   }
   // pasy przy jezdni: płaskie zakończenia (wyglądają jak pas, nie jak kreska)

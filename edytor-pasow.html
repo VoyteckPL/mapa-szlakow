@@ -214,7 +214,7 @@ function layout() {
         const uX3 = unitFrom(C[X.i], X.st, 4), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
-          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(+$('fT').value, len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
+          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(6, Math.min(+$('fT').value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
           if (!sh) return;
           const Q0 = o.Q.map(q => q.slice()); // pozycja = mieszanie położenia osi własnej z położeniem odniesienia (przedłużenie dwupasowej + przesunięcie)
           for (let jx = 0; jx < n; jx++) {

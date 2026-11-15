@@ -318,6 +318,15 @@ function layout() {
             }
             if (ss <= svA + 1e-9) Al.push(qa); if (ss <= svB + 1e-9) Bl.push(qb); }
           if (uneq) { const T = mi === 0 ? Bl : Al, org = T.map(q => q.slice()); for (let it = 0; it < 40; it++) { const pr = T.map(q => q.slice()); for (let k = 1; k < T.length - 1; k++) { T[k][0] = (pr[k - 1][0] + 2 * pr[k][0] + pr[k + 1][0]) / 4; T[k][1] = (pr[k - 1][1] + 2 * pr[k][1] + pr[k + 1][1]) / 4; } } for (let k = 0; k < T.length; k++) { const t = Math.max(0, Math.min(1, ((T.length - 1 - k) * 0.5 - 4) / 8)), w = t * t * (3 - 2 * t); T[k] = [org[k][0] + (T[k][0] - org[k][0]) * w, org[k][1] + (T[k][1] - org[k][1]) * w]; } } // linia rampy: gladki luk bez zalaman
+          if (CHEVRONS) { // szewrony liczone na koncowych (wygladzonych) liniach klina: wierzcholek lezy na srodku miedzy nimi
+            chev.length = 0; const ip = (arr, x) => { const m = arr.length - 1; if (x <= ssU[0]) return arr[0]; if (x >= ssU[m]) return arr[m]; let k = 0; while (ssU[k + 1] < x) k++; const f = (x - ssU[k]) / (ssU[k + 1] - ssU[k]); return [arr[k][0] + (arr[k + 1][0] - arr[k][0]) * f, arr[k][1] + (arr[k + 1][1] - arr[k][1]) * f]; };
+            const lerp2 = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; let last = -99;
+            for (let ri = 0; ri < rows.length && chev.length < 12; ri++) {
+              const r0 = rows[ri]; if (r0.g < 1.6 || r0.g > 4.4 || r0.s - last < 1.1) continue; const mg = !!X.st, sLo = rows[0].s, s2 = mg ? Math.max(r0.s - 0.45 * r0.g, sLo) : Math.min(r0.s + 0.45 * r0.g, smax), a2 = ip(Al, s2), t1 = ip(Al, r0.s), t2 = ip(Bl, r0.s), ap = lerp2(t1, t2, 0.5);
+              let bb = ip(Bl, s2), bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; mg ? ss >= sLo : ss <= smax; ss += mg ? -0.04 : 0.04) { const pb = ip(Bl, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } }
+              chev.push([lerp2(ap, a2, 1.12), ap, lerp2(ap, bb, 1.12)]); last = r0.s;
+            }
+          }
           gores.push({ poly, A: Al, B: Bl, chev, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;

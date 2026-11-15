@@ -86,7 +86,10 @@ function render(){
     // X po tej samej stronie ekranu: porownanie punktu startowego
     const cand=[xl,xr],best=cand.reduce((a,c)=>len(sub(c[0],e[0]))<len(sub(a[0],e[0]))?c:a);
     stroke(best.slice().reverse().concat(e.slice(1)),LINE,0.14);});
-  if(S.blue){[G.x.L,G.x.R,G.a.L,G.a.Rr,G.b.L,G.b.Rr].forEach(P=>stroke(P,'rgba(47,139,255,.9)',0.1));}
+  if(S.blue){const BL='rgba(47,139,255,.9)';[G.x.L,G.x.R,G.a.L,G.a.Rr,G.b.L,G.b.Rr].forEach(P=>stroke(P,BL,0.1));
+    path(pts,true);ctx.fillStyle='rgba(47,139,255,.18)';ctx.fill();stroke(pts.concat([pts[0]]),BL,0.1); // lata na styku pasow
+    const wp=A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse());path(wp,true);ctx.fillStyle='rgba(255,140,0,.18)';ctx.fill();stroke(wp.concat([wp[0]]),'rgba(255,140,0,.95)',0.1); // klin (miejsce laczenia/rozchodzenia sie pasow)
+  }
   if(S.sk){stroke(G.a.C,'#ffb000',0.12);stroke(G.b.C,'#ffb000',0.12);}
   if(S.ax){[[ [0,0],...S.P.a ],[ [0,0],...S.P.b ],[[0,0],S.P.x]].forEach(P=>stroke(spline(P),'#e0245e',0.08));}
   // uchwyty

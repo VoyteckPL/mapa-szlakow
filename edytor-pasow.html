@@ -512,6 +512,48 @@ const osmWay = id => S.osm.ways.get(id) || [...S.osm.ways.values()].find(o => o.
 const baseTags = r => (osmWay(r.osm) || { t: {} }).t;
 function effTags(r) { const t = { ...baseTags(r) }; for (const [k, v] of Object.entries(r.tg || {})) { if (v === null || v === '') delete t[k]; else t[k] = v; } return t; }
 function applyTags(r) { const w = osmWay(r.osm); if (!w) return; const m = makeRoad({ ...w, t: effTags(r) }, 0, w.g.length - 1); for (const k of ['lanes', 'lw', 'oneway', 'marked', 'edge', 'tl', 'nf']) r[k] = m[k]; }
+let LSEL = { r: 0, i: 0 }, LAN = null;
+const TURN = [['left', '←', 'w lewo'], ['through', '↑', 'prosto'], ['right', '→', 'w prawo'], ['reverse', '↶', 'zawróć'], ['merge_to_left', '⇖', 'zlewa się w lewo'], ['merge_to_right', '⇗', 'zlewa się w prawo']];
+function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + przyciski strzałek/liczby pasów (zapisuje tagi lanes*, turn:lanes*)
+  const et = effTags(r), nbk = parseInt(et['lanes:backward'], 10) || 0, nfw = parseInt(et['lanes:forward'], 10) || 0;
+  const rows = r.oneway ? [{ key: 'turn:lanes', cnt: 'lanes', n: Math.max(1, r.lanes | 0), lab: 'Pasy w kierunku jazdy (od lewej do prawej)' }] : [{ key: 'turn:lanes:forward', cnt: 'lanes:forward', n: nfw || r.nf || Math.max(1, Math.round(r.lanes / 2)), lab: 'Kierunek zgodny z rysowaniem (od lewej do prawej)' }, { key: 'turn:lanes:backward', cnt: 'lanes:backward', n: nbk || Math.max(1, r.lanes - (r.nf || 1)), lab: 'Kierunek przeciwny' }];
+  rows.forEach(rw0 => { const t = (et[rw0.key] || '').split('|'); rw0.tok = Array.from({ length: rw0.n }, (_, i) => t.length === rw0.n ? t[i] : ''); });
+  if (LSEL.r >= rows.length) LSEL.r = 0; const cur = rows[LSEL.r]; if (LSEL.i >= cur.n) LSEL.i = cur.n - 1;
+  const setTag = (k, v) => { r.tg = r.tg || {}; const b = baseTags(r)[k] || ''; if ((v === null ? '' : v) === b) delete r.tg[k]; else r.tg[k] = v; };
+  const commit = (row) => { const any = row.tok.some(x => x); setTag(row.key, any ? row.tok.join('|') : null); setTag(row.cnt, String(row.tok.length)); if (!r.oneway) { const o = rows.find(x => x !== row); setTag('lanes', String(row.tok.length + o.tok.length)); } if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); };
+  const sym = tk => { const set = tk ? tk.split(';') : []; return set.map(x => (TURN.find(t => t[0] === x.replace(/^(slight|sharp)_/, '')) || ['', '?'])[1]).join('') || '·'; };
+  let h = '<h4 style="margin:10px 0 4px">Pasy ruchu</h4>';
+  rows.forEach((row, ri) => { h += `<div class="small">${row.lab}</div><div class="row" style="gap:4px">` + row.tok.map((tk, i) => `<button class="lnb" data-r="${ri}" data-i="${i}" style="min-width:44px;height:44px;font-size:18px;${ri === LSEL.r && i === LSEL.i ? 'background:#2f6fae;color:#fff;border-color:#2f6fae' : ''}" title="pas ${i + 1}">${sym(tk)}</button>`).join('') + `<button class="lnp" data-r="${ri}" title="dodaj pas po prawej">＋</button><button class="lnm" data-r="${ri}" title="usuń zaznaczony pas">−</button></div>`; });
+  h += `<div class="small">Strzałki zaznaczonego pasa (pas ${LSEL.i + 1}):</div><div class="row" style="gap:4px">` + TURN.map(([k, ch, lab]) => { const on = (cur.tok[LSEL.i] || '').split(';').includes(k); return `<button class="lnt" data-k="${k}" title="${lab}" style="min-width:40px;height:36px;font-size:17px;${on ? 'background:#2f6fae;color:#fff;border-color:#2f6fae' : ''}">${ch}</button>`; }).join('') + '<button class="lnt" data-k="" title="bez strzałki">∅</button></div><div class="small">Kafelek = pas; kliknij pas, potem strzałkę (można kilka). ＋/− zmienia liczbę pasów.</div>';
+  const act = {
+    toggle: k => mut(() => { let set = (cur.tok[LSEL.i] || '').split(';').filter(Boolean); if (!k) set = []; else if (set.includes(k)) set = set.filter(x => x !== k); else set.push(k); cur.tok[LSEL.i] = set.join(';'); commit(cur); }),
+    add: ri => mut(() => { const row = rows[ri]; row.tok.push(''); LSEL = { r: ri, i: row.tok.length - 1 }; commit(row); }),
+    del: ri => mut(() => { const row = rows[ri]; if (row.tok.length < 2) return; const i = ri === LSEL.r ? LSEL.i : row.tok.length - 1; row.tok.splice(i, 1); LSEL.i = Math.max(0, i - 1); commit(row); })
+  };
+  LAN = { cur, idx: LSEL.i, ri: LSEL.r, act };
+  bind.push(() => {
+    document.querySelectorAll('.lnb').forEach(b => b.onclick = () => { LSEL = { r: +b.dataset.r, i: +b.dataset.i }; props(); });
+    document.querySelectorAll('.lnt').forEach(b => b.onclick = () => act.toggle(b.dataset.k));
+    document.querySelectorAll('.lnp').forEach(b => b.onclick = () => act.add(+b.dataset.r));
+    document.querySelectorAll('.lnm').forEach(b => b.onclick = () => act.del(+b.dataset.r));
+  });
+  return h;
+}
+function laneAt(r, w) { // który pas (wiersz/indeks kafelka) leży pod punktem w
+  let bd = 1e9, lat = 0; for (let j = 1; j < r.pts.length; j++) { const a = r.pts[j - 1], b = r.pts[j], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, t = Math.max(0, Math.min(1, ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / (l * l))), px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(w[0] - px, w[1] - py); if (d < bd) { bd = d; lat = ((w[0] - px) * -dy + (w[1] - py) * dx) / l; } }
+  const idx = Math.max(0, Math.min(r.lanes - 1, Math.floor((lat + rw(r) / 2) / r.lw)));
+  if (r.oneway) return { r: 0, i: idx }; const nb = r.lanes - (r.nf || 1); return idx >= nb ? { r: 0, i: idx - nb } : { r: 1, i: nb - 1 - idx };
+}
+function hideLanePal() { const e = document.getElementById('lpal'); if (e) e.remove(); }
+function showLanePal(x, y) {
+  hideLanePal(); if (!LAN) return; const set = (LAN.cur.tok[LAN.idx] || '').split(';'), d = document.createElement('div'); d.id = 'lpal';
+  d.style.cssText = `position:fixed;z-index:20;left:${Math.max(6, Math.min(innerWidth - 250, x - 120))}px;top:${Math.max(6, Math.min(innerHeight - 130, y + 14))}px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;padding:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);width:240px`;
+  d.innerHTML = `<div style="font-size:12px;margin-bottom:6px"><b>Pas ${LAN.idx + 1}</b> – wybierz strzałkę (można kilka)</div><div style="display:flex;flex-wrap:wrap;gap:5px">` + TURN.map(([k, ch, lab]) => `<button data-k="${k}" title="${lab}" style="width:48px;height:44px;font-size:20px;border-radius:10px;border:1px solid var(--bd);${set.includes(k) ? 'background:#2f6fae;color:#fff' : 'background:var(--bg)'};color:${set.includes(k) ? '#fff' : 'var(--tx)'}">${ch}</button>`).join('') + `<button data-k="" title="bez strzałki" style="width:48px;height:44px;font-size:18px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)">∅</button><button data-a="add" title="dodaj pas po prawej" style="width:48px;height:44px;font-size:20px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)">＋</button><button data-a="del" title="usuń ten pas" style="width:48px;height:44px;font-size:20px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)">−</button></div>`;
+  document.body.appendChild(d);
+  d.onpointerdown = e => e.stopPropagation();
+  d.querySelectorAll('button').forEach(b => b.onclick = () => { const ri = LAN.ri; if (b.dataset.a === 'add') LAN.act.add(ri); else if (b.dataset.a === 'del') LAN.act.del(ri); else LAN.act.toggle(b.dataset.k); showLanePal(x, y); });
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); });
 function props() {
   const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = ''; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
@@ -520,6 +562,7 @@ function props() {
     + chk('jednokierunkowa', 'oneway') + chk('pasy (linie)', 'marked') + chk('krawędziowe', 'edge') + chk('krawężnik', 'kerb')
     + `<select id="pc">${['auto', 'p1', 'p2', 'p4', 'brak'].map(m => `<option ${r.centre === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div><div class="small">linia środkowa. Szerokość = pasy × szer. pasa.</div><div class="row">`
     + `<button id="bRev">Odwróć kierunek</button>${r.rp ? '<button id="bRz">Zeruj render</button>' : ''}${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}<button id="bDel" class="warn">Usuń drogę</button></div>`;
+  if (r.osm) h += laneEditor(r, mut, bind);
   if (r.osm) { const bt = baseTags(r), et = effTags(r); h += `<details ${r.tg && Object.keys(r.tg).length ? 'open' : ''}><summary>Tagi OSM tej drogi${r.tg && Object.keys(r.tg).length ? ' (zmienione: ' + Object.keys(r.tg).length + ')' : ''}</summary>` + TAGK.map(([k, lab], i) => { const ch = r.tg && k in r.tg; return `<div class="row"><label style="${ch ? 'color:#e58a00;font-weight:600' : ''}">${lab} <input id="tg${i}" data-k="${k}" value="${(et[k] || '').replace(/"/g, '&quot;')}" placeholder="${bt[k] ? '' : 'brak tagu'}" style="width:190px"></label></div>`; }).join('') + `<div class="small">Zmiana przelicza render od razu. Do OSM trafia przez „Wyślij do OSM” (zmieniane są tylko pola oznaczone na pomarańczowo).</div>` + (r.tg && Object.keys(r.tg).length ? '<div class="row"><button id="bTgReset">Cofnij tagi</button></div>' : '') + '</details>';
     bind.push(() => { TAGK.forEach(([k], i) => { const inp = $('tg' + i); if (!inp) return; inp.onchange = () => mut(() => { const v = inp.value.trim(), b = baseTags(r)[k] || ''; r.tg = r.tg || {}; if (v === b) delete r.tg[k]; else r.tg[k] = v === '' ? null : v; if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); }); }); const br = $('bTgReset'); if (br) br.onclick = () => mut(() => { delete r.tg; applyTags(r); }); }); }
   el.innerHTML = h; bind.forEach(f => f());
@@ -568,7 +611,7 @@ const evp = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.l
 function nearVertex(p, tolPx, skipSel) {
   let best = null, bd = tolPx; S.doc.road.forEach((r, i) => r.pts.forEach((q, vi) => { const d = dist(w2s(q), p); if (d < bd) { bd = d; best = { i, vi }; } })); return best;
 }
-function hitRoad(w) { const tol = 10 / S.view.k; let best = -1, bd = tol; S.doc.road.forEach((r, i) => { for (let j = 1; j < r.pts.length; j++) { const d = segDist(w, r.pts[j - 1], r.pts[j]); if (d < bd) { bd = d; best = i; } } }); return best; }
+function hitRoad(w) { const tol = 10 / S.view.k; let best = -1, bd = 1e9; S.doc.road.forEach((r, i) => { const hw = Math.max(tol, rw(r) / 2 + 0.3); for (let j = 1; j < r.pts.length; j++) { const d = segDist(w, r.pts[j - 1], r.pts[j]); if (d < hw && d / hw < bd) { bd = d / hw; best = i; } } }); return best; } // trafienie w całą szerokość jezdni, nie tylko w oś
 cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
@@ -606,7 +649,7 @@ cv.addEventListener('pointermove', e => {
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;
   if (d.m === 'maybe') {
-    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; ui(); }
+    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; if (S.tool === 'sel' && S.sel >= 0 && S.doc.road[S.sel].osm && !EMBED) { LSEL = laneAt(S.doc.road[S.sel], d.w); ui(); showLanePal(e.clientX, e.clientY); } else { hideLanePal(); ui(); } }
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }

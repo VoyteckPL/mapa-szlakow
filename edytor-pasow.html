@@ -244,7 +244,7 @@ function layout() {
           if (CHEVRONS && G.some(e => /^(motorway|trunk)/.test(R[e.i].hw))) {
             let last = -99; const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
             for (let ri = 0; ri < rows.length && chev.length < 5; ri++) {
-              const r0 = rows[ri]; if (r0.g < 1.2 || r0.g > 4.2 || r0.s - last < 1.9) continue; const s2 = Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
+              const r0 = rows[ri]; if (r0.g < 1.2 || r0.g > 4.4 || r0.s - last < 1.1) continue; const s2 = Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
               chev.push([a2, lerp(t1, t2, 0.5), b2]); last = r0.s;
             }
           }
@@ -360,7 +360,18 @@ function drawLayer(g) {
   for (const l of L.lines) line(l.P, l.st);
   for (const q of L.gores) {
     line(q.A, 'p2'); line(q.B, 'p2');
-    for (const c of q.chev) { pathOf(g, c, false); g.strokeStyle = '#f2f2f2'; g.lineWidth = Math.max(1, 0.2 * k); g.lineJoin = 'miter'; g.lineCap = 'butt'; g.stroke(); g.lineJoin = 'round'; }
+    for (const c of q.chev) {
+      pathOf(g, c, false); g.strokeStyle = '#ececec'; g.lineWidth = Math.max(1.5, 0.4 * k); g.lineJoin = 'miter'; g.lineCap = 'butt'; g.stroke(); g.lineJoin = 'round';
+      // efekt zuzycia: ubytki farby (deterministyczny szum po wspolrzednych swiata)
+      g.fillStyle = 'rgba(107,110,115,.85)';
+      for (let j = 0; j + 1 < c.length; j++) {
+        const a = c[j], b = c[j + 1], n = Math.max(1, Math.ceil(dist(a, b) / 0.09));
+        for (let m = 0; m <= n; m++) {
+          const x = a[0] + (b[0] - a[0]) * m / n, y = a[1] + (b[1] - a[1]) * m / n, h1 = Math.sin(x * 127.1 + y * 311.7) * 43758.5453, r1 = h1 - Math.floor(h1), h2 = Math.sin(x * 269.5 + y * 183.3) * 24634.6345, r2 = h2 - Math.floor(h2), h3 = Math.sin(x * 12.9 + y * 78.2) * 15731.7, r3 = h3 - Math.floor(h3);
+          if (r1 < 0.26) { const sp = w2s([x + (r2 - .5) * 0.12, y + (r3 - .5) * 0.12]), rad = Math.max(0.6, (0.03 + 0.06 * r2) * k); g.beginPath(); g.arc(sp[0], sp[1], rad, 0, 7); g.fill(); }
+        }
+      }
+    }
   }
   for (const a of L.arrows) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }

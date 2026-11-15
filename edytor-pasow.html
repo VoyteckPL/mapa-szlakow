@@ -212,7 +212,7 @@ function layout() {
         const li = cr[0] < cr[1] ? 0 : 1, yl = Ys[li], yr = Ys[1 - li];
         for (const e of [yl, yr]) { C[e.i].w.fill(rw(R[e.i])); C[e.i].e.fill(0); }
         const lY = [yl, yr].map(e => R[e.i].lanes), uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1; // 3 -> 2+1: główne pasy na osi, pas zjazdu bokiem
-        const uX3 = unitFrom(C[X.i], X.st, 4), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
+        const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
           const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(6, Math.min(+$('fT').value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
@@ -225,7 +225,7 @@ function layout() {
           }
           { // lekkie wygładzenie ścieżki wylotu na odcinku dojścia do osi (bez ruszania węzła)
             let m = 0; while (m < n - 2 && o.cum[m] < P + T2 + 12) m++;
-            for (let it = 0; it < 12; it++) { const A = c.Q.map(q => q.slice()); for (let jx = 1; jx <= m; jx++) { const jj = e.st ? jx : n - 1 - jx, a = A[jj + (e.st ? -1 : 1)], b2 = A[jj + (e.st ? 1 : -1)]; if (!a || !b2) continue; c.Q[jj] = [0.25 * a[0] + 0.5 * A[jj][0] + 0.25 * b2[0], 0.25 * a[1] + 0.5 * A[jj][1] + 0.25 * b2[1]]; } }
+            for (let it = 0; it < 12; it++) { const A = c.Q.map(q => q.slice()); for (let jx = 2; jx <= m; jx++) { const jj = e.st ? jx : n - 1 - jx, a = A[jj + (e.st ? -1 : 1)], b2 = A[jj + (e.st ? 1 : -1)]; if (!a || !b2) continue; c.Q[jj] = [0.25 * a[0] + 0.5 * A[jj][0] + 0.25 * b2[0], 0.25 * a[1] + 0.5 * A[jj][1] + 0.25 * b2[1]]; } }
           }
           c.cum = cumOf(c.Q);
         });
@@ -249,7 +249,7 @@ function layout() {
               chev.push([a2, lerp(r0.a, r0.b, 0.5), b2]); last = r0.s;
             }
           }
-          gores.push({ poly, A: rows.map(r => atS(A2, cA, r.s)), B: rows.map(r => atS(B2, cB, r.s)), chev });
+          gores.push({ poly, A: rows.map(r => atS(A2, cA, r.s)), B: rows.map(r => atS(B2, cB, r.s)), chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;
       }
@@ -339,9 +339,10 @@ function drawTiles() {
 function pathOf(g, P, closed) { const s = P.map(w2s); g.beginPath(); s.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if (closed) g.closePath(); }
 function drawLayer(g) {
   const k = S.view.k; g.lineJoin = 'round';
-  for (const q of L.polys) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
+  for (const q of L.polys) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'square'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
   for (const q of L.polys) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
   for (const q of L.gores) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
+  for (const q of L.gores) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
   const line = (P, st, col) => {
     const sty = LS[st] || LS.p1, one = Q => { pathOf(g, Q, false); g.setLineDash(sty.dash ? sty.dash.map(v => v * k) : []); g.lineWidth = Math.max(1, sty.w * k); g.strokeStyle = col || '#f2f2f2'; g.lineCap = 'butt'; g.stroke(); g.setLineDash([]); };
     if (sty.dbl) { one(offsetPts(P, -sty.dbl)); one(offsetPts(P, sty.dbl)); } else one(P);

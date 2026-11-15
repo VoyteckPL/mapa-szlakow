@@ -146,7 +146,7 @@ function makeRoad(o, a, b) {
   let pts = o.g.slice(a, b + 1).map(p => [p[0], p[1]]), nk = o.nk.slice(a, b + 1);
   let tl = ow ? (t['turn:lanes'] || t['turn:lanes:forward'] || '') : (t['turn:lanes:forward'] || '');
   if (t.oneway === '-1') { pts.reverse(); nk.reverse(); }
-  const nf = ow ? n : (f || Math.round(n / 2));
+  const tfc = t['turn:lanes:forward'] ? t['turn:lanes:forward'].split('|').length : 0, tbc = t['turn:lanes:backward'] ? t['turn:lanes:backward'].split('|').length : 0, nf = ow ? n : (f || (bk && bk < n ? n - bk : 0) || (tfc && tfc < n ? tfc : 0) || (tbc && tbc < n ? n - tbc : 0) || Math.round(n / 2)); // liczba pasów forward: z tagów lanes:*, a gdy ich brak – z liczby pasów w turn:lanes:forward/backward
   return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, tlb: ow ? '' : (t['turn:lanes:backward'] || ''), nf, ly: layerOf(t), br: !!t.bridge && t.bridge !== 'no' };
 }
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });

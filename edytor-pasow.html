@@ -256,13 +256,13 @@ function layout() {
         // rozjazd "prosty + odchodzacy": jeden wylot idzie prosto (os OSM = przedluzenie dwupasowej), drugi odchodzi pod katem. Dwupasowa zostaje symetryczna; oba wyloty ida wlasnymi osiami OSM, a ich szerokosc zwezamy od szerokosci dwupasowej
         const asym = ROZBIEZNY && lY[0] === lY[1] && Math.min(...angE) < 6 && Math.max(...angE) > 12, uneq = lY[0] !== lY[1], mi = lY[0] > lY[1] ? 0 : 1;
         const oX1 = orient(C[X.i], X.st), uX3 = (() => { const a = oX1.Q[0], b = oX1.Q[1], l = dist(a, b) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l]; })(), uXr = [-uX3[0], -uX3[1]], wMn = rw(R[[yl, yr][mi].i]), wRp = rw(R[[yl, yr][1 - mi].i]), oMn = orient(C[[yl, yr][mi].i], [yl, yr][mi].st), n0 = oMn.Q[0];
-        const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
+        const uMn = uneq ? (() => { const f = atS(oMn.Q, oMn.cum, Math.min(oMn.cum[oMn.cum.length - 1] * 0.4, 40)), l = dist(n0, f) || 1; return [(f[0] - n0[0]) / l, (f[1] - n0[1]) / l]; })() : uXr, ref = sx => ({ p: [n0[0] + uMn[0] * sx, n0[1] + uMn[1] * sx], t: uMn });
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
-          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3); let T2 = Math.min(Math.max(16, +$("fT").value), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
+          const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = uneq && q === mi ? Math.min(len * 0.4, 40) : Math.min(+$('fP').value, len * 0.3); let T2 = Math.min(Math.max(uneq && q === mi ? 24 : 16, +$("fT").value), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
           if (asym && angE[q] < 6) { // wylot prosty: pas rzeczywiscie lezy obok osi OSM (os OSM = przedluzenie srodka dwupasowej) - stale przesuniecie, powrot do osi dopiero przy koncu odcinka
             const Tend = Math.min(30, len * 0.5); for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx, u = sx <= len - Tend ? 0 : (sx - (len - Tend)) / Tend, f = 1 - u * u * (3 - 2 * u); c.d[jj] += (e.st ? 1 : -1) * sh * f; } return;
           }
-          if (!sh) return;
+          if (!sh && !(uneq && q === mi)) return; // glowne pasy (2 pasy po stronie 3->2+1) ida prosto przedluzeniem osi 3-pasowej, dopiero potem lagodnie wracaja do osi OSM
           // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
           const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = ROZBIEZNY && angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
           const Q0 = o.Q.map(q => q.slice()); // ścieżka wylotu: równolegle (P) do przedłużenia dwupasowej, potem krzywa Hermite'a do osi OSM (styczna z obu stron)

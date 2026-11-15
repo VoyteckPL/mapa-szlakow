@@ -417,7 +417,8 @@ function resize() { const r = $('stage').getBoundingClientRect(); DPR = window.d
 const snap = () => JSON.stringify(S.doc);
 function push() { S.undo.push(snap()); if (S.undo.length > 60) S.undo.shift(); S.redo = []; }
 function restore(s) { S.doc = JSON.parse(s); S.sel = -1; S.vsel = -1; save(); ui(); touch(); }
-function save() { try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, org: S.org })); } catch (e) {} }
+function curHash() { try { const c = unproj(s2w([W / 2, H / 2])), z = Math.log2(156543.03 * Math.cos(c.lat * Math.PI / 180) * S.view.k); return `#map=${z.toFixed(2)}/${c.lat.toFixed(6)}/${c.lon.toFixed(6)}`; } catch (e) { return ''; } }
+function save() { const h = curHash(); try { if (h) history.replaceState(null, '', h); } catch (e) {} try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, org: S.org, h })); } catch (e) {} } // zapamietuje biezaca lokacje (tez w adresie), by odswiezenie nie wracalo do pierwotnej
 $('bUndo').onclick = () => { if (S.undo.length) { S.redo.push(snap()); restore(S.undo.pop()); } };
 $('bRedo').onclick = () => { if (S.redo.length) { S.undo.push(snap()); restore(S.redo.pop()); } };
 function moveNode(r, vi, x, y) { const k = r.nk[vi]; r.pts[vi] = [x, y]; if (k) for (const o of S.doc.road) o.nk.forEach((kk, j) => { if (kk === k) o.pts[j] = [x, y]; }); }
@@ -512,7 +513,7 @@ function endPtr(e) {
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('contextmenu', e => e.preventDefault());
-cv.addEventListener('wheel', e => { e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.5, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
+let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.5, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
 window.addEventListener('keydown', e => { if (e.key === 'Enter' && S.draw && document.activeElement.tagName !== 'INPUT') finishDraw(); if (e.key === 'Escape') setTool('sel'); });
 window.addEventListener('resize', resize);
 
@@ -520,8 +521,10 @@ window.addEventListener('resize', resize);
 (async function () {
   resize(); ui();
   const h = decodeURIComponent(location.hash || '') + ' ' + location.search;
-  if (parseLink(location.hash) && /#map=/.test(h)) { $('lnk').value = location.hash; await loadLink(h); return; }
-  try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s && s.doc && s.doc.road) { S.doc = s.doc; S.view = s.view; S.org = s.org; await loadOsmAround(S.org.lat, S.org.lon); touch(); say(`Przywrócono ${S.doc.road.length} dróg.`); return; } } catch (e) {}
+  let sv = null; try { sv = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+  // adres zgodny z ostatnio zapamietanym widokiem (odswiezenie) -> przywroc zapis; inny #map= (nowy link) -> wczytaj od nowa
+  if (parseLink(location.hash) && /#map=/.test(h) && !(sv && sv.doc && sv.doc.road && sv.h === location.hash)) { $('lnk').value = location.hash; await loadLink(h); return; }
+  try { const s = sv; if (s && s.doc && s.doc.road) { S.doc = s.doc; S.view = s.view; S.org = s.org; $('lnk').value = s.h || ''; { const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])); await loadOsmAround(S.org.lat, S.org.lon, [Math.floor(Math.min(a.lon, b.lon) / 0.02), Math.floor(Math.max(a.lon, b.lon) / 0.02), Math.floor(Math.min(a.lat, b.lat) / 0.01), Math.floor(Math.max(a.lat, b.lat) / 0.01)]); } touch(); say(`Przywrócono ${S.doc.road.length} dróg.`); return; } } catch (e) {}
   say('Wklej link z openstreetmap.org i naciśnij Wczytaj.'); render();
 })();
 </script>

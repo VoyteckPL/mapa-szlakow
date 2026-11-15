@@ -248,7 +248,9 @@ function layout() {
               const ap = lerp(t1, t2, 0.5), ex = (P, Q) => lerp(Q, P, 1.12); let bb = b2, bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; ss <= smax; ss += 0.04) { const pb = atS(B2, cB, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } } chev.push([ex(a2, ap), ap, ex(bb, ap)]); last = r0.s;
             }
           }
-          gores.push({ poly, A: rows.map(r => atS(A2, cA, r.s)), B: rows.map(r => atS(B2, cB, r.s)), chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
+          const sL = rows[rows.length - 1].s, c0 = [(A2[0][0] + B2[0][0]) / 2, (A2[0][1] + B2[0][1]) / 2], Al = [], Bl = [];
+          for (let ss = 0; ; ss = Math.min(ss + 0.5, sL)) { const u = Math.min(1, ss / 5), w = u * u * (3 - 2 * u), pa = atS(A2, cA, ss), pb = atS(B2, cB, ss); Al.push([c0[0] + (pa[0] - c0[0]) * w, c0[1] + (pa[1] - c0[1]) * w]); Bl.push([c0[0] + (pb[0] - c0[0]) * w, c0[1] + (pb[1] - c0[1]) * w]); if (ss >= sL) break; }
+          gores.push({ poly, A: Al, B: Bl, chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;
       }

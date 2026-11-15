@@ -575,8 +575,12 @@ function widthM(cls, t) { // jednolita szerokość dla klasy (tagi width dawały
   return WIDTH_M[cls];
 }
 // Jezdnia: klasa drogi → szerokość pasa ruchu (m) i „ranga” (która droga jest główna na skrzyżowaniu).
-const ROAD_LANE_W = { motorway: 3.5, trunk: 3.5, primary: 3.5, secondary: 3.25, tertiary: 3.0, unclassified: 2.75, residential: 2.75,
-  living_street: 2.5, service: 2.75, busway: 3.25 };
+// Domyślne szerokości dobrane do mediany otagowanych (width) ulic Gdyni danej klasy, w przeliczeniu na pas:
+// główne drogi ~3,5 m na pas, osiedlowe dwukierunkowe ~5 m razem, ciągi pieszo-jezdne ~4,5 m, dojazdowe (service) ~4 m.
+const ROAD_LANE_W = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5,
+  living_street: 2.25, service: 4, busway: 3.25 };
+// najmniejsza szerokość jezdni jednokierunkowej (mediany: osiedlowa 3,5 m, tertiary 4,2 m, strefa zamieszkania 2,9 m)
+const ONEWAY_MIN_W = { tertiary: 4.2, secondary: 4.2, primary: 4.2, residential: 3.5, unclassified: 3.5, living_street: 2.9, service: 3.2 };
 const ROAD_RANK = { motorway: 7, trunk: 6, primary: 5, secondary: 4, tertiary: 3, unclassified: 2, residential: 2, busway: 2, living_street: 1, service: 0 };
 const roadClass = t => (t.highway || '').replace('_link', '');
 const hasBikeLaneTag = t => ['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right'].some(k => /^(opposite_)?lane$/.test(t[k] || ''));
@@ -593,10 +597,10 @@ function roadLanes(t) {
 // połowa szerokości jezdni dla aut (bez pasów rowerowych): tag width (gdy są pasy rowerowe, width obejmuje i je),
 // inaczej liczba pasów × typowa szerokość pasa dla klasy drogi; jednopasmowa dwukierunkowa co najmniej 3,5 m
 function roadHalf(t) {
-  const width = parseFloat(t.width);
-  if (width > 3 && width < 40) return Math.max(1.5, width / 2 - (hasBikeLaneTag(t) ? 1.55 : 0));
-  const { n } = roadLanes(t), lw = ROAD_LANE_W[roadClass(t)] || 2.75;
-  return Math.max(n * lw, isOneway(t) ? 3 : 3.5) / 2;
+  const width = parseFloat(String(t.width || '').replace(',', '.'));
+  if (width > 2.5 && width < 40) return Math.max(1.5, width / 2 - (hasBikeLaneTag(t) ? 1.55 : 0));
+  const { n } = roadLanes(t), cls = roadClass(t), lw = ROAD_LANE_W[cls] || 2.75;
+  return Math.max(n * lw, isOneway(t) ? (ONEWAY_MIN_W[cls] || 3.5) : 3.5) / 2;
 }
 function laneOffsetM(t) { return roadHalf(t) + 0.8; } // środek pasa rowerowego tuż przy krawędzi jezdni
 // Równoległe przesunięcie linii o d metrów (d > 0 w prawo od kierunku narysowania), z ograniczonym ścięciem narożników.
@@ -668,6 +672,38 @@ function buildCarriageways(items, ways) {
   const outerHalf = (id) => { const r = roads.get(id); return roadHalf(r.t) + (sides.get(id) ? 1.7 : 0); };
   const out = [];
   const feat = (coords, props) => coords.length > 1 && out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: props });
+  // Poszerzenie / zwężenie jezdni jednokierunkowej na styku dwóch odcinków (np. 2 → 3 pasy przed skrzyżowaniem):
+  // pasy, które trwają, mają biec prosto, a dodatkowy pas dochodzi z boku. Stronę poznajemy z turn:lanes
+  // (dodatkowe pasy skrajne lewe = do skrętu w lewo → wyrównujemy prawe krawędzie, i odwrotnie).
+  // Przesunięcie s (m, + w prawo) przenosimy dalej wzdłuż ulicy, dopóki odcinki łączą się bez skrzyżowania.
+  const ow1 = t => ['yes', '1', 'true'].includes(t.oneway) && t.junction !== 'roundabout';
+  const predOf = id => {
+    const r = roads.get(id); if (!ow1(r.t)) return null;
+    const os = (at.get(nk(r.g[0])) || []).filter(o => o.id !== id);
+    if (os.length !== 1 || !os[0].end) return null;
+    const p = roads.get(os[0].id);
+    return ow1(p.t) && nk(p.g[p.g.length - 1]) === nk(r.g[0]) ? os[0].id : null;
+  };
+  const extraSide = (t, n, k) => { // -1: dodatkowe pasy z lewej, 1: z prawej, 0: nie wiadomo
+    const l = (t['turn:lanes'] || '').split('|'); if (l.length !== n) return 0;
+    if (l.slice(0, k).every(v => /left|reverse/.test(v) && !/through/.test(v))) return -1;
+    if (l.slice(n - k).every(v => /right/.test(v) && !/through/.test(v))) return 1;
+    return 0;
+  };
+  const shiftOf = new Map(), taperOf = new Map();
+  const shift = (id, depth = 0) => {
+    if (shiftOf.has(id)) return shiftOf.get(id);
+    shiftOf.set(id, 0);
+    const p = predOf(id);
+    if (p === null || sides.get(id) || sides.get(p) || depth > 60) return 0;
+    const sp = shift(p, depth + 1), t = roads.get(id).t, pt = roads.get(p).t;
+    const n = roadLanes(t).n, m = roadLanes(pt).n, hW = roadHalf(t), hP = roadHalf(pt);
+    const side = n > m ? extraSide(t, n, n - m) : n < m ? extraSide(pt, m, m - n) : 0;
+    let s = sp;
+    if (side < 0) s = sp + hP - hW; else if (side > 0) s = sp - hP + hW;
+    if (side && n > m) taperOf.set(id, { k: n - m, side });
+    shiftOf.set(id, s); return s;
+  };
   for (const [id, r] of roads) {
     const t = r.t, c = r.g;
     if (c.length < 2) continue;
@@ -678,7 +714,6 @@ function buildCarriageways(items, ways) {
     // nawierzchnia: asfalt sięga do zewnętrznej krawędzi pasa rowerowego
     const L = sd.has(-1) ? half + 1.75 : half, R = sd.has(1) ? half + 1.75 : half;
     const surf = /^(paving_stones|sett|cobblestone|unhewn_cobblestone|bricks)/.test(t.surface || '') ? 'kostka' : 'asfalt';
-    feat(Math.abs(R - L) > 0.01 ? offsetLine(c, (R - L) / 2) : c, { cls: 'jezdnia', way: id, wm: L + R, real: 'nav-jezdnia-' + surf });
     // skrzyżowania: odcinki osi, na których nie malujemy linii
     const cuts = []; let cutStart = 0, cutEnd = 0;
     c.forEach((p, j) => {
@@ -702,12 +737,23 @@ function buildCarriageways(items, ways) {
       return [P[j - 1][0] + (P[j][0] - P[j - 1][0]) * u, P[j - 1][1] + (P[j][1] - P[j - 1][1]) * u];
     };
     const sub = (P, a, bb) => { const o = [pointAt(P, a)]; D.forEach((d, j) => { if (d > a && d < bb) o.push(P[j]); }); o.push(pointAt(P, bb)); return o; };
+    const sh = shift(id), real = 'nav-jezdnia-' + surf, tp = taperOf.get(id);
+    const lw0 = 2 * half / n;
+    if (tp && len > 30) {
+      // skos poszerzenia: na pierwszych T metrach tylko pasy ciągłe + trójkąt, w którym pojawia się nowy pas
+      const T = Math.min(25, len / 3), kw = tp.k * lw0;
+      feat(sub(offsetLine(c, sh - tp.side * kw / 2), 0, T), { cls: 'jezdnia', way: id, wm: 2 * half - kw, real });
+      feat(sub(offsetLine(c, sh), T, len), { cls: 'jezdnia', way: id, wm: L + R, real });
+      const inner = offsetLine(c, sh + tp.side * (half - kw)), outer = offsetLine(c, sh + tp.side * half);
+      const tri = [pointAt(inner, 0), pointAt(inner, T), pointAt(outer, T)];
+      out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...tri, tri[0]]] }, properties: { cls: 'skos' } });
+    } else feat(offsetLine(c, sh + (R - L) / 2), { cls: 'jezdnia', way: id, wm: L + R, real });
     const turnF = isOneway(t) ? (t.oneway === '-1' ? '' : t['turn:lanes'] || '') : t['turn:lanes:forward'] || '';
     const turnB = isOneway(t) ? (t.oneway === '-1' ? t['turn:lanes'] || '' : '') : t['turn:lanes:backward'] || '';
     const marked = t.lane_markings !== 'no' && n > 1 && (t.lanes || t['lanes:forward'] || rank >= 3) && !/^(service|living_street)$/.test(roadClass(t));
     const lw = 2 * half / n;
     if (marked) for (let k = 1; k < n; k++) {
-      const d = -half + k * lw, P = offsetLine(c, d);
+      const d = sh - half + k * lw, P = offsetLine(c, d);
       if (k === b && f && b) {
         if (n >= 4) for (const e of [-0.12, 0.12]) { const Q = offsetLine(c, d + e); for (const [a, bb] of keep()) feat(sub(Q, a, bb), { cls: 'linia', kind: 'ciagla' }); }
         else for (const [a, bb] of keep()) feat(sub(P, a, bb), { cls: 'linia', kind: 'os' });
@@ -732,7 +778,7 @@ function buildCarriageways(items, ways) {
       list.forEach((v, i) => {
         const img = arrowKey(v); if (!img) return;
         const off = fw ? -half + b * lw + (i + 0.5) * lw : -half + b * lw - (i + 0.5) * lw;
-        const P = offsetLine(c, off);
+        const P = offsetLine(c, sh + off);
         for (const d of ds) {
           const p = pointAt(P, d), q = pointAt(P, Math.min(len, d + 1)), p0 = pointAt(P, Math.max(0, d - 1));
           const rot = Math.atan2(-(q[1] - p0[1]) * ky, (q[0] - p0[0]) * kx) * 180 / Math.PI + (fw ? 0 : 180);
@@ -1212,6 +1258,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   map.addLayer({ id: 'road-surface-kostka', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: ['all', isCls('jezdnia'), ['==', ['get', 'real'], 'nav-jezdnia-kostka']],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-pattern': ['get', 'real'], 'line-width': M(['get', 'wm']) } });
+  map.addLayer({ id: 'road-taper', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('skos'), paint: { 'fill-color': '#686b70', 'fill-antialias': false } });
   const MARK_W = M(0.12);
   map.addLayer({ id: 'road-lines-dash', type: 'line', source: 'roads', minzoom: ROAD_Z,
     filter: ['all', isCls('linia'), ['in', ['get', 'kind'], ['literal', ['p1', 'os']]]],
@@ -1366,7 +1413,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-taper', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;

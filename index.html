@@ -737,17 +737,37 @@ function buildCarriageways(items, ways) {
       return [P[j - 1][0] + (P[j][0] - P[j - 1][0]) * u, P[j - 1][1] + (P[j][1] - P[j - 1][1]) * u];
     };
     const sub = (P, a, bb) => { const o = [pointAt(P, a)]; D.forEach((d, j) => { if (d > a && d < bb) o.push(P[j]); }); o.push(pointAt(P, bb)); return o; };
-    const sh = shift(id), real = 'nav-jezdnia-' + surf, tp = taperOf.get(id);
-    const lw0 = 2 * half / n;
-    if (tp && len > 30) {
-      // skos poszerzenia: na pierwszych T metrach tylko pasy ciągłe + trójkąt, w którym pojawia się nowy pas
-      const T = Math.min(25, len / 3), kw = tp.k * lw0;
-      feat(sub(offsetLine(c, sh - tp.side * kw / 2), 0, T), { cls: 'jezdnia', way: id, wm: 2 * half - kw, real });
-      feat(sub(offsetLine(c, sh), T, len), { cls: 'jezdnia', way: id, wm: L + R, real });
-      const inner = offsetLine(c, sh + tp.side * (half - kw)), outer = offsetLine(c, sh + tp.side * half);
-      const tri = [pointAt(inner, 0), pointAt(inner, T), pointAt(outer, T)];
-      out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[...tri, tri[0]]] }, properties: { cls: 'skos' } });
-    } else feat(offsetLine(c, sh + (R - L) / 2), { cls: 'jezdnia', way: id, wm: L + R, real });
+    const sh = shift(id), real = 'nav-jezdnia-' + surf;
+    // Jezdnia jako wielokąt o zmiennej szerokości: na styku z węższym odcinkiem (np. 3 → 2 pasy) krawędzie schodzą się
+    // stopniowo na ok. 30 m (jak w rzeczywistości), a nie skokiem. Szerszy odcinek dopasowuje się do węższego.
+    const ends = [0, 1].map(e => {
+      const k = nk(e ? c[c.length - 1] : c[0]);
+      const os = (at.get(k) || []).filter(o => o.id !== id);
+      if (os.length !== 1 || !os[0].end) return null;
+      const ro = roads.get(os[0].id), ho = roadHalf(ro.t), sdo = sides.get(os[0].id) || new Set();
+      const so = shift(os[0].id), Lo = sdo.has(-1) ? ho + 1.75 : ho, Ro = sdo.has(1) ? ho + 1.75 : ho;
+      if (Lo + Ro > L + R - 0.4) return null; // sąsiad szerszy albo równy – to on się dopasuje
+      const same = e === 1 ? nk(ro.g[0]) === k : nk(ro.g[ro.g.length - 1]) === k; // zgodny kierunek rysowania
+      return same ? { eL: so - Lo, eR: so + Ro } : { eL: -(so + Ro), eR: Lo - so };
+    });
+    const T = Math.min(30, len / 2.2), eL0 = sh - L, eR0 = sh + R;
+    ends.forEach((en, e) => { if (en) cuts.push(e ? [len - T, len + 1] : [-1, T]); });
+    const ds = D.slice();
+    ends.forEach((en, e) => { if (en) for (let q = 1; q < 8; q++) ds.push(e ? len - T * q / 8 : T * q / 8); });
+    ds.sort((x, y) => x - y);
+    const dd = ds.filter((d, q) => q === 0 || d - ds[q - 1] > 0.05);
+    const sm = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    const eLs = [], eRs = [];
+    for (const d of dd) {
+      let l = eL0, r = eR0;
+      if (ends[0]) { const w = sm(1 - d / T); l += (ends[0].eL - l) * w; r += (ends[0].eR - r) * w; }
+      if (ends[1]) { const w = sm(1 - (len - d) / T); l += (ends[1].eL - l) * w; r += (ends[1].eR - r) * w; }
+      eLs.push(l); eRs.push(r);
+    }
+    const dense = dd.map(d => pointAt(c, d));
+    const ring = (m) => { const a = offsetLine(dense, eLs.map(v => v - m)), bb = offsetLine(dense, eRs.map(v => v + m)).reverse(); const o = a.concat(bb); o.push(o[0]); return o; };
+    out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring(0.35)] }, properties: { cls: 'kerb' } });
+    out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring(0)] }, properties: { cls: 'jezdnia', way: id, real } });
     const turnF = isOneway(t) ? (t.oneway === '-1' ? '' : t['turn:lanes'] || '') : t['turn:lanes:forward'] || '';
     const turnB = isOneway(t) ? (t.oneway === '-1' ? t['turn:lanes'] || '' : '') : t['turn:lanes:backward'] || '';
     const marked = t.lane_markings !== 'no' && n > 1 && (t.lanes || t['lanes:forward'] || rank >= 3) && !/^(service|living_street)$/.test(roadClass(t));
@@ -1248,17 +1268,10 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   const ROAD_Z = 18;
   const M = (m) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', m, PX_PER_M(17)], 22, ['*', m, PX_PER_M(22)]];
   // krawężnik: najpierw obwódki wszystkich jezdni, potem nawierzchnie – na skrzyżowaniach obwódki znikają pod asfaltem
-  map.addLayer({ id: 'road-kerb', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'),
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': '#c9cdd2', 'line-width': M(['+', ['get', 'wm'], 0.6]) } });
-  map.addLayer({ id: 'road-surface', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'),
-    layout: { 'line-cap': 'round', 'line-join': 'round' }, // zaokrąglenie zakrywa szczelinę między kolejnymi odcinkami ulicy
-    // jednolity kolor asfaltu: wzór na zaokrągleniach skrzyżowań dawał ciemne smugi; faktura tylko dla kostki (warstwa niżej)
-    paint: { 'line-color': '#686b70', 'line-width': M(['get', 'wm']) } });
-  map.addLayer({ id: 'road-surface-kostka', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: ['all', isCls('jezdnia'), ['==', ['get', 'real'], 'nav-jezdnia-kostka']],
-    layout: { 'line-cap': 'butt', 'line-join': 'round' },
-    paint: { 'line-pattern': ['get', 'real'], 'line-width': M(['get', 'wm']) } });
-  map.addLayer({ id: 'road-taper', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('skos'), paint: { 'fill-color': '#686b70', 'fill-antialias': false } });
+  map.addLayer({ id: 'road-kerb', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('kerb'), paint: { 'fill-color': '#c9cdd2', 'fill-antialias': false } });
+  map.addLayer({ id: 'road-surface', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'), paint: { 'fill-color': '#686b70', 'fill-antialias': false } });
+  map.addLayer({ id: 'road-surface-kostka', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: ['all', isCls('jezdnia'), ['==', ['get', 'real'], 'nav-jezdnia-kostka']],
+    paint: { 'fill-pattern': 'nav-jezdnia-kostka', 'fill-antialias': false } });
   const MARK_W = M(0.12);
   map.addLayer({ id: 'road-lines-dash', type: 'line', source: 'roads', minzoom: ROAD_Z,
     filter: ['all', isCls('linia'), ['in', ['get', 'kind'], ['literal', ['p1', 'os']]]],
@@ -1413,7 +1426,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-taper', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;

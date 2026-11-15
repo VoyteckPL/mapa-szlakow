@@ -71,7 +71,7 @@ const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('can
 const FORK_TYPES = { 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk)/ } };
 const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search), EKEY = (() => { const m = /#map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); return m ? 'rozj-' + m[1] + '/' + m[2] : 'rozj-x'; })(); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
-const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = false;
+const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = true;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
 const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5, living_street: 2.25, service: 4, busway: 3.25 };
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
@@ -197,7 +197,7 @@ function endWidth(c, st, f) { const n = c.Q.length, len = c.cum[n - 1]; for (let
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
-  const C0 = R.map(r => comp(r)), hints = {};
+  const C0 = R.map(r => comp(r)), hints = {}, preAr = [];
   for (const [k, G] of ends) { // styczność ramp do jezdni głównej w węźle rozwidlenia/zlania
     if (!(G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3)) continue;
     const U = G.map(e => unitFrom(C0[e.i], e.st)), ln = G.map(e => R[e.i].lanes), mx = Math.max(...ln); let xi = 0, best = 9;
@@ -210,11 +210,15 @@ function layout() {
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
       if (TAPER2 && Math.abs(ws[0] - ws[1]) > 0.3) { // dodatkowy pas dochodzi bokiem, dwa główne zostają na osi
-        const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(30, len / 2.2);
+        const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(60, len / 2.2);
         const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
         R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
-        c.side = e.st ? sf : -sf; c.w.fill(narrow); const n = c.Q.length;
+        c.side = e.st ? -sf : sf; c.w.fill(narrow); const n = c.Q.length;
         for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); }
+        if (R[e.i].oneway && !e.st && len > T + 24) for (const sa of [T + 8, T + 20]) { // P-9: kończący się pas wskazuje sąsiedni (zmiana pasów 3→2)
+          const v = len - sa, p = atS(c.Q, c.cum, v), p2 = atS(c.Q, c.cum, Math.min(len, v + 1)), off = c.side * (narrow / 2 + extra / 2), q = offsetPts([p, p2], [off, off]), qc = offsetPts([p, p2], [0, 0]), dx = p2[0] - p[0], dy = p2[1] - p[1], cr = dx * (qc[0][1] - q[0][1]) - dy * (qc[0][0] - q[0][0]);
+          preAr.push({ x: q[0][0], y: q[0][1], rot: Math.atan2(dy, dx) * 180 / Math.PI + 90, type: cr > 0 ? 'p9b' : 'p9a', ly: R[e.i].ly | 0 });
+        }
       }
       continue;
     }
@@ -306,7 +310,7 @@ function layout() {
     }
   }
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
-  const polys = [], lines = [], arrows = [];
+  const polys = [], lines = [], arrows = preAr.slice();
   forkLinks.forEach(l => lines.push(l));
   const rng = [];
   R.forEach((r, i) => {
@@ -360,6 +364,7 @@ function layout() {
 
 // ---------- strzałki ----------
 function glyph(g, key) {
+  if (key === 'p9a' || key === 'p9b') { const sg = key === 'p9a' ? -1 : 1; g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt'; const x0 = 6, y0 = 16 - sg * 6, x1 = 42, y1 = 16 + sg * 6, ang = Math.atan2(y1 - y0, x1 - x0); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - Math.cos(ang) * 4, y1 - Math.sin(ang) * 4); g.stroke(); g.save(); g.translate(x1, y1); g.rotate(ang); g.beginPath(); g.moveTo(5, 0); g.lineTo(-5, -5.5); g.lineTo(-5, 5.5); g.closePath(); g.fill(); g.restore(); return; }
   const parts = key.split('-'), has = p => parts.includes(p);
   g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt';
   const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -5.5); g.lineTo(-4, 5.5); g.closePath(); g.fill(); g.restore(); };

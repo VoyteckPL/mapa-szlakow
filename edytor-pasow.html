@@ -364,7 +364,7 @@ function layout() {
     }
     lines.length = 0; lines.push(...rest, ...sol);
   }
-  S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
+  S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
 
 // ---------- strzałki ----------
@@ -449,10 +449,10 @@ function render() {
     ctx.globalAlpha = +$('rA').value; ctx.drawImage(off, 0, 0, W, H); ctx.globalAlpha = 1;
   }
   if (S.tool === 'sel' && S.sel >= 0 && LP && LAN && !EMBED && S.doc.road[S.sel] && S.doc.road[S.sel].osm) { // podświetlenie zaznaczonego pasa + podgląd strzałki
-    const r = S.doc.road[S.sel], nb = r.oneway ? 0 : r.lanes - (r.nf || 1), g = r.oneway ? LSEL.i : (LSEL.r === 0 ? nb + LSEL.i : nb - 1 - LSEL.i), o0 = -rw(r) / 2 + g * r.lw;
-    const A = offsetPts(r.pts, r.pts.map(() => o0)), B = offsetPts(r.pts, r.pts.map(() => o0 + r.lw)); ctx.save(); pathOf(ctx, A.concat(B.slice().reverse()), true); ctx.fillStyle = 'rgba(47,111,174,.32)'; ctx.fill(); ctx.strokeStyle = '#2f8bff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
-    const tk = (LAN.cur.tok[LAN.idx] || '').split(';'), key = ['through', 'left', 'right', 'reverse'].filter(x => tk.includes(x)).join('-');
-    if (key && (key === 'through-left-right' || ARR.has(key)) && LP.sel) { const n = [-LP.dir[1], LP.dir[0]], pp = [LP.p[0] + n[0] * (-rw(r) / 2 + (g + 0.5) * r.lw), LP.p[1] + n[1] * (-rw(r) / 2 + (g + 0.5) * r.lw)], sp = w2s(pp), ang = Math.atan2(LP.dir[1], LP.dir[0]) * 180 / Math.PI + 90 + (LP.back ? 180 : 0); ctx.save(); ctx.translate(sp[0], sp[1]); ctx.rotate((ang - 90) * Math.PI / 180); const sc = 5 * k / 48; ctx.scale(sc, sc); ctx.translate(-24, -16); glyph(ctx, key); ctx.restore(); }
+    const r = S.doc.road[S.sel], nb = r.oneway ? 0 : r.lanes - (r.nf || 1), g = r.oneway ? LSEL.i : (LSEL.r === 0 ? nb + LSEL.i : nb - 1 - LSEL.i), G = laneGeom(S.sel);
+    if (G) { const A = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + g * G.lw[j])), B = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (g + 1) * G.lw[j])); ctx.save(); pathOf(ctx, A.concat(B.slice().reverse()), true); ctx.fillStyle = 'rgba(47,111,174,.32)'; ctx.fill(); ctx.strokeStyle = '#2f8bff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      const tk = (LAN.cur.tok[LAN.idx] || '').split(';'), key = ['through', 'left', 'right', 'reverse'].filter(x => tk.includes(x)).join('-');
+      if (key && (key === 'through-left-right' || ARR.has(key)) && LP && LP.sel === S.sel) { const j = LP.j, n = [-LP.dir[1], LP.dir[0]], lat = G.left[j] + (g + 0.5) * G.lw[j], pp = [LP.p[0] + n[0] * lat, LP.p[1] + n[1] * lat], sp = w2s(pp), ang = Math.atan2(LP.dir[1], LP.dir[0]) * 180 / Math.PI + 90 + (LP.back ? 180 : 0); ctx.save(); ctx.translate(sp[0], sp[1]); ctx.rotate((ang - 90) * Math.PI / 180); const sc = 5 * k / 48; ctx.scale(sc, sc); ctx.translate(-24, -16); glyph(ctx, key); ctx.restore(); } }
   }
   // niezaimportowane drogi OSM (szare, przerywane)
   const have = new Set(D.road.map(r => r.osm)); ctx.setLineDash([3, 4]); ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(80,90,100,.6)';
@@ -527,12 +527,12 @@ function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + 
   if (LSEL.r >= rows.length) LSEL.r = 0; const cur = rows[LSEL.r]; if (LSEL.i >= cur.n) LSEL.i = cur.n - 1;
   const setTag = (k, v) => { r.tg = r.tg || {}; const b = baseTags(r)[k] || ''; if ((v === null ? '' : v) === b) delete r.tg[k]; else r.tg[k] = v; };
   const commit = (row) => { const any = row.tok.some(x => x); setTag(row.key, any ? row.tok.join('|') : null); setTag(row.cnt, String(row.tok.length)); if (!r.oneway) { const o = rows.find(x => x !== row); setTag('lanes', String(row.tok.length + o.tok.length)); } if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); };
-  const sym = tk => { const set = tk ? tk.split(';') : []; return set.map(x => (TURN.find(t => t[0] === x.replace(/^(slight|sharp)_/, '')) || ['', '?'])[1]).join('') || '·'; };
+  const sym = tk => { const set = tk ? tk.split(';').filter(x => x && x !== 'none') : []; return set.map(x => (TURN.find(t => t[0] === x.replace(/^(slight|sharp)_/, '')) || ['', '?'])[1]).join('') || '·'; };
   let h = '<h4 style="margin:10px 0 4px">Pasy ruchu</h4>';
   rows.forEach((row, ri) => { h += `<div class="small">${row.lab}</div><div class="row" style="gap:4px">` + row.tok.map((tk, i) => `<button class="lnb" data-r="${ri}" data-i="${i}" style="min-width:44px;height:44px;font-size:18px;${ri === LSEL.r && i === LSEL.i ? 'background:#2f6fae;color:#fff;border-color:#2f6fae' : ''}" title="pas ${i + 1}">${sym(tk)}</button>`).join('') + `<button class="lnp" data-r="${ri}" title="dodaj pas po prawej">＋</button><button class="lnm" data-r="${ri}" title="usuń zaznaczony pas">−</button></div>`; });
   h += `<div class="small">Strzałki zaznaczonego pasa (pas ${LSEL.i + 1}):</div><div class="row" style="gap:4px">` + TURN.map(([k, ch, lab]) => { const on = (cur.tok[LSEL.i] || '').split(';').includes(k); return `<button class="lnt" data-k="${k}" title="${lab}" style="min-width:40px;height:36px;font-size:17px;${on ? 'background:#2f6fae;color:#fff;border-color:#2f6fae' : ''}">${ch}</button>`; }).join('') + '<button class="lnt" data-k="" title="bez strzałki">∅</button></div><div class="small">Kafelek = pas; kliknij pas, potem strzałkę (można kilka). ＋/− zmienia liczbę pasów.</div>';
   const act = {
-    toggle: k => mut(() => { let set = (cur.tok[LSEL.i] || '').split(';').filter(Boolean); if (!k) set = []; else if (set.includes(k)) set = set.filter(x => x !== k); else set.push(k); cur.tok[LSEL.i] = set.join(';'); commit(cur); }),
+    toggle: k => mut(() => { let set = (cur.tok[LSEL.i] || '').split(';').filter(x => x && x !== 'none'); if (!k) set = []; else if (set.includes(k)) set = set.filter(x => x !== k); else set.push(k); cur.tok[LSEL.i] = set.join(';'); commit(cur); }),
     add: ri => mut(() => { const row = rows[ri]; row.tok.push(''); LSEL = { r: ri, i: row.tok.length - 1 }; commit(row); }),
     del: ri => mut(() => { const row = rows[ri]; if (row.tok.length < 2) return; const i = ri === LSEL.r ? LSEL.i : row.tok.length - 1; row.tok.splice(i, 1); LSEL.i = Math.max(0, i - 1); commit(row); })
   };
@@ -545,10 +545,16 @@ function laneEditor(r, mut, bind) { // wizualny edytor pasów: kafelki pasów + 
   });
   return h;
 }
-function laneAt(r, w) { // który pas (wiersz/indeks kafelka) leży pod punktem w
-  let bd = 1e9, lat = 0, bp = [0, 0], bdir = [1, 0], bs = 0; for (let j = 1; j < r.pts.length; j++) { const a = r.pts[j - 1], b = r.pts[j], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, t = Math.max(0, Math.min(1, ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / (l * l))), px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(w[0] - px, w[1] - py); if (d < bd) { bd = d; lat = ((w[0] - px) * -dy + (w[1] - py) * dx) / l; bp = [px, py]; bdir = [dx / l, dy / l]; bs = j; } }
-  const idx = Math.max(0, Math.min(r.lanes - 1, Math.floor((lat + rw(r) / 2) / r.lw)));
-  LP = { sel: bs, g: idx, lat: -rw(r) / 2 + (idx + 0.5) * r.lw, p: bp, dir: bdir, back: false };
+function laneGeom(ri) { // faktyczna geometria renderu pasów drogi (z offsetem, zwężeniem, poszerzeniem): oś Q, lewa krawędź i szerokość pasa w każdym punkcie
+  const c = S.CC && S.CC[ri], r = S.doc.road[ri]; if (!c) return null; const NL = Math.max(1, r.lanes | 0), ex = c.e.some(v => v > 0);
+  const left = c.Q.map((_, j) => c.d[j] - c.w[j] / 2 - (ex && c.side < 0 ? c.e[j] : 0)), lw = c.Q.map((_, j) => (c.w[j] + c.e[j]) / NL);
+  return { Q: c.Q, left, lw, NL };
+}
+function laneAt(r, w, ri) { // który pas (wiersz/indeks kafelka) leży pod punktem w – wg faktycznie narysowanej geometrii
+  const G = laneGeom(ri); if (!G) return { r: 0, i: 0 };
+  let bd = 1e9, lat = 0, bj = 1, bp = [0, 0], bdir = [1, 0]; for (let j = 1; j < G.Q.length; j++) { const a = G.Q[j - 1], b = G.Q[j], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1, t = Math.max(0, Math.min(1, ((w[0] - a[0]) * dx + (w[1] - a[1]) * dy) / (l * l))), px = a[0] + dx * t, py = a[1] + dy * t, d = Math.hypot(w[0] - px, w[1] - py); if (d < bd) { bd = d; lat = ((w[0] - px) * -dy + (w[1] - py) * dx) / l; bj = j; bp = [px, py]; bdir = [dx / l, dy / l]; } }
+  const idx = Math.max(0, Math.min(G.NL - 1, Math.floor((lat - G.left[bj]) / G.lw[bj])));
+  LP = { sel: ri, g: idx, p: bp, dir: bdir, j: bj, back: false };
   if (r.oneway) return { r: 0, i: idx }; const nb = r.lanes - (r.nf || 1); LP.back = idx < nb; return idx >= nb ? { r: 0, i: idx - nb } : { r: 1, i: nb - 1 - idx };
 }
 function hideLanePal() { const e = document.getElementById('lpal'); if (e) e.remove(); }
@@ -656,7 +662,7 @@ cv.addEventListener('pointermove', e => {
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;
   if (d.m === 'maybe') {
-    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; if (S.tool === 'sel' && S.sel >= 0 && S.doc.road[S.sel].osm && !EMBED) { LSEL = laneAt(S.doc.road[S.sel], d.w); ui(); showLanePal(e.clientX, e.clientY); } else { hideLanePal(); ui(); } }
+    if (S.tool === 'sel' || S.tool === 'rend') { S.sel = hitRoad(d.w); S.vsel = -1; if (S.tool === 'sel' && S.sel >= 0 && S.doc.road[S.sel].osm && !EMBED) { LSEL = laneAt(S.doc.road[S.sel], d.w, S.sel); ui(); showLanePal(e.clientX, e.clientY); } else { hideLanePal(); ui(); } }
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }

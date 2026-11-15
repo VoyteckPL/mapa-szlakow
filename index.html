@@ -727,11 +727,25 @@ function buildCarriageways(items, ways) {
         const a = X.start ? -(X.sh + X.R) : X.sh - X.L, b = X.start ? -(X.sh - X.L) : X.sh + X.R; // krawędzie X w układzie „w stronę Y”
         Ys.forEach(y => { y.lat = y.q[0] * rt[0] + y.q[1] * rt[1]; });
         Ys.sort((p1, q1) => p1.lat - q1.lat);
-        const tot = Ys.reduce((s1, y) => s1 + y.L + y.R, 0); let cur = a;
-        res = new Map([[X.id, null]]);
-        for (const y of Ys) { const w = (y.L + y.R) * (b - a) / tot, s0 = cur, s1 = cur + w; cur = s1; res.set(y.id, y.start ? { eL: s0, eR: s1 } : { eL: -s1, eR: -s0 }); }
+        const isLink = y => /_link$/.test(roads.get(y.id).t.highway || ''), nOf = y => roadLanes(roads.get(y.id).t).n;
+        let ramp = null; // indeks odnogi będącej zjazdem / łącznicą (gdy odnogi nie są symetryczne)
+        if (isLink(Ys[0]) !== isLink(Ys[1])) ramp = isLink(Ys[0]) ? 0 : 1;
+        else if (nOf(Ys[0]) !== nOf(Ys[1])) ramp = nOf(Ys[0]) < nOf(Ys[1]) ? 0 : 1;
+        res = new Map();
+        if (ramp === null) { // symetryczne rozwidlenie (np. 4 → 2 + 2): plastry szerokości X
+          const tot = Ys.reduce((s1, y) => s1 + y.L + y.R, 0); let cur = a;
+          res.set(X.id, null);
+          for (const y of Ys) { const w = (y.L + y.R) * (b - a) / tot, s0 = cur, s1 = cur + w; cur = s1; res.set(y.id, y.start ? { eL: s0, eR: s1 } : { eL: -s1, eR: -s0 }); }
+        } else { // zjazd: jezdnia przelotowa się nie wygina, łącznica wychodzi z jej boku, a X zwęża się do przelotowej
+          const lk = Ys[ramp], th = Ys[1 - ramp];
+          const ta = th.start ? th.sh - th.L : -(th.sh + th.R), tb = th.start ? th.sh + th.R : -(th.sh - th.L);
+          const wl = lk.L + lk.R, right = lk.lat > th.lat, s0 = right ? tb : ta - wl, s1 = right ? tb + wl : ta;
+          res.set(th.id, null);
+          res.set(lk.id, lk.start ? { eL: s0, eR: s1 } : { eL: -s1, eR: -s0 });
+          res.set(X.id, X.L + X.R > th.L + th.R + 0.4 ? (X.start ? { eL: -tb, eR: -ta } : { eL: ta, eR: tb }) : null);
+        }
         const gi = y => ({ id: y.id, start: y.start, n: roadLanes(roads.get(y.id).t).n });
-        res.gore = { yl: gi(Ys[0]), yr: gi(Ys[Ys.length - 1]) };
+        res.gore = { yl: gi(Ys[0]), yr: gi(Ys[Ys.length - 1]), hw: [X, ...Ys].some(y => /^(motorway|trunk)/.test(roads.get(y.id).t.highway || '')) };
       }
     }
     junc.set(k, res); return res;
@@ -863,7 +877,7 @@ function buildCarriageways(items, ways) {
     const ring = pa.concat(pb.slice().reverse()); ring.push(ring[0]);
     out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { cls: 'gore' } });
     feat(pa, { cls: 'linia', kind: 'ciagla' }); feat(pb, { cls: 'linia', kind: 'ciagla' });
-    if (yl.n >= 2 && yr.n >= 2 && Tg >= 12) for (let i = 2; i < pa.length - 1; i += 2) {
+    if (res.gore.hw && Tg >= 10) for (let i = 2; i < pa.length - 1; i += 2) {
       const cm = q => [(pa[q][0] + pb[q][0]) / 2, (pa[q][1] + pb[q][1]) / 2], c0 = cm(i - 1), c1 = cm(i + 1);
       const rot = Math.atan2(-(c0[1] - c1[1]) * ky, (c0[0] - c1[0]) * kx) * 180 / Math.PI; // wierzchołek szewronu w stronę czubka klina
       out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: cm(i) }, properties: { cls: 'gorechev', rot, g: Math.max(1.6, gp[i] * 0.95) } });

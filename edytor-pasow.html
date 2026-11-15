@@ -317,6 +317,7 @@ function layout() {
               if (uneq) { const fx = mi === 0 ? qa : qb, ot = mi === 0 ? qb : qa, nw = [fx[0] + (ot[0] - fx[0]) * k2, fx[1] + (ot[1] - fx[1]) * k2]; if (mi === 0) qb = nw; else qa = nw; } else { qa = [mid[0] + (qa[0] - mid[0]) * k2, mid[1] + (qa[1] - mid[1]) * k2]; qb = [mid[0] + (qb[0] - mid[0]) * k2, mid[1] + (qb[1] - mid[1]) * k2]; }
             }
             Al.push(qa); Bl.push(qb); if (ss >= sL) break; }
+          if (uneq) { const T = mi === 0 ? Bl : Al; for (let it = 0; it < 40; it++) { const pr = T.map(q => q.slice()); for (let k = 1; k < T.length - 1; k++) { T[k][0] = (pr[k - 1][0] + 2 * pr[k][0] + pr[k + 1][0]) / 4; T[k][1] = (pr[k - 1][1] + 2 * pr[k][1] + pr[k + 1][1]) / 4; } } } // linia rampy: gladki luk bez zalaman
           gores.push({ poly, A: Al, B: Bl, chev, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;

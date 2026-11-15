@@ -299,14 +299,15 @@ function layout() {
               qa = [mid[0] + (qa[0] - mid[0]) * k2, mid[1] + (qa[1] - mid[1]) * k2]; qb = [mid[0] + (qb[0] - mid[0]) * k2, mid[1] + (qb[1] - mid[1]) * k2];
             }
             Al.push(qa); Bl.push(qb); if (ss >= sL) break; }
-          gores.push({ poly, A: Al, B: Bl, chev, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
+          const ar = []; if (X.st && R[yl.i].lanes === 1 && R[yr.i].lanes === 1) for (const [o, oo] of [[oL, oR], [oR, oL]]) for (const sa of [sL + 9, sL + 21]) { const ss = Math.min(sa, o.cum[o.cum.length - 1] * 0.9), p = atS(o.Q, o.cum, ss), p2 = atS(o.Q, o.cum, Math.max(0, ss - 1)), dx = p2[0] - p[0], dy = p2[1] - p[1], q = atS(oo.Q, oo.cum, Math.min(ss, oo.cum[oo.cum.length - 1])), cr = dx * (q[1] - p[1]) - dy * (q[0] - p[0]); ar.push({ x: p[0], y: p[1], rot: Math.atan2(dy, dx) * 180 / Math.PI + 90, type: cr > 0 ? 'p9b' : 'p9a' }); } // P-9 (strzałki naprowadzające) na zlaniu: pas kończący się wskazuje sąsiedni
+          gores.push({ poly, A: Al, B: Bl, chev, ar, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;
       }
     }
   }
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
-  const polys = [], lines = [], arrows = [];
+  const polys = [], lines = [], arrows = []; gores.forEach(g0 => (g0.ar || []).forEach(a0 => arrows.push({ ...a0, ly: g0.ly })));
   forkLinks.forEach(l => lines.push(l));
   const rng = [];
   R.forEach((r, i) => {
@@ -360,6 +361,7 @@ function layout() {
 
 // ---------- strzałki ----------
 function glyph(g, key) {
+  if (key === 'p9a' || key === 'p9b') { const sg = key === 'p9a' ? -1 : 1; g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt'; const x0 = 6, y0 = 16 - sg * 6, x1 = 42, y1 = 16 + sg * 6, ang = Math.atan2(y1 - y0, x1 - x0); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - Math.cos(ang) * 4, y1 - Math.sin(ang) * 4); g.stroke(); g.save(); g.translate(x1, y1); g.rotate(ang); g.beginPath(); g.moveTo(5, 0); g.lineTo(-5, -5.5); g.lineTo(-5, 5.5); g.closePath(); g.fill(); g.restore(); return; }
   const parts = key.split('-'), has = p => parts.includes(p);
   g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt';
   const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -5.5); g.lineTo(-4, 5.5); g.closePath(); g.fill(); g.restore(); };

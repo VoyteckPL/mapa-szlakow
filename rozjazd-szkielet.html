@@ -46,10 +46,14 @@ function offsetLine(P,T,d){return P.map((p,i)=>{const n=nOf(T[i]);return[p[0]+n[
 function build(){
   const w=S.w,node=[0,0],A=resample(spline([node,...S.P.a]),0.5),B=resample(spline([node,...S.P.b]),0.5),X=resample(spline([node,S.P.x]),0.5);
   const tA=tangents(A.P),tB=tangents(B.P),tX=tangents(X.P);
-  // strona, w ktora odnoga ucieka (od drugiej odnogi)
-  const outer=(Pa,ta,Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)],n=nOf(ta[0]);return(n[0]*bp[0]+n[1]*bp[1])>0?-1:1;};
-  const sA=outer(A.P,tA,B.P),sB=outer(B.P,tB,A.P);
-  const arm=(R,t,sg)=>{const off=R.s.map(s=>sg*(w/2)*(1-sm5(s/S.T)));const C=offsetLine(R.P,t,off),tc=tangents(C);return{C,tc,L:offsetLine(C,tc,C.map(()=>w/2)),Rr:offsetLine(C,tc,C.map(()=>-w/2)),sg,s:R.s,ax:R.P};};
+  const e=mul(tX[0],-1),nE=nOf(e); // przedluzenie dwupasowej poza wezel; przekroj koncowy dwupasowej jest do niego prostopadly
+  const outer=(Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)];return(nE[0]*bp[0]+nE[1]*bp[1])>0?-1:1;}; // strona, w ktora odnoga ucieka (od drugiej)
+  const sA=outer(B.P),sB=outer(A.P);
+  const arm=(R,t,sg)=>{ // start: srodek pasa o pol pasa od osi, styczna = przedluzenie dwupasowej (koniec prostopadly); potem hermite do wlasnej osi po T metrach
+    const P0=[nE[0]*sg*w/2,nE[1]*sg*w/2];let iT=R.s.findIndex(v=>v>=S.T);if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
+    for(let k=0;k<=N;k++){const u=k/N,h00=2*u**3-3*u**2+1,h10=u**3-2*u**2+u,h01=-2*u**3+3*u**2,h11=u**3-u**2;C.push([0,1].map(q=>h00*P0[q]+h10*M0[q]+h01*P1[q]+h11*M1[q]));}
+    for(let k=iT+1;k<R.P.length;k++)C.push(R.P[k]);
+    const tc=tangents(C);return{C,tc,L:offsetLine(C,tc,C.map(()=>w/2)),Rr:offsetLine(C,tc,C.map(()=>-w/2)),sg,ax:R.P};};
   const a=arm(A,tA,sA),b=arm(B,tB,sB);
   // X: oś od wezla w dol; polygon 2w
   const xl=offsetLine(X.P,tX,X.P.map(()=>w)),xr=offsetLine(X.P,tX,X.P.map(()=>-w));

@@ -708,7 +708,7 @@ function buildCarriageways(items, ways) {
   // Szerokość X dzielimy na plastry dla Y (od lewej do prawej), a każde Y schodzi z plastra do swojej osi na ok. 30 m,
   // dzięki czemu np. 4 pasy rozchodzą się płynnie na 2 + 2, a dwie łącznice zlewają się w jedną dwupasmówkę.
   const LR = id => { const r = roads.get(id), h = roadHalf(r.t), sd = sides.get(id) || new Set(); return { L: sd.has(-1) ? h + 1.75 : h, R: sd.has(1) ? h + 1.75 : h, sh: shift(id) }; };
-  const junc = new Map();
+  const junc = new Map(), edges = new Map();
   const junction = (k) => {
     if (junc.has(k)) return junc.get(k);
     let res = null;
@@ -730,6 +730,8 @@ function buildCarriageways(items, ways) {
         const tot = Ys.reduce((s1, y) => s1 + y.L + y.R, 0); let cur = a;
         res = new Map([[X.id, null]]);
         for (const y of Ys) { const w = (y.L + y.R) * (b - a) / tot, s0 = cur, s1 = cur + w; cur = s1; res.set(y.id, y.start ? { eL: s0, eR: s1 } : { eL: -s1, eR: -s0 }); }
+        const gi = y => ({ id: y.id, start: y.start, n: roadLanes(roads.get(y.id).t).n });
+        res.gore = { yl: gi(Ys[0]), yr: gi(Ys[Ys.length - 1]) };
       }
     }
     junc.set(k, res); return res;
@@ -786,6 +788,7 @@ function buildCarriageways(items, ways) {
     ends.forEach((en, e) => { if (en) cuts.push(e ? [len - T, len + 1] : [-1, T]); });
     const ds = D.slice();
     ends.forEach((en, e) => { if (en) for (let q = 1; q < 8; q++) ds.push(e ? len - T * q / 8 : T * q / 8); });
+    ds.push(-0.3, len + 0.3); // lekkie wydłużenie, żeby na styku odcinków nie było szczeliny
     ds.sort((x, y) => x - y);
     const dd = ds.filter((d, q) => q === 0 || d - ds[q - 1] > 0.05);
     const sm = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
@@ -797,6 +800,7 @@ function buildCarriageways(items, ways) {
       eLs.push(l); eRs.push(r);
     }
     const dense = dd.map(d => pointAt(c, d));
+    edges.set(id, { L: offsetLine(dense, eLs), R: offsetLine(dense, eRs) });
     const ring = (m) => { const a = offsetLine(dense, eLs.map(v => v - m)), bb = offsetLine(dense, eRs.map(v => v + m)).reverse(); const o = a.concat(bb); o.push(o[0]); return o; };
     out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring(0.35)] }, properties: { cls: 'kerb' } });
     out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring(0)] }, properties: { cls: 'jezdnia', way: id, real } });
@@ -837,6 +841,32 @@ function buildCarriageways(items, ways) {
           out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: { cls: 'strzalka', img, rot } });
         }
       });
+    }
+  }
+  // Klin między rozchodzącymi się jezdniami (P-21): asfalt, ciągłe linie krawędziowe i szewrony (na większych drogach)
+  const meas = P => { const m = [0]; for (let j = 1; j < P.length; j++) m.push(m[j - 1] + Math.hypot((P[j][0] - P[j - 1][0]) * kx, (P[j][1] - P[j - 1][1]) * ky)); return m; };
+  const along = (P, m, d) => { d = Math.min(d, m[m.length - 1]); let j = 1; while (j < m.length - 1 && m[j] < d) j++; const u = (d - m[j - 1]) / ((m[j] - m[j - 1]) || 1); return [P[j - 1][0] + (P[j][0] - P[j - 1][0]) * u, P[j - 1][1] + (P[j][1] - P[j - 1][1]) * u]; };
+  for (const res of junc.values()) {
+    if (!res || !res.gore) continue;
+    const { yl, yr } = res.gore, ea = edges.get(yl.id), eb = edges.get(yr.id);
+    if (!ea || !eb) continue;
+    let A = yl.start ? ea.R : ea.L, B = yr.start ? eb.L : eb.R; // wewnętrzne krawędzie, od węzła na zewnątrz
+    if (!yl.start) A = A.slice().reverse();
+    if (!yr.start) B = B.slice().reverse();
+    const ma = meas(A), mb = meas(B), top = Math.min(70, ma[ma.length - 1], mb[mb.length - 1]);
+    const dist = (p, q) => Math.hypot((p[0] - q[0]) * kx, (p[1] - q[1]) * ky);
+    let Tg = 0;
+    for (let d = 0; d <= top; d += 2) { Tg = d; if (dist(along(A, ma, d), along(B, mb, d)) > 9) break; }
+    if (Tg < 6) continue;
+    const pa = [], pb = [], gp = [];
+    for (let d = 0; d <= Tg + 0.01; d += 2) { pa.push(along(A, ma, d)); pb.push(along(B, mb, d)); gp.push(dist(pa[pa.length - 1], pb[pb.length - 1])); }
+    const ring = pa.concat(pb.slice().reverse()); ring.push(ring[0]);
+    out.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [ring] }, properties: { cls: 'gore' } });
+    feat(pa, { cls: 'linia', kind: 'ciagla' }); feat(pb, { cls: 'linia', kind: 'ciagla' });
+    if (yl.n >= 2 && yr.n >= 2 && Tg >= 12) for (let i = 2; i < pa.length - 1; i += 2) {
+      const cm = q => [(pa[q][0] + pb[q][0]) / 2, (pa[q][1] + pb[q][1]) / 2], c0 = cm(i - 1), c1 = cm(i + 1);
+      const rot = Math.atan2(-(c0[1] - c1[1]) * ky, (c0[0] - c1[0]) * kx) * 180 / Math.PI; // wierzchołek szewronu w stronę czubka klina
+      out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: cm(i) }, properties: { cls: 'gorechev', rot, g: Math.max(1.6, gp[i] * 0.95) } });
     }
   }
   return out;
@@ -1301,7 +1331,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   const M = (m) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', m, PX_PER_M(17)], 22, ['*', m, PX_PER_M(22)]];
   // krawężnik: najpierw obwódki wszystkich jezdni, potem nawierzchnie – na skrzyżowaniach obwódki znikają pod asfaltem
   map.addLayer({ id: 'road-kerb', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('kerb'), paint: { 'fill-color': '#c9cdd2', 'fill-antialias': false } });
-  map.addLayer({ id: 'road-surface', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'), paint: { 'fill-color': '#686b70', 'fill-antialias': false } });
+  map.addLayer({ id: 'road-surface', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia', 'gore'), paint: { 'fill-color': '#686b70', 'fill-antialias': false } });
   map.addLayer({ id: 'road-surface-kostka', type: 'fill', source: 'roads', minzoom: ROAD_Z, filter: ['all', isCls('jezdnia'), ['==', ['get', 'real'], 'nav-jezdnia-kostka']],
     paint: { 'fill-pattern': 'nav-jezdnia-kostka', 'fill-antialias': false } });
   const MARK_W = M(0.12);
@@ -1313,6 +1343,9 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
     filter: ['all', isCls('linia'), ['in', ['get', 'kind'], ['literal', ['ciagla']]]],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#f2f2f2', 'line-opacity': 0.9, 'line-width': MARK_W } });
+  map.addLayer({ id: 'road-gore-chev', type: 'symbol', source: 'roads', minzoom: ROAD_Z, filter: isCls('gorechev'),
+    layout: { 'icon-image': 'gore-chev', 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', ['get', 'g'], PX_PER_M(17) / 32], 22, ['*', ['get', 'g'], PX_PER_M(22) / 32]] } });
   map.addLayer({ id: 'road-arrows', type: 'symbol', source: 'roads', minzoom: ROAD_Z, filter: isCls('strzalka'),
     layout: { 'icon-image': ['get', 'img'], 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
       'icon-allow-overlap': true, 'icon-ignore-placement': true,
@@ -1458,7 +1491,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-gore-chev', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
@@ -1639,6 +1672,8 @@ const beton = (base, specks, joint) => canvasIcon(32, 32, (g, w, h) => { g.fillS
 const szuter = (base, specks) => canvasIcon(32, 32, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); noise(g, w, h, 500, specks, 0.9); });
 // wszystko niebieskie: droga dla rowerów ciemniejszy niebieski, ciąg pieszo-rowerowy jaśniejszy; faktura wg nawierzchni
 const NAV = {
+  // szewron wyznaczający klin (P-21): wierzchołek w prawo, rozpiętość = cała wysokość obrazka
+  'gore-chev': canvasIcon(32, 32, (g) => { g.strokeStyle = '#f2f2f2'; g.lineWidth = 6; g.lineCap = 'butt'; g.lineJoin = 'miter'; g.beginPath(); g.moveTo(3, 1.5); g.lineTo(26, 16); g.lineTo(3, 30.5); g.stroke(); }),
   'nav-asfalt-droga': asphalt('#2c5f9e', ['#25538c', '#3569aa', '#284f86', '#3d72b2']),
   'nav-kostka-droga': kostka('#2f63a3', '#a9bed6', ['#2f63a3', '#386cad', '#2a5a96', '#3368a8']),
   'nav-beton-droga': beton('#4a78b0', ['#4270a8', '#5582ba'], '#3a6398'),

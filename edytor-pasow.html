@@ -230,7 +230,9 @@ function layout() {
         const ref = sx => { if (uneq) { const a = atS(oMn.Q, oMn.cum, Math.max(0, sx - 0.5)), b = atS(oMn.Q, oMn.cum, sx + 0.5), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { p: atS(oMn.Q, oMn.cum, sx), t: [(b[0] - a[0]) / l, (b[1] - a[1]) / l] }; } return { p: [n0[0] + uXr[0] * sx, n0[1] + uXr[1] * sx], t: uXr }; };
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
           const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(16, Math.min(+$("fT").value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
-          if (asym) { const Lt = 16; for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx, u = Math.min(1, sx / Lt), sm3 = u * u * (3 - 2 * u); c.w[jj] = wX + (rw(R[e.i]) - wX) * sm3; } return; }
+          if (asym && angE[q] < 6) { // wylot prosty: pas rzeczywiscie lezy obok osi OSM (os OSM = przedluzenie srodka dwupasowej) - stale przesuniecie, powrot do osi dopiero przy koncu odcinka
+            const Tend = Math.min(30, len * 0.5); for (let jx = 0; jx < n; jx++) { const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx, u = sx <= len - Tend ? 0 : (sx - (len - Tend)) / Tend, f = 1 - u * u * (3 - 2 * u); c.d[jj] += (e.st ? 1 : -1) * sh * f; } return;
+          }
           if (!sh) return;
           // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
           const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
@@ -254,7 +256,7 @@ function layout() {
           gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [] });
         }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
-        const rows = []; for (let s = 0; s <= smax; s += asym ? 0.75 : 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (asym && !rows.length && g < 0.05) continue; if (g > 6) break; rows.push({ s, a, b, g }); }
+        const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 6) break; rows.push({ s, a, b, g }); }
         if (rows.length > 2 && rows.some(r => r.g > 1)) {
           const sEnd = Math.max(0, rows[rows.length - 1].s - 1.5); cutIn.push({ i: yl.i, ss: yl.st ? 1 : -1, st: yl.st, s: sEnd }, { i: yr.i, ss: yr.st ? -1 : 1, st: yr.st, s: sEnd });
           const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];

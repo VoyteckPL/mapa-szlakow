@@ -243,8 +243,8 @@ function layout() {
           const poly = rows.map(r => r.a).concat(rows.map(r => r.b).reverse()), chev = [];
           if (CHEVRONS && G.some(e => /^(motorway|trunk)/.test(R[e.i].hw))) {
             let last = -99; const lerp = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
-            for (let ri = 0; ri < rows.length && chev.length < 5; ri++) {
-              const r0 = rows[ri]; if (r0.g < 0.8 || r0.g > 4.4 || r0.s - last < 1.1) continue; const s2 = Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
+            for (let ri = 0; ri < rows.length && chev.length < 8; ri++) {
+              const r0 = rows[ri]; if (r0.g < 0.5 || r0.g > 4.4 || r0.s - last < 1.1) continue; const s2 = Math.min(r0.s + 0.45 * r0.g, smax), a2 = atS(A2, cA, s2), b2 = atS(B2, cB, s2), t1 = atS(A2, cA, r0.s), t2 = atS(B2, cB, r0.s);
               const ap = lerp(t1, t2, 0.5), ex = (P, Q) => lerp(Q, P, 1.12); let bb = b2, bd = 1e9; const da = dist(a2, ap); for (let ss = r0.s; ss <= smax; ss += 0.04) { const pb = atS(B2, cB, ss), d = Math.abs(dist(pb, ap) - da); if (d < bd) { bd = d; bb = pb; } } chev.push([ex(a2, ap), ap, ex(bb, ap)]); last = r0.s;
             }
           }

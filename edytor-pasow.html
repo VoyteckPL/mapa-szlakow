@@ -122,6 +122,7 @@ function atS(Q, c, s) { // punkt na polilinii w odległości s
 
 // ---------- model drogi ----------
 const rw = r => r.lanes * r.lw, gp = r => r.rp || r.pts; // rp = ręcznie przesunięte punkty samej warstwy renderowanej
+function layerOf(t) { let l = parseInt(t.layer, 10) || 0; if (t.bridge && t.bridge !== 'no' && l < 1) l = 1; if (t.tunnel && t.tunnel !== 'no' && l > -1) l = -1; return l; }
 function makeRoad(o, a, b) {
   const t = o.t, hw = t.highway || '', base = hw.replace('_link', ''), ow = ['yes', '1', 'true', '-1'].includes(t.oneway) || t.junction === 'roundabout' || (base === 'motorway' && t.oneway !== 'no');
   const f = parseInt(t['lanes:forward'], 10) || 0, bk = parseInt(t['lanes:backward'], 10) || 0;
@@ -132,7 +133,7 @@ function makeRoad(o, a, b) {
   let tl = ow ? (t['turn:lanes'] || t['turn:lanes:forward'] || '') : (t['turn:lanes:forward'] || '');
   if (t.oneway === '-1') { pts.reverse(); nk.reverse(); }
   const nf = ow ? n : (f || Math.round(n / 2));
-  return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, nf };
+  return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, nf, ly: layerOf(t), br: !!t.bridge && t.bridge !== 'no' };
 }
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });
 
@@ -271,7 +272,7 @@ function layout() {
           const nd = orient(C[X.i], X.st), pts6 = [edgeOf(nd, -1)[0], edgeOf(nd, 1)[0]];
           for (const e of [yl, yr]) { const oy = orient(C[e.i], e.st); pts6.push(edgeOf(oy, -1)[0], edgeOf(oy, 1)[0]); }
           const cx = pts6.reduce((q, v) => q + v[0] / pts6.length, 0), cy = pts6.reduce((q, v) => q + v[1] / pts6.length, 0);
-          gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [] });
+          gores.push({ poly: pts6.sort((p1, p2) => Math.atan2(p1[1] - cy, p1[0] - cx) - Math.atan2(p2[1] - cy, p2[0] - cx)), A: [], B: [], chev: [], ly: R[X.i].ly | 0 });
         }
         const oL = orient(C[yl.i], yl.st), oR = orient(C[yr.i], yr.st), A = edgeOf(oL, 1), B = edgeOf(oR, -1), A2 = edgeOf(oL, 1, 0.2), B2 = edgeOf(oR, -1, 0.2), cA = oL.cum, cB = oR.cum, smax = Math.min(cA[cA.length - 1], cB[cB.length - 1], 90);
         const rows = []; for (let s = 0; s <= smax; s += 1.5) { const a = atS(A, cA, s), b = atS(B, cB, s), g = (b[0] - a[0]) * nR[0] + (b[1] - a[1]) * nR[1]; if (g > 6) break; rows.push({ s, a, b, g }); }
@@ -292,7 +293,7 @@ function layout() {
               qa = [mid[0] + (qa[0] - mid[0]) * k2, mid[1] + (qa[1] - mid[1]) * k2]; qb = [mid[0] + (qb[0] - mid[0]) * k2, mid[1] + (qb[1] - mid[1]) * k2];
             }
             Al.push(qa); Bl.push(qb); if (ss >= sL) break; }
-          gores.push({ poly, A: Al, B: Bl, chev, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
+          gores.push({ poly, A: Al, B: Bl, chev, ly: R[X.i].ly | 0, cap: [rows[rows.length - 1].a, rows[rows.length - 1].b] });
         }
         continue;
       }
@@ -301,7 +302,9 @@ function layout() {
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
   const polys = [], lines = [], arrows = [];
   forkLinks.forEach(l => lines.push(l));
+  const rng = [];
   R.forEach((r, i) => {
+    rng[i] = [lines.length, arrows.length, polys.length];
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: gp(r)[j], rad: rad + 1.5 }); });
     const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad));
@@ -334,11 +337,12 @@ function layout() {
       }
     }
   });
+  R.forEach((r, i) => { const ly = r.ly | 0, nx = rng[i + 1] || [lines.length, arrows.length, polys.length], b = rng[i]; if (!b) return; for (let j = b[0]; j < nx[0]; j++) lines[j].ly = ly; for (let j = b[1]; j < nx[1]; j++) arrows[j].ly = ly; for (let j = b[2]; j < nx[2]; j++) { polys[j].ly = ly; polys[j].br = !!r.br; } });
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
     const sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), tol = 0.7; let ch = true;
     while (ch) { ch = false;
       for (let i = 0; i < sol.length && !ch; i++) for (let j = i + 1; j < sol.length && !ch; j++) {
-        const a = sol[i], b = sol[j], sa = a.P[0], ea = a.P[a.P.length - 1], sb = b.P[0], eb = b.P[b.P.length - 1];
+        const a = sol[i], b = sol[j]; if ((a.ly | 0) !== (b.ly | 0)) continue; const sa = a.P[0], ea = a.P[a.P.length - 1], sb = b.P[0], eb = b.P[b.P.length - 1];
         if (dist(ea, sb) < tol) a.P = a.P.concat(b.P.slice(1)); else if (dist(ea, eb) < tol) a.P = a.P.concat(b.P.slice(0, -1).reverse()); else if (dist(sa, eb) < tol) a.P = b.P.concat(a.P.slice(1)); else if (dist(sa, sb) < tol) a.P = b.P.slice(1).reverse().concat(a.P); else continue;
         sol.splice(j, 1); ch = true;
       }
@@ -393,17 +397,22 @@ function drawTiles() {
 }
 function pathOf(g, P, closed) { const s = P.map(w2s); g.beginPath(); s.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); if (closed) g.closePath(); }
 function drawLayer(g) {
-  const k = S.view.k; g.lineJoin = 'round';
-  for (const q of L.polys) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'square'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
-  for (const q of L.polys) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
-  for (const q of L.gores) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
-  for (const q of L.gores) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
+  const lys = [...new Set([...L.polys, ...L.gores, ...L.lines, ...L.arrows].map(q => q.ly | 0))].sort((a, b) => a - b);
+  for (const ly of lys) drawGroup(g, ly);
+}
+function drawGroup(g, ly) {
+  const k = S.view.k; g.lineJoin = 'round'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
+  if (ly > 0) for (const q of Lp) if (q.br && q.P.length > 2) { g.save(); g.lineCap = 'butt'; g.lineJoin = 'miter'; pathOf(g, q.P, true); g.strokeStyle = 'rgba(20,22,26,.14)'; g.lineWidth = 1.6 * k; g.stroke(); g.restore(); } // cień wiaduktu na niższych drogach
+  for (const q of Lp) if (q.kerb && q.P.length > 2) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'square'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } // krawężnik tylko po bokach, bez kresek na końcach
+  for (const q of Lp) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); if (ly > 0 && q.br) { g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.strokeStyle = '#9ea2a8'; g.lineWidth = Math.max(1.5, 0.55 * k); g.stroke(); } } }
+  for (const q of Lg) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#6b6e73'; g.lineWidth = 1; g.fill(); g.stroke(); }
+  for (const q of Lg) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
   const line = (P, st, col) => {
     const sty = LS[st] || LS.p1, one = Q => { pathOf(g, Q, false); g.setLineDash(sty.dash ? sty.dash.map(v => v * k) : []); g.lineWidth = Math.max(1, sty.w * k); g.strokeStyle = col || '#f2f2f2'; g.lineCap = 'butt'; g.stroke(); g.setLineDash([]); };
     if (sty.dbl) { one(offsetPts(P, -sty.dbl)); one(offsetPts(P, sty.dbl)); } else one(P);
   };
-  for (const l of L.lines) line(l.P, l.st);
-  for (const q of L.gores) {
+  for (const l of Ll) line(l.P, l.st);
+  for (const q of Lg) {
     line(q.A, 'p2'); line(q.B, 'p2');
     if (q.chev.length) { g.save(); pathOf(g, q.A.concat(q.B.slice().reverse()), true); g.clip(); }
     for (const c of q.chev) {
@@ -411,7 +420,7 @@ function drawLayer(g) {
     }
     if (q.chev.length) g.restore();
   }
-  for (const a of L.arrows) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
+  for (const a of La) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }
 function render() {
   const k = S.view.k, D = S.doc;

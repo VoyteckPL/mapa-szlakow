@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Edytor pasów ruchu</title>
+<style>
+  :root { --bg:#f4f5f7; --pn:#fff; --tx:#1d2330; --mu:#667085; --ac:#2f6fae; --bd:#d8dce3; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#12161d; --pn:#1b212b; --tx:#e6e9ef; --mu:#97a1b3; --ac:#6aa8e6; --bd:#2f3745; } }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--tx); font:14px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overscroll-behavior:none; }
+  #app { display:flex; flex-direction:column; height:100%; }
+  #stage { position:relative; flex:1; min-height:0; touch-action:none; }
+  canvas { position:absolute; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  #hint { position:absolute; left:8px; top:8px; right:8px; pointer-events:none; font-size:12px; color:#fff; background:rgba(20,24,32,.72); padding:5px 9px; border-radius:8px; width:fit-content; max-width:calc(100% - 16px); }
+  #panel { background:var(--pn); border-top:1px solid var(--bd); max-height:44vh; overflow:auto; padding:8px 10px 14px; }
+  @media (min-width: 860px) {
+    #app { flex-direction:row; } #panel { order:-1; width:320px; max-height:none; border-top:0; border-right:1px solid var(--bd); }
+  }
+  .row { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; align-items:center; }
+  button, select, input { font:inherit; color:var(--tx); }
+  button { background:var(--pn); border:1px solid var(--bd); border-radius:8px; padding:7px 10px; cursor:pointer; }
+  button.on { background:var(--ac); border-color:var(--ac); color:#fff; }
+  button.warn { color:#c0392b; }
+  input[type=number], input[type=text], select { background:var(--bg); border:1px solid var(--bd); border-radius:6px; padding:5px 6px; width:84px; }
+  select { width:auto; max-width:100%; }
+  input[type=range] { width:120px; }
+  label { display:inline-flex; align-items:center; gap:5px; color:var(--mu); font-size:13px; }
+  h4 { margin:12px 0 2px; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--mu); }
+  details { border-top:1px solid var(--bd); margin-top:10px; padding-top:6px; } summary { cursor:pointer; font-weight:600; }
+  textarea { width:100%; height:90px; background:var(--bg); color:var(--tx); border:1px solid var(--bd); border-radius:6px; font:11px monospace; }
+  .grid2 { display:grid; grid-template-columns:auto auto; gap:4px 10px; align-items:center; justify-content:start; }
+  .small { font-size:12px; color:var(--mu); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage"><canvas id="cv"></canvas><div id="hint"></div></div>
+  <div id="panel">
+    <div class="row" id="tools"></div>
+    <div class="row" id="drawbar" style="display:none">
+      <button id="bFinish" class="on">Zakończ (Enter)</button><button id="bUndoPt">Cofnij punkt</button><button id="bCancel" class="warn">Anuluj</button>
+    </div>
+    <div class="row">
+      <button id="bPrev">Podgląd</button><label><input type="checkbox" id="cGrid" checked> siatka</label><label><input type="checkbox" id="cSnap" checked> przyciągaj</label>
+      <button id="bUndo">↶</button><button id="bRedo">↷</button><button id="bFit">Dopasuj</button>
+    </div>
+    <div id="props"></div>
+
+    <details open><summary>Szablon: rozwidlenie / zlanie</summary>
+      <div class="small">Wstawia gotowe, edytowalne obiekty (jezdnie, linie, klin) na środku widoku. Pasy: 0 = brak odnogi. Odnoga po prawej z 1 pasem to zjazd.</div>
+      <div class="grid2" id="tplGrid"></div>
+      <div class="row"><button id="bTpl" class="on">Wstaw szablon</button></div>
+    </details>
+
+    <details><summary>Obraz podkładowy (do obrysowania)</summary>
+      <div class="row"><input type="file" id="fImg" accept="image/*"></div>
+      <div class="grid2">
+        <label>szerokość obrazu [m]</label><input type="number" id="iW" value="120" step="5">
+        <label>przezroczystość</label><input type="range" id="iA" min="0" max="1" step="0.05" value="0.6">
+      </div>
+      <div class="small">Narzędzie „Obraz” przesuwa podkład. Zrzut z ortofotomapy: ustaw szerokość tak, by pasy miały ok. 3,5 m.</div>
+    </details>
+
+    <details><summary>Dane</summary>
+      <div class="row"><button id="bExp">Eksport JSON</button><button id="bImp">Wczytaj JSON</button><button id="bPng">Zapisz PNG</button><button id="bClr" class="warn">Wyczyść</button></div>
+      <textarea id="io" placeholder="Tu pojawi się JSON (eksport) albo wklej JSON i naciśnij „Wczytaj JSON”."></textarea>
+      <div class="small">Wszystko zapisuje się też automatycznie w tej przeglądarce. Współrzędne w metrach (x w prawo, y w dół).</div>
+    </details>
+  </div>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const MAT = { asfalt: '#686b70', kostka: '#7d8185', beton: '#9a9b97', jasny: '#8c9096' };
+const LS = {
+  p1:  { n: 'P-1 przerywana (3 / 6 m)', dash: [3, 6], w: 0.12 },
+  p1b: { n: 'P-1 gęsta (1,5 / 3 m)', dash: [1.5, 3], w: 0.12 },
+  p1c: { n: 'P-1 ostrzegawcza (6 / 3 m)', dash: [6, 3], w: 0.12 },
+  p2:  { n: 'P-2 / P-7 ciągła', dash: null, w: 0.12 },
+  p4:  { n: 'P-4 podwójna ciągła', dash: null, w: 0.12, dbl: 0.12 },
+  pk:  { n: 'Krawędziowa przerywana (1 / 1 m)', dash: [1, 1], w: 0.2 },
+};
+const ARR = { through: 'prosto', left: 'w lewo', right: 'w prawo', 'through-left': 'prosto + lewo', 'through-right': 'prosto + prawo', 'left-right': 'lewo + prawo', 'through-left-right': 'prosto + lewo + prawo', reverse: 'zawracanie' };
+const TOOLS = [['sel', 'Zaznacz'], ['pan', 'Widok'], ['surf', 'Jezdnia'], ['line', 'Linia'], ['gore', 'Klin'], ['arrow', 'Strzałka'], ['img', 'Obraz']];
+const KEY = 'edytor-pasow-v1';
+
+const S = { doc: { surf: [], line: [], gore: [], arrow: [] }, view: { x: 0, y: 0, k: 10 }, tool: 'sel', sel: null, vsel: -1, draw: null,
+  img: null, imgP: { x: -60, y: -40, w: 120, a: 0.6 }, edit: true, undo: [], redo: [] };
+let W = 0, H = 0, DPR = 1;
+
+// ---------- geometria ----------
+const w2s = p => [(p[0] - S.view.x) * S.view.k + W / 2, (p[1] - S.view.y) * S.view.k + H / 2];
+const s2w = p => [(p[0] - W / 2) / S.view.k + S.view.x, (p[1] - H / 2) / S.view.k + S.view.y];
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+function catmull(P, closed) {
+  const n = P.length, out = [], g = i => closed ? P[(i + n) % n] : P[Math.max(0, Math.min(n - 1, i))];
+  for (let i = 0; i < (closed ? n : n - 1); i++) {
+    const p0 = g(i - 1), p1 = g(i), p2 = g(i + 1), p3 = g(i + 2);
+    for (let t = 0; t < 10; t++) {
+      const u = t / 10, u2 = u * u, u3 = u2 * u, f = k => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * u + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * u2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * u3);
+      out.push([f(0), f(1)]);
+    }
+  }
+  if (!closed) out.push(P[n - 1]);
+  return out;
+}
+const samp = (o, closed) => (o.smooth && o.pts.length >= 3) ? catmull(o.pts, closed) : o.pts.slice();
+function offsetPts(P, d) { // d > 0 w prawo od kierunku rysowania
+  const o = [], nr = (a, b) => { const x = b[0] - a[0], y = b[1] - a[1], l = Math.hypot(x, y) || 1; return [-y / l, x / l]; };
+  for (let i = 0; i < P.length; i++) {
+    const n1 = i > 0 ? nr(P[i - 1], P[i]) : null, n2 = i < P.length - 1 ? nr(P[i], P[i + 1]) : null;
+    let n = n1 && n2 ? [n1[0] + n2[0], n1[1] + n2[1]] : (n1 || n2); const l = Math.hypot(n[0], n[1]) || 1; n = [n[0] / l, n[1] / l];
+    const m = n1 && n2 ? Math.max(0.4, n[0] * n1[0] + n[1] * n1[1]) : 1;
+    o.push([P[i][0] + n[0] * d / m, P[i][1] + n[1] * d / m]);
+  }
+  return o;
+}
+function inPoly(p, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > p[1]) !== (P[j][1] > p[1]) && p[0] < (P[j][0] - P[i][0]) * (p[1] - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; }
+function segDist(p, a, b) { const x = b[0] - a[0], y = b[1] - a[1], l2 = x * x + y * y || 1; let t = ((p[0] - a[0]) * x + (p[1] - a[1]) * y) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - x * t, p[1] - a[1] - y * t); }
+
+// ---------- szewrony w klinie ----------
+function chevrons(g) {
+  const P = samp(g, true); if (P.length < 3) return [];
+  let ti = 0, best = 9;
+  for (let i = 0; i < P.length; i++) { // czubek = wierzchołek o najostrzejszym kącie
+    const a = P[(i + P.length - 2) % P.length], b = P[i], c = P[(i + 2) % P.length];
+    const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]];
+    const ang = Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / ((Math.hypot(...v1) * Math.hypot(...v2)) || 1))));
+    if (ang < best) { best = ang; ti = i; }
+  }
+  const tip = P[ti], cen = P.reduce((s, p) => [s[0] + p[0] / P.length, s[1] + p[1] / P.length], [0, 0]);
+  let u = [cen[0] - tip[0], cen[1] - tip[1]]; const ul = Math.hypot(...u) || 1; u = [u[0] / ul, u[1] / ul]; const v = [-u[1], u[0]];
+  const chord = t => {
+    const ss = [];
+    for (let i = 0; i < P.length; i++) {
+      const A = P[i], B = P[(i + 1) % P.length], ta = (A[0] - tip[0]) * u[0] + (A[1] - tip[1]) * u[1], tb = (B[0] - tip[0]) * u[0] + (B[1] - tip[1]) * u[1];
+      if ((ta - t) * (tb - t) < 0) { const f = (t - ta) / (tb - ta), X = [A[0] + (B[0] - A[0]) * f - tip[0], A[1] + (B[1] - A[1]) * f - tip[1]]; ss.push(X[0] * v[0] + X[1] * v[1]); }
+    }
+    const neg = ss.filter(s => s <= 0.0001), pos = ss.filter(s => s > 0.0001);
+    // oś może nie przechodzić przez środek klina – bierzemy dwa skrajne przecięcia wokół środka cięciwy
+    if (ss.length < 2) return null; ss.sort((a, b) => a - b);
+    return neg.length && pos.length ? [Math.max(...neg), Math.min(...pos)] : [ss[0], ss[ss.length - 1]];
+  };
+  const out = []; let cnt = 0;
+  for (let t = 1.2; t < ul * 1.8 && cnt < g.max; t += g.step) {
+    const c = chord(t); if (!c) continue; const gap = c[1] - c[0]; if (gap < 2.2) continue;
+    const c2 = chord(t + 0.6 * gap); if (!c2) continue; const gap2 = c2[1] - c2[0];
+    const at = (tt, s) => [tip[0] + u[0] * tt + v[0] * s, tip[1] + u[1] * tt + v[1] * s];
+    out.push([at(t + 0.6 * gap, c2[0] + 0.12 * gap2), at(t, (c[0] + c[1]) / 2), at(t + 0.6 * gap, c2[0] + 0.88 * gap2)]);
+    cnt++;
+  }
+  return out;
+}
+
+// ---------- strzałki P-8 ----------
+function glyph(g, key) {
+  const parts = key.split('-'), has = p => parts.includes(p);
+  g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt';
+  const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -5.5); g.lineTo(-4, 5.5); g.closePath(); g.fill(); g.restore(); };
+  const fork = has('through') ? 26 : 30;
+  g.beginPath(); g.moveTo(2, 16); g.lineTo(has('through') ? 38 : fork, 16); g.stroke();
+  if (has('through')) head(40, 16, 0);
+  for (const [p, sg] of [['left', -1], ['right', 1]]) if (has(p)) {
+    g.beginPath(); g.moveTo(fork - 6, 16); g.quadraticCurveTo(fork + 2, 16, fork + 4, 16 + sg * 7); g.stroke();
+    head(fork + 5, 16 + sg * 9.5, sg * Math.PI / 2 - sg * 0.35);
+  }
+  if (has('reverse')) { g.beginPath(); g.moveTo(fork - 8, 16); g.arc(fork - 8, 10, 6, Math.PI / 2, -Math.PI / 2, true); g.stroke(); head(fork - 13, 4, Math.PI); }
+}
+
+// ---------- rysowanie ----------
+function pathOf(P, closed) { const s = P.map(w2s); ctx.beginPath(); s.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (closed) ctx.closePath(); }
+function render() {
+  const k = S.view.k, D = S.doc;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = S.edit ? '#e9ecdf' : '#dfe3d6'; ctx.fillRect(0, 0, W, H);
+  if (S.img && S.edit !== 'hide') { const a = S.imgP, h = a.w * S.img.height / S.img.width, p = w2s([a.x, a.y]); ctx.globalAlpha = S.edit ? a.a : 0; ctx.drawImage(S.img, p[0], p[1], a.w * k, h * k); ctx.globalAlpha = 1; }
+  if (S.edit && $('cGrid').checked) {
+    const step = k > 40 ? 1 : k > 8 ? 5 : 10, a = s2w([0, 0]), b = s2w([W, H]);
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.beginPath();
+    for (let x = Math.floor(a[0] / step) * step; x <= b[0]; x += step) { const p = w2s([x, 0])[0]; ctx.moveTo(p, 0); ctx.lineTo(p, H); }
+    for (let y = Math.floor(a[1] / step) * step; y <= b[1]; y += step) { const p = w2s([0, y])[1]; ctx.moveTo(0, p); ctx.lineTo(W, p); }
+    ctx.stroke();
+  }
+  // krawężniki, potem nawierzchnia
+  const polys = [...D.surf.map(o => ({ o, col: MAT[o.mat] || MAT.asfalt, kerb: o.kerb })), ...D.gore.map(o => ({ o, col: MAT.asfalt, kerb: false }))];
+  ctx.lineJoin = 'round';
+  for (const q of polys) if (q.kerb && q.o.pts.length > 2) { pathOf(samp(q.o, true), true); ctx.fillStyle = '#c9cdd2'; ctx.strokeStyle = '#c9cdd2'; ctx.lineWidth = Math.max(1.5, 0.7 * k); ctx.fill(); ctx.stroke(); }
+  for (const q of polys) if (q.o.pts.length > 2) { pathOf(samp(q.o, true), true); ctx.fillStyle = q.col; ctx.fill(); ctx.strokeStyle = q.col; ctx.lineWidth = 1; ctx.stroke(); }
+  // linie
+  const drawLine = (P, st) => {
+    const sty = LS[st] || LS.p1, one = Q => { pathOf(Q, false); ctx.setLineDash(sty.dash ? sty.dash.map(v => v * k) : []); ctx.lineWidth = Math.max(1, sty.w * k); ctx.strokeStyle = '#f2f2f2'; ctx.lineCap = 'butt'; ctx.stroke(); ctx.setLineDash([]); };
+    if (sty.dbl) { one(offsetPts(P, -sty.dbl)); one(offsetPts(P, sty.dbl)); } else one(P);
+  };
+  for (const l of D.line) if (l.pts.length > 1) drawLine(samp(l, false), l.style);
+  for (const g of D.gore) {
+    if (g.edge && g.pts.length > 2) drawLine(samp(g, true).concat([samp(g, true)[0]]), 'p2');
+    if (g.chev) for (const c of chevrons(g)) { pathOf(c, false); ctx.strokeStyle = '#f2f2f2'; ctx.lineWidth = Math.max(1, g.thick * k); ctx.lineJoin = 'miter'; ctx.lineCap = 'butt'; ctx.stroke(); ctx.lineJoin = 'round'; }
+  }
+  for (const a of D.arrow) {
+    const p = w2s([a.x, a.y]); ctx.save(); ctx.translate(p[0], p[1]); ctx.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; ctx.scale(sc, sc); ctx.translate(-24, -16); glyph(ctx, a.type); ctx.restore();
+  }
+  if (!S.edit) return;
+  // nakładka edycji
+  const sel = S.sel && D[S.sel.t] && D[S.sel.t][S.sel.i];
+  for (const t of ['surf', 'line', 'gore']) D[t].forEach((o, i) => {
+    const isSel = sel === o, closed = t !== 'line';
+    ctx.lineWidth = isSel ? 2 : 1; ctx.strokeStyle = isSel ? '#ffd23f' : 'rgba(255,255,255,.35)'; ctx.setLineDash(isSel ? [] : [4, 4]);
+    if (o.pts.length > 1) { pathOf(o.pts, closed && o.pts.length > 2); ctx.stroke(); } ctx.setLineDash([]);
+    if (isSel) o.pts.forEach((p, vi) => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], vi === S.vsel ? 8 : 6, 0, 7); ctx.fillStyle = vi === S.vsel ? '#ff5a36' : '#ffd23f'; ctx.fill(); ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.stroke(); });
+    if (isSel) for (let vi = 0; vi < o.pts.length - (closed ? 0 : 1); vi++) { // środki odcinków: dotknij, żeby dodać punkt
+      const a = o.pts[vi], b = o.pts[(vi + 1) % o.pts.length], m = w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); ctx.beginPath(); ctx.arc(m[0], m[1], 4, 0, 7); ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fill(); ctx.stroke();
+    }
+  });
+  D.arrow.forEach(a => { if (sel === a) { const p = w2s([a.x, a.y]); ctx.beginPath(); ctx.arc(p[0], p[1], 18, 0, 7); ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2; ctx.stroke(); } });
+  if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
+  // podziałka
+  const bar = k > 40 ? 1 : k > 8 ? 5 : 10; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar + ' m', 12, H - 22);
+}
+
+// ---------- stan, historia, zapis ----------
+const snap = () => JSON.stringify(S.doc);
+function push() { S.undo.push(snap()); if (S.undo.length > 100) S.undo.shift(); S.redo = []; }
+function restore(s) { S.doc = JSON.parse(s); S.sel = null; S.vsel = -1; save(); ui(); render(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, imgP: S.imgP })); } catch (e) {} }
+$('bUndo').onclick = () => { if (S.undo.length) { S.redo.push(snap()); restore(S.undo.pop()); } };
+$('bRedo').onclick = () => { if (S.redo.length) { S.undo.push(snap()); restore(S.redo.pop()); } };
+function all() { const r = []; for (const t of ['surf', 'line', 'gore']) S.doc[t].forEach((o, i) => o.pts.forEach((p, vi) => r.push({ t, i, vi, p }))); return r; }
+function snapPt(w, skip) {
+  if (!$('cSnap').checked) return w; let best = null, bd = 12 / S.view.k;
+  for (const q of all()) { if (skip && skip.t === q.t && skip.i === q.i && skip.vi === q.vi) continue; const d = dist(q.p, w); if (d < bd) { bd = d; best = q.p; } }
+  return best ? best.slice() : w;
+}
+
+// ---------- UI ----------
+function setTool(t) { S.tool = t; if (S.draw && !['surf', 'line', 'gore'].includes(t)) S.draw = null; if (['surf', 'line', 'gore'].includes(t) && !S.draw) S.draw = { t, pts: [] }; if (t !== 'sel' && !['surf', 'line', 'gore'].includes(t)) { S.sel = null; } ui(); render(); }
+function ui() {
+  $('tools').innerHTML = TOOLS.map(([k, n]) => `<button data-t="${k}" class="${S.tool === k ? 'on' : ''}">${n}</button>`).join('');
+  $('tools').querySelectorAll('button').forEach(b => b.onclick = () => setTool(b.dataset.t));
+  $('drawbar').style.display = S.draw ? 'flex' : 'none';
+  $('bPrev').className = S.edit ? '' : 'on'; $('bPrev').textContent = S.edit ? 'Podgląd' : 'Edycja';
+  const hints = { sel: 'Dotknij obiektu, by go zaznaczyć. Przeciągaj punkty; biały punkt na odcinku dodaje nowy punkt. Puste miejsce przesuwa widok (dwa palce: powiększanie).',
+    pan: 'Przeciągaj, aby przesuwać widok; dwa palce lub kółko myszy powiększają.', surf: 'Jezdnia: dotykaj kolejne punkty obrysu, potem „Zakończ”.', line: 'Linia: dotykaj kolejne punkty, potem „Zakończ”.',
+    gore: 'Klin: dotykaj punkty obrysu klina (czubek = najostrzejszy kąt), potem „Zakończ”.', arrow: 'Strzałka: dotknij miejsca, w którym ma stanąć.', img: 'Przeciągaj, aby przesunąć obraz podkładowy.' };
+  $('hint').textContent = S.edit ? hints[S.tool] : 'Podgląd bez siatki i uchwytów';
+  $('hint').style.display = S.edit ? '' : 'none';
+  props();
+}
+function numRow(label, val, fn, step = 1) { const id = 'n' + Math.random().toString(36).slice(2, 7); setTimeout(() => { const el = $(id); if (el) el.onchange = () => fn(parseFloat(el.value)); }); return `<label>${label}<input type="number" id="${id}" value="${val}" step="${step}"></label>`; }
+function props() {
+  const el = $('props'); const o = S.sel && S.doc[S.sel.t] && S.doc[S.sel.t][S.sel.i]; if (!o) { el.innerHTML = ''; return; }
+  const mut = f => { push(); f(); save(); ui(); render(); };
+  let h = '<h4>Zaznaczone: ' + ({ surf: 'jezdnia', line: 'linia', gore: 'klin', arrow: 'strzałka' })[S.sel.t] + '</h4><div class="row">';
+  const t = S.sel.t; const bind = [];
+  const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { o[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${o[key] ? 'checked' : ''}> ${label}</label>`; };
+  if (t !== 'arrow') h += chk('gładka krzywa', 'smooth');
+  if (t === 'surf') { h += chk('krawężnik', 'kerb') + `<select id="pm">${Object.keys(MAT).map(m => `<option ${o.mat === m ? 'selected' : ''}>${m}</option>`).join('')}</select>`; bind.push(() => { $('pm').onchange = () => mut(() => { o.mat = $('pm').value; }); }); }
+  if (t === 'line') {
+    h += `<select id="ps">${Object.entries(LS).map(([k, v]) => `<option value="${k}" ${o.style === k ? 'selected' : ''}>${v.n}</option>`).join('')}</select></div><div class="row">`;
+    bind.push(() => { $('ps').onchange = () => mut(() => { o.style = $('ps').value; }); });
+    h += numRow('równolegle [m]', 3.5, v => mut(() => { const P = offsetPts(samp(o, false), v); S.doc.line.push({ pts: P, smooth: false, style: o.style }); S.sel = { t: 'line', i: S.doc.line.length - 1 }; }), 0.25);
+    h += '<button id="bRev">Odwróć</button>'; bind.push(() => { $('bRev').onclick = () => mut(() => o.pts.reverse()); });
+  }
+  if (t === 'gore') { h += chk('szewrony', 'chev') + chk('obrys', 'edge') + '</div><div class="row">' + numRow('max szewronów', o.max, v => mut(() => { o.max = v; })) + numRow('odstęp [m]', o.step, v => mut(() => { o.step = v; }), 0.5) + numRow('grubość [m]', o.thick, v => mut(() => { o.thick = v; }), 0.05); }
+  if (t === 'arrow') {
+    h += `<select id="pa">${Object.entries(ARR).map(([k, n]) => `<option value="${k}" ${o.type === k ? 'selected' : ''}>${n}</option>`).join('')}</select>` + numRow('obrót [°]', o.rot, v => mut(() => { o.rot = v; }), 15);
+    bind.push(() => { $('pa').onchange = () => mut(() => { o.type = $('pa').value; }); });
+  }
+  h += `</div><div class="row">${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}<button id="bDup">Duplikuj</button><button id="bDel" class="warn">Usuń obiekt</button></div>`;
+  el.innerHTML = h; bind.forEach(f => f());
+  if ($('bDelV')) $('bDelV').onclick = () => mut(() => { o.pts.splice(S.vsel, 1); S.vsel = -1; if (o.pts.length < (t === 'line' ? 2 : 3)) { S.doc[S.sel.t].splice(S.sel.i, 1); S.sel = null; } });
+  $('bDup').onclick = () => mut(() => { const c = JSON.parse(JSON.stringify(o)); (c.pts ? c.pts.forEach(p => { p[0] += 3; p[1] += 3; }) : (c.x += 3, c.y += 3)); S.doc[S.sel.t].push(c); S.sel = { t: S.sel.t, i: S.doc[S.sel.t].length - 1 }; S.vsel = -1; });
+  $('bDel').onclick = () => mut(() => { S.doc[S.sel.t].splice(S.sel.i, 1); S.sel = null; S.vsel = -1; });
+}
+
+// ---------- obsługa wskaźnika ----------
+const ptrs = new Map(); let drag = null, pinch = null;
+const evp = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+function hitObj(w) {
+  const D = S.doc, tol = 9 / S.view.k;
+  for (let i = D.arrow.length - 1; i >= 0; i--) if (dist([D.arrow[i].x, D.arrow[i].y], w) < 22 / S.view.k) return { t: 'arrow', i };
+  for (let i = D.line.length - 1; i >= 0; i--) { const P = samp(D.line[i], false); for (let j = 1; j < P.length; j++) if (segDist(w, P[j - 1], P[j]) < tol) return { t: 'line', i }; }
+  for (const t of ['gore', 'surf']) for (let i = D[t].length - 1; i >= 0; i--) if (D[t][i].pts.length > 2 && inPoly(w, samp(D[t][i], true))) return { t, i };
+  return null;
+}
+cv.addEventListener('pointerdown', e => {
+  cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
+  if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
+  const p = evp(e), w = s2w(p), D = S.doc;
+  if (e.button === 1 || e.button === 2 || S.tool === 'pan') { drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; return; }
+  if (S.tool === 'img') { drag = { m: 'img', p, o: { x: S.imgP.x, y: S.imgP.y } }; return; }
+  if (S.tool === 'sel') {
+    const o = S.sel && D[S.sel.t][S.sel.i];
+    if (o && o.pts) {
+      for (let i = 0; i < o.pts.length; i++) if (dist(w2s(o.pts[i]), p) < 16) { S.vsel = i; drag = { m: 'vtx', i, moved: false }; push(); ui(); render(); return; }
+      const closed = S.sel.t !== 'line';
+      for (let i = 0; i < o.pts.length - (closed ? 0 : 1); i++) { const a = o.pts[i], b = o.pts[(i + 1) % o.pts.length]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 14) { push(); o.pts.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: i + 1, moved: true }; ui(); render(); return; } }
+    }
+    const h = hitObj(w);
+    if (h) { S.sel = h; S.vsel = -1; const ob = D[h.t][h.i]; push(); drag = { m: 'obj', w, orig: JSON.stringify(ob), moved: false }; ui(); render(); return; }
+    S.sel = null; S.vsel = -1; drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; ui(); render(); return;
+  }
+  drag = { m: 'maybe', p, v: { x: S.view.x, y: S.view.y }, w };
+});
+cv.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, evp(e));
+  if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(1.5, Math.min(200, pinch.k * dist(a, b) / pinch.d)); const c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
+  if (!drag) return; const p = evp(e);
+  if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
+  if (drag.m === 'pan') { S.view.x = drag.v.x - (p[0] - drag.p[0]) / S.view.k; S.view.y = drag.v.y - (p[1] - drag.p[1]) / S.view.k; render(); }
+  else if (drag.m === 'img') { S.imgP.x = drag.o.x + (p[0] - drag.p[0]) / S.view.k; S.imgP.y = drag.o.y + (p[1] - drag.p[1]) / S.view.k; render(); }
+  else if (drag.m === 'vtx') { const o = S.doc[S.sel.t][S.sel.i]; o.pts[drag.i] = snapPt(s2w(p), { t: S.sel.t, i: S.sel.i, vi: drag.i }); drag.moved = true; render(); }
+  else if (drag.m === 'obj') { const w = s2w(p), o = S.doc[S.sel.t][S.sel.i], orig = JSON.parse(drag.orig), dx = w[0] - drag.w[0], dy = w[1] - drag.w[1]; if (Math.hypot(dx, dy) * S.view.k > 4) drag.moved = true;
+    if (drag.moved) { if (o.pts) o.pts = orig.pts.map(q => [q[0] + dx, q[1] + dy]); else { o.x = orig.x + dx; o.y = orig.y + dy; } render(); } }
+});
+function endPtr(e) {
+  ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
+  if (!drag) return; const d = drag; drag = null;
+  if (d.m === 'maybe') { // zwykłe dotknięcie
+    if (S.tool === 'arrow') { push(); S.doc.arrow.push({ x: d.w[0], y: d.w[1], rot: 0, type: 'through' }); S.sel = { t: 'arrow', i: S.doc.arrow.length - 1 }; setTool('sel'); }
+    else if (S.draw) { S.draw.pts.push(snapPt(d.w)); render(); }
+  }
+  if ((d.m === 'vtx' || d.m === 'obj') && !d.moved) S.undo.pop();
+  save(); ui(); render();
+}
+cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('wheel', e => { e.preventDefault(); const p = evp(e), w = s2w(p), k = Math.max(1.5, Math.min(200, S.view.k * Math.exp(-e.deltaY * 0.0015))); S.view.k = k; S.view.x = w[0] - (p[0] - W / 2) / k; S.view.y = w[1] - (p[1] - H / 2) / k; render(); save(); }, { passive: false });
+
+function finish() {
+  const d = S.draw; if (!d) return; const need = d.t === 'line' ? 2 : 3;
+  if (d.pts.length < need) { S.draw = null; setTool('sel'); return; }
+  push(); const pts = d.pts;
+  const o = d.t === 'surf' ? { pts, smooth: false, mat: 'asfalt', kerb: true } : d.t === 'line' ? { pts, smooth: false, style: 'p1' } : { pts, smooth: false, chev: true, edge: true, max: 5, step: 3.5, thick: 0.45 };
+  S.doc[d.t].push(o); S.sel = { t: d.t, i: S.doc[d.t].length - 1 }; S.draw = null; S.tool = 'sel'; save(); ui(); render();
+}
+$('bFinish').onclick = finish; $('bUndoPt').onclick = () => { if (S.draw) { S.draw.pts.pop(); render(); } };
+$('bCancel').onclick = () => { S.draw = null; setTool('sel'); };
+$('bPrev').onclick = () => { S.edit = !S.edit; ui(); render(); };
+$('cGrid').onchange = render; $('bFit').onclick = () => { fit(); };
+addEventListener('keydown', e => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key === 'Enter') finish(); else if (e.key === 'Escape') { S.draw = null; setTool('sel'); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && S.sel) { push(); const o = S.doc[S.sel.t][S.sel.i]; if (S.vsel >= 0 && o.pts && o.pts.length > 3) o.pts.splice(S.vsel, 1); else S.doc[S.sel.t].splice(S.sel.i, 1); S.sel = null; S.vsel = -1; save(); ui(); render(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.shiftKey ? $('bRedo').click() : $('bUndo').click(); e.preventDefault(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { $('bRedo').click(); e.preventDefault(); }
+});
+
+// ---------- szablon ----------
+const TP = [['Nt', 'pasy na dojeździe', 4], ['Nl', 'pasy odnogi lewej', 2], ['Nr', 'pasy odnogi prawej', 2], ['lw', 'szerokość pasa [m]', 3.5], ['Ltr', 'długość dojazdu [m]', 60], ['Lt', 'długość rozchodzenia [m]', 60],
+  ['D', 'rozsunięcie odnogi [m]', 8], ['tail', 'dalszy odcinek [m]', 30], ['gw', 'klin do szerokości [m]', 6], ['rot', 'obrót [°]', 0]];
+$('tplGrid').innerHTML = TP.map(([k, n, v]) => `<label>${n}</label><input type="number" id="t_${k}" value="${v}" step="${k === 'lw' ? 0.25 : 1}">`).join('');
+function insertTemplate() {
+  const P = {}; for (const [k] of TP) P[k] = parseFloat($('t_' + k).value) || 0;
+  const { Nt, Nl, Nr, lw, Ltr, Lt, D, tail, gw, rot } = P, Wt = Nt * lw, Wl = Nl * lw, Wr = Nr * lw, th = rot * Math.PI / 180;
+  const f = [Math.sin(th), -Math.cos(th)], r = [Math.cos(th), Math.sin(th)], c = [S.view.x, S.view.y];
+  const pt = (s, v) => [c[0] + f[0] * s + r[0] * v, c[1] + f[1] * s + r[1] * v], sm = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  const Send = Lt + tail, SS = []; for (let i = 0; i <= 20; i++) SS.push(Lt * i / 20); SS.push(Send);
+  const off = s => D * sm(s / Lt), thr = Nt - Nl - Nr;
+  push(); const add = (t, o) => S.doc[t].push(o);
+  const surf = pts => add('surf', { pts, smooth: false, mat: 'asfalt', kerb: true }), line = (pts, style = 'p1') => add('line', { pts, smooth: false, style });
+  surf([pt(-Ltr, -Wt / 2), pt(0.3, -Wt / 2), pt(0.3, Wt / 2), pt(-Ltr, Wt / 2)]);
+  const lft = s => -Wt / 2 + Wl, rgt = s => Wt / 2 - Wr;
+  if (Nl > 0) surf([...SS.map(s => pt(s, -Wt / 2 - off(s))), ...SS.slice().reverse().map(s => pt(s, -Wt / 2 + Wl - off(s)))]);
+  if (Nr > 0) surf([...SS.map(s => pt(s, Wt / 2 - Wr + off(s))), ...SS.slice().reverse().map(s => pt(s, Wt / 2 + off(s)))]);
+  if (thr > 0) surf([pt(-0.3, lft()), pt(Send, lft()), pt(Send, rgt()), pt(-0.3, rgt())]);
+  // linie pasów
+  for (let k = 1; k < Nt; k++) line([pt(-Ltr, -Wt / 2 + k * lw), pt(0, -Wt / 2 + k * lw)]);
+  for (let k = 1; k < Nl; k++) line(SS.map(s => pt(s, -Wt / 2 + k * lw - off(s))));
+  for (let k = 1; k < Nr; k++) line(SS.map(s => pt(s, Wt / 2 - Wr + k * lw + off(s))));
+  for (let k = 1; k < thr; k++) line([pt(0, lft() + k * lw), pt(Send, lft() + k * lw)]);
+  // linie krawędziowe
+  line([pt(-Ltr, -Wt / 2), pt(0, -Wt / 2), ...SS.slice(1).map(s => pt(s, -Wt / 2 - (Nl > 0 ? off(s) : 0)))], 'p2');
+  line([pt(-Ltr, Wt / 2), pt(0, Wt / 2), ...SS.slice(1).map(s => pt(s, Wt / 2 + (Nr > 0 ? off(s) : 0)))], 'p2');
+  if (Nl > 0) line(SS.map(s => pt(s, -Wt / 2 + Wl - off(s))), 'p2');
+  if (Nr > 0) line(SS.map(s => pt(s, Wt / 2 - Wr + off(s))), 'p2');
+  if (thr > 0) { line([pt(0, lft()), pt(Send, lft())], 'p2'); line([pt(0, rgt()), pt(Send, rgt())], 'p2'); }
+  // kliny z szewronami
+  const wedge = (v0, sg) => { let se = Send; for (const s of SS) if (off(s) >= gw) { se = s; break; } const A = [], B = []; for (const s of SS) { if (s > se) break; A.push(pt(s, v0)); B.push(pt(s, v0 + sg * off(s))); } if (A.length > 2) add('gore', { pts: [...A, ...B.reverse()], smooth: false, chev: true, edge: false, max: 5, step: 3.5, thick: 0.45 }); };
+  if (Nl > 0) wedge(lft(), -1); if (Nr > 0) wedge(rgt(), 1);
+  save(); ui(); render();
+}
+$('bTpl').onclick = insertTemplate;
+
+// ---------- obraz, dane ----------
+$('fImg').onchange = e => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => { S.img = im; S.imgP.w = parseFloat($('iW').value) || 120; S.imgP.x = S.view.x - S.imgP.w / 2; S.imgP.y = S.view.y - S.imgP.w * im.height / im.width / 2; render(); }; im.src = URL.createObjectURL(f); };
+$('iW').onchange = () => { S.imgP.w = parseFloat($('iW').value) || 120; render(); save(); }; $('iA').oninput = () => { S.imgP.a = parseFloat($('iA').value); render(); };
+$('bExp').onclick = () => { $('io').value = JSON.stringify({ wersja: 1, jednostki: 'metry (x w prawo, y w dół)', ...S.doc }, null, 1); $('io').select(); };
+$('bImp').onclick = () => { try { const d = JSON.parse($('io').value); push(); S.doc = { surf: d.surf || [], line: d.line || [], gore: d.gore || [], arrow: d.arrow || [] }; S.sel = null; save(); ui(); render(); } catch (e) { alert('Niepoprawny JSON'); } };
+$('bClr').onclick = () => { if (confirm('Usunąć wszystkie obiekty?')) { push(); S.doc = { surf: [], line: [], gore: [], arrow: [] }; S.sel = null; save(); ui(); render(); } };
+$('bPng').onclick = () => { const e0 = S.edit; S.edit = false; render(); cv.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'edytor-pasow.png'; a.click(); S.edit = e0; render(); }); };
+function fit() {
+  const pts = all().map(q => q.p); S.doc.arrow.forEach(a => pts.push([a.x, a.y])); if (!pts.length) { S.view.k = 10; render(); return; }
+  const x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0])), y0 = Math.min(...pts.map(p => p[1])), y1 = Math.max(...pts.map(p => p[1]));
+  S.view.x = (x0 + x1) / 2; S.view.y = (y0 + y1) / 2; S.view.k = Math.max(1.5, Math.min(60, 0.85 * Math.min(W / Math.max(1, x1 - x0), H / Math.max(1, y1 - y0)))); render(); save();
+}
+function resize() { DPR = devicePixelRatio || 1; const r = cv.getBoundingClientRect(); W = r.width; H = r.height; cv.width = W * DPR; cv.height = H * DPR; render(); }
+addEventListener('resize', resize);
+try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) { S.doc = s.doc; S.view = s.view; Object.assign(S.imgP, s.imgP || {}); } } catch (e) {}
+resize(); ui();
+if (!S.doc.surf.length && !S.doc.line.length) { S.view = { x: 0, y: -20, k: 9 }; insertTemplate(); S.undo = []; }
+</script>
+</body>
+</html>

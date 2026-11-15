@@ -222,13 +222,15 @@ function layout() {
         [[yl, -1], [yr, 1]].forEach(([e, sg], q) => {
           const c = C[e.i], o = orient(c, e.st), n = o.Q.length, len = o.cum[n - 1], P = Math.min(+$('fP').value, len * 0.3), T2 = Math.min(Math.max(16, Math.min(+$("fT").value, (() => { const G2 = gp(R[e.i]), k2 = e.st ? 1 : G2.length - 2, k1 = e.st ? 0 : G2.length - 1; return G2[k2] ? dist(G2[k1], G2[k2]) : 99; })())), len * 0.5), sh = uneq ? (q === mi ? 0 : sg * (wMn + wRp) / 2) : sg * (wX - rw(R[e.i])) / 2;
           if (!sh) return;
+          // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
+          const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
           const Q0 = o.Q.map(q => q.slice()); // ścieżka wylotu: równolegle (P) do przedłużenia dwupasowej, potem krzywa Hermite'a do osi OSM (styczna z obu stron)
-          const sb = P + T2, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, sb + 1), Bm = atS(Q0, o.cum, Math.max(0, sb - 1)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
-          const rfP = ref(P), A = [rfP.p[0] - rfP.t[1] * sh, rfP.p[1] + rfP.t[0] * sh], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
+          const Pe = diverge ? 0 : P, T2e = diverge ? Math.min(T2, 10) : T2, sb = Pe + T2e, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, sb + 1), Bm = atS(Q0, o.cum, Math.max(0, sb - 1)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
+          const rfP0 = ref(Pe), rfP = diverge ? { p: rfP0.p, t: tY0 } : rfP0, A = [rfP0.p[0] - rfP0.t[1] * sh, rfP0.p[1] + rfP0.t[0] * sh], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
           for (let jx = 0; jx < n; jx++) {
             const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx; if (sx >= sb) continue;
-            if (sx <= P) { const rf = ref(sx); c.Q[jj] = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; continue; }
-            const u = (sx - P) / T2, h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
+            if (sx <= Pe) { const rf = ref(sx); c.Q[jj] = [rf.p[0] - rf.t[1] * sh, rf.p[1] + rf.t[0] * sh]; continue; }
+            const u = (sx - Pe) / T2e, h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2;
             c.Q[jj] = [h00 * A[0] + h10 * Ls * rfP.t[0] + h01 * B[0] + h11 * Ls * bt[0], h00 * A[1] + h10 * Ls * rfP.t[1] + h01 * B[1] + h11 * Ls * bt[1]];
           }
           c.cum = cumOf(c.Q);

@@ -466,7 +466,7 @@ function rebuild() {
     if (!classes.length) continue;
     const coords = w.geometry.map(p => [p.lon, p.lat]);
     for (const c of classes) {
-      const props = { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags), zebra: c.zebra ? 1 : 0 };
+      const props = { way: wayId, cls: c.cls, side: c.side, dir: c.dir, color: INFRA[c.cls].color, w: INFRA[c.cls].width, wm: widthM(c.cls, w.tags), zebra: c.zebra ? 1 : 0, real: realSurface(c.cls, w.tags) };
       if (c.side) sideItems.push({ coords, props, offM: laneOffsetM(w.tags) /* sierżant w tym samym miejscu co pas, bez skoku */, name: w.tags.name || w.tags.ref || '' });
       else infraFeatures.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: props });
     }
@@ -558,7 +558,21 @@ function rebuild() {
 const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3.3, tertiary: 3.1, unclassified: 2.8,
   residential: 2.8, living_street: 2.5, service: 2.2 };
 // Rzeczywista szerokość elementu infrastruktury w metrach (tag width / cycleway:width albo wartość typowa).
-const WIDTH_M = { droga: 2.0, ciag: 2.5, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.0 };
+const WIDTH_M = { droga: 2.4, ciag: 2.8, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.4 };
+// Wygląd „rzeczywisty” (tylko na największym zoomie): nawierzchnia z tagu surface / cycleway:surface.
+// Droga dla rowerów domyślnie czerwona, ciąg pieszo-rowerowy szary.
+function realSurface(cls, t) {
+  if (cls !== 'droga' && cls !== 'ciag') return '';
+  const s = (t['cycleway:surface'] || t.surface || '').toLowerCase();
+  let kind;
+  if (/^(asphalt|chipseal)$/.test(s)) kind = 'asfalt';
+  else if (/^(paving_stones|paving_stones:\w+|sett|bricks|concrete:plates|unhewn_cobblestone|cobblestone|grass_paver)$/.test(s)) kind = 'kostka';
+  else if (/^(concrete|concrete:lanes)$/.test(s)) kind = 'beton';
+  else if (/^(compacted|fine_gravel|gravel|dirt|ground|earth|unpaved|pebblestone|sand)$/.test(s)) kind = 'szuter';
+  else kind = cls === 'droga' ? 'asfalt' : 'kostka';
+  const col = (kind === 'asfalt' || kind === 'kostka') && cls === 'droga' ? '-red' : (kind === 'asfalt' || kind === 'kostka') ? '-grey' : '';
+  return 'nav-' + kind + col;
+}
 function widthM(cls, t) { // jednolita szerokość dla klasy (tagi width dawały różnie grube DDR obok siebie)
   return WIDTH_M[cls];
 }
@@ -1031,6 +1045,28 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
     filter: ['all', NOT_SPECIAL, ['==', ['get', 'side'], 0]],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: { 'line-color': ['get', 'color'], 'line-width': INFRA_WIDTH(), 'line-offset': INFRA_OFFSET } });
+  // Największy zoom: kolory i nawierzchnie jak w rzeczywistości (czerwony asfalt / kostka, beton, szuter),
+  // przerywana linia środkowa na dwukierunkowych drogach dla rowerów i malowane rowery w obu kierunkach
+  const REAL_Z = 18;
+  map.addLayer({ id: 'infra-real', type: 'line', source: 'infra', minzoom: REAL_Z, filter: ['all', isCls('droga', 'ciag'), ['!=', ['get', 'real'], '']],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-pattern': ['get', 'real'], 'line-width': INFRA_WIDTH() } });
+  const REAL_MARK = ['interpolate', ['exponential', 2], ['zoom'], REAL_Z, Math.max(1, 0.12 * PX_PER_M(REAL_Z)), 22, 0.12 * PX_PER_M(22)];
+  map.addLayer({ id: 'infra-real-center', type: 'line', source: 'infra', minzoom: REAL_Z, filter: ['all', isCls('droga'), ['==', ['get', 'dir'], 0]],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.9, 'line-width': REAL_MARK, 'line-dasharray': [8, 8] } });
+  const PAINT_SIZE = ['interpolate', ['exponential', 2], ['zoom'], REAL_Z, 1.6 * PX_PER_M(REAL_Z) / 24, 22, 1.6 * PX_PER_M(22) / 24];
+  for (const [id, rot, two] of [['infra-real-bike-f', 0, true], ['infra-real-bike-b', 180, true], ['infra-real-bike-1', 0, false]]) {
+    map.addLayer({ id, type: 'symbol', source: 'infra', minzoom: REAL_Z,
+      filter: two ? ['all', isCls('droga'), ['==', ['get', 'dir'], 0]] : ['all', isCls('droga'), ['in', ['get', 'dir'], ['literal', [1, -1]]]],
+      layout: {
+        'symbol-placement': 'line', 'symbol-spacing': 420, 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-image': 'paintbike', 'icon-size': PAINT_SIZE,
+        'icon-rotate': two ? rot : ['case', ['==', ['get', 'dir'], -1], 180, 0],
+        // dwukierunkowa: każdy rower na swojej (prawej) połowie drogi
+        'icon-offset': two ? [0, 7.5] : [0, 0],
+      } });
+  }
   // pasy przy jezdni: płaskie zakończenia (wyglądają jak pas, nie jak kreska)
   map.addLayer({ id: 'infra-lanes', type: 'line', source: 'infra', minzoom: 11,
     filter: ['all', NOT_SPECIAL, ['!=', ['get', 'side'], 0]],
@@ -1139,7 +1175,7 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;
@@ -1276,6 +1312,13 @@ const ICONS = {
     g.strokeStyle = '#fff'; g.lineWidth = 1.6;
     for (const x of [21, 26]) { g.beginPath(); g.moveTo(x, 3.5); g.lineTo(x + 3.5, 8); g.lineTo(x, 12.5); g.stroke(); }
   }),
+  // malowany rower ze strzałką (biały, bez tła) – znak poziomy na drodze dla rowerów, patrzy w prawo = kierunek jazdy
+  paintbike: canvasIcon(24, 12, (g) => {
+    g.save(); g.translate(7, 6); g.rotate(Math.PI / 2); drawBike(g, 0, 0.3, 10.5, 'rgba(255,255,255,0.92)'); g.restore();
+    g.strokeStyle = 'rgba(255,255,255,0.92)'; g.lineWidth = 1.3;
+    g.beginPath(); g.moveTo(13, 6); g.lineTo(19.5, 6); g.stroke();
+    g.beginPath(); g.moveTo(22.5, 6); g.lineTo(18.5, 3.4); g.lineTo(18.5, 8.6); g.closePath(); g.fillStyle = 'rgba(255,255,255,0.92)'; g.fill();
+  }),
   c13: canvasIcon(22, 22, (g) => {
     g.beginPath(); g.arc(11, 11, 10, 0, 7); g.fillStyle = SIGN_BLUE; g.fill(); g.lineWidth = 1.5; g.strokeStyle = '#fff'; g.stroke();
     drawBike(g, 11, 11.5, 14, '#fff');
@@ -1296,6 +1339,28 @@ const ICONS = {
     g.beginPath(); g.moveTo(30.5, 8); g.lineTo(25.5, 4.5); g.lineTo(25.5, 11.5); g.closePath(); g.fillStyle = '#fff'; g.fill();
   }),
 };
+// wzory nawierzchni (powtarzane wzdłuż linii; wysokość obrazka = szerokość drogi)
+function noise(g, w, h, n, cols, size = 0.6) {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) { g.fillStyle = cols[i % cols.length]; g.fillRect(rnd() * w, rnd() * h, size, size); }
+}
+const asphalt = (base, specks) => canvasIcon(32, 32, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); noise(g, w, h, 420, specks, 0.7); });
+const kostka = (base, joint, shades) => canvasIcon(32, 32, (g, w, h) => {
+  // typowa polska kostka „holland” 20×10 cm układana w jodełkę/cegiełkę: rzędy przesunięte o pół kostki
+  g.fillStyle = joint; g.fillRect(0, 0, w, h);
+  const bw = 8, bh = 4; let k = 0;
+  for (let y = 0, row = 0; y < h; y += bh, row++)
+    for (let x = (row % 2) * -bw / 2; x < w; x += bw) { g.fillStyle = shades[(k++ * 7 + row) % shades.length]; g.fillRect(x + 0.35, y + 0.35, bw - 0.7, bh - 0.7); }
+});
+const NAV = {
+  'nav-asfalt-red': asphalt('#a8453c', ['#8f3a33', '#b8564c', '#9c3f37', '#c0665b']),
+  'nav-asfalt-grey': asphalt('#5f6266', ['#55585c', '#6b6e72', '#4c4f53', '#76797d']),
+  'nav-kostka-red': kostka('#a5483f', '#c9b9b2', ['#a5483f', '#b0544a', '#9a4239', '#ad4d43']),
+  'nav-kostka-grey': kostka('#8e9296', '#cfd1d3', ['#8e9296', '#999da1', '#868a8e', '#a2a5a8']),
+  'nav-beton': canvasIcon(32, 32, (g, w, h) => { g.fillStyle = '#b9b7b1'; g.fillRect(0, 0, w, h); noise(g, w, h, 260, ['#aeaca6', '#c4c2bc'], 0.8); g.fillStyle = '#9d9b96'; g.fillRect(31.4, 0, 0.6, h); }),
+  'nav-szuter': canvasIcon(32, 32, (g, w, h) => { g.fillStyle = '#c8b28a'; g.fillRect(0, 0, w, h); noise(g, w, h, 500, ['#b29a72', '#d8c4a0', '#a38b65', '#e0cfae'], 0.9); }),
+};
+Object.assign(ICONS, NAV);
 function addInfraImages() {
   for (const [name, c] of Object.entries(ICONS)) if (!map.hasImage(name))
     map.addImage(name, c.getContext('2d').getImageData(0, 0, c.width, c.height), { pixelRatio: PR });

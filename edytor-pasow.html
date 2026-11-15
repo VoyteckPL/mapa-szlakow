@@ -340,7 +340,7 @@ function layout() {
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const NL = Math.max(1, r.lanes | 0), nb = NL - (r.oneway ? NL : r.nf);
       if (parts.length === (r.oneway ? NL : r.nf) && len > 25) {
-        for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 5; sa += 26, cnt++) { // strzałki co ok. 26 m, licząc od końca drogi
+        for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 3; sa += 21, cnt++) { // strzałki co ok. 21 m (3 sztuki, jak na ortofoto), licząc od końca drogi
           const s = len - sa, p = atS(Q, c.cum, s), p2 = atS(Q, c.cum, s + 1), dx = p2[0] - p[0], dy = p2[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
           let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - s); if (dd < bd) { bd = dd; jn = j; } }
           const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj; // krawędź lewa wg faktycznej geometrii (offset, poszerzenie)

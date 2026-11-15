@@ -48,7 +48,7 @@
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     <details open><summary>Wygląd mapy</summary>
       <div class="row"><label><input type="checkbox" id="cTile" checked> podkład</label><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne tło (bez kolorowych dróg)</option><option value="orto" selected>Ortofoto Geoportal (HR)</option></select></div>
-      <div class="row"><label><input type="checkbox" id="cLay" checked> pasy (render)</label><label><input type="checkbox" id="cAx" checked> osie OSM</label><label><input type="checkbox" id="cSm"> wygładź osie</label></div>
+      <div class="row"><label><input type="checkbox" id="cLay" checked> pasy (render)</label><label><input type="checkbox" id="cAx" checked> osie OSM</label><label><input type="checkbox" id="cSm"> wygładź osie</label><label><input type="checkbox" id="cBlue" checked> niebieskie kontury jezdni</label></div>
       <div class="row"><label>krycie pasów <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label></div>
     </details>
     <details><summary>Ustawienia zaawansowane</summary>
@@ -480,6 +480,7 @@ function render() {
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); octx.clearRect(0, 0, W, H); drawLayer(octx);
     ctx.globalAlpha = +$('rA').value; ctx.drawImage(off, 0, 0, W, H); ctx.globalAlpha = 1;
   }
+  if ($('cBlue') && $('cBlue').checked && !EMBED) { ctx.save(); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(47,139,255,.9)'; ctx.fillStyle = 'rgba(47,111,174,.12)'; for (const pl of L.polys) { pathOf(ctx, pl.P, true); ctx.fill(); ctx.stroke(); } ctx.restore(); }
   if (S.tool === 'sel' && S.sel >= 0 && LP && LAN && !EMBED && S.doc.road[S.sel] && S.doc.road[S.sel].osm) { // podświetlenie zaznaczonego pasa + podgląd strzałki
     const r = S.doc.road[S.sel], nb = r.oneway ? 0 : r.lanes - (r.nf || 1), g = r.oneway ? LSEL.i : (LSEL.r === 0 ? nb + LSEL.i : nb - 1 - LSEL.i), G = laneGeom(S.sel);
     if (G) { const A = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + g * G.lw[j])), B = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (g + 1) * G.lw[j])); ctx.save(); pathOf(ctx, A.concat(B.slice().reverse()), true); ctx.fillStyle = 'rgba(47,111,174,.32)'; ctx.fill(); ctx.strokeStyle = '#2f8bff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
@@ -641,7 +642,7 @@ $('bImp').onclick = async () => {
   if ((box[1] - box[0] + 1) * (box[3] - box[2] + 1) > 40) { say('Widok za duży – przybliż mapę.'); return; }
   say('Pobieram dane widoku…'); await loadOsmAround((la + lb) / 2, (lo + hi) / 2, box); push(); importView();
 };
-for (const id of ['cTile', 'cLay', 'cAx', 'rA', 'bm']) $(id).oninput = () => render();
+for (const id of ['cTile', 'cLay', 'cAx', 'cBlue', 'rA', 'bm']) $(id).oninput = () => render();
 $('cSm').oninput = () => touch(); $('fP').oninput = $('fT').oninput = () => touch();
 $('bFinish').onclick = finishDraw; $('bCancel').onclick = () => setTool('sel');
 function finishDraw() { if (S.draw && S.draw.pts.length > 1) { push(); S.doc.road.push(newRoad(S.draw.pts, S.draw.nk)); S.sel = S.doc.road.length - 1; } setTool('sel'); save(); touch(); }

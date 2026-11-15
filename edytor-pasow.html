@@ -213,7 +213,7 @@ function layout() {
         const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(60, len / 2.2);
         const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
         R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
-        c.side = e.st ? -sf : sf; c.w.fill(narrow); const n = c.Q.length;
+        c.side = e.st ? sf : -sf; c.w.fill(narrow); const n = c.Q.length;
         for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); }
         if (R[e.i].oneway && !e.st && len > T + 24) for (const sa of [T + 8, T + 20]) { // P-9: kończący się pas wskazuje sąsiedni (zmiana pasów 3→2)
           const v = len - sa, p = atS(c.Q, c.cum, v), p2 = atS(c.Q, c.cum, Math.min(len, v + 1)), off = c.side * (narrow / 2 + extra / 2), q = offsetPts([p, p2], [off, off]), qc = offsetPts([p, p2], [0, 0]), dx = p2[0] - p[0], dy = p2[1] - p[1], cr = dx * (qc[0][1] - q[0][1]) - dy * (qc[0][0] - q[0][0]);

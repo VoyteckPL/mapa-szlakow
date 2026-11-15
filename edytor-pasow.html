@@ -151,7 +151,7 @@ async function loadLink(txt) {
 
 // ---------- układ automatyczny ----------
 function comp(r) {
-  const Q = dense(r.pts, 2), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, cum: cumOf(Q) };
+  const Q = dense(r.pts, 2), w = Q.map(() => rw(r)), d = Q.map(() => 0); return { Q, w, d, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg) => offsetPts(o.Q, o.d.map((v, i) => v + sg * o.w[i] / 2));
@@ -166,7 +166,13 @@ function layout() {
   for (const [k, G] of ends) {
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
-      if (Math.abs(ws[0] - ws[1]) > 0.3) { const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], narrow = Math.min(...ws), T = Math.min(30, C[e.i].cum[C[e.i].cum.length - 1] / 2.2); endWidth(C[e.i], e.st, (s, w0) => narrow + (w0 - narrow) * sm(s / T)); }
+      if (Math.abs(ws[0] - ws[1]) > 0.3) { // dodatkowy pas dochodzi bokiem, dwa główne zostają na osi
+        const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(30, len / 2.2);
+        const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
+        R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? 1 : -1; } }); });
+        c.side = e.st ? sf : -sf; c.w.fill(narrow); const n = c.Q.length;
+        for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); }
+      }
       continue;
     }
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
@@ -204,14 +210,16 @@ function layout() {
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: r.pts[j], rad: rad + 1.5 }); });
     const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad));
     const addLine = (P, st) => { let run = []; for (let j = 0; j < n; j++) { if (keep[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
-    const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2)), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2));
+    const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
+    const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
     polys.push({ P: Lf.concat(Rt.slice().reverse()), kerb: r.kerb });
-    const nl = Math.max(1, r.lanes | 0);
+    const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
+    if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.8) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1');
     }
-    if (r.edge) { addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + 0.2)), 'p2'); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 - 0.2)), 'p2'); }
+    if (r.edge) { addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j) + 0.2)), 'p2'); addLine(offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j) - 0.2)), 'p2'); }
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const nb = nl - (r.oneway ? nl : r.nf);
       if (parts.length === (r.oneway ? nl : r.nf) && len > 25) {

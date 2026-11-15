@@ -23,14 +23,14 @@ canvas{display:block;width:100%;height:calc(100vh - 150px);min-height:420px;touc
 const $=id=>document.getElementById(id), cv=$('cv'), ctx=cv.getContext('2d');
 let W=0,H=0,DPR=1,K=7,OX=0,OY=0; // K px/m, (OX,OY) = pozycja wezla na ekranie
 const PRESETS={
- 'Prosto + odnoga w prawo':{x:[0,70],a:[[-1,-35],[-3,-90]],b:[[7,-26],[22,-48],[40,-60]]},
- 'Symetryczne Y':{x:[0,70],a:[[-12,-28],[-26,-56]],b:[[12,-28],[26,-56]]},
- 'Lekki łuk w lewo + ostra odnoga':{x:[0,70],a:[[-4,-30],[-14,-60]],b:[[10,-22],[30,-34],[52,-38]]},
- 'Przykład ze zrzutu':{x:[4,70],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
- 'Odnoga prawie równolegle':{x:[0,70],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
+ 'Prosto + odnoga w prawo':{x:[[0,70]],a:[[-1,-35],[-3,-90]],b:[[7,-26],[22,-48],[40,-60]]},
+ 'Symetryczne Y':{x:[[0,70]],a:[[-12,-28],[-26,-56]],b:[[12,-28],[26,-56]]},
+ 'Lekki łuk w lewo + ostra odnoga':{x:[[0,70]],a:[[-4,-30],[-14,-60]],b:[[10,-22],[30,-34],[52,-38]]},
+ 'Przykład ze zrzutu':{x:[[4,70]],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
+ 'Odnoga prawie równolegle':{x:[[0,70]],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
 };
-const S={w:3.75,T:70,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:true,preset:'Prosto + odnoga w prawo'};
-function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.slice(),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
+const S={nX:2,lA:1,grid:true,snap:false,draw:null,w:3.75,T:70,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:true,preset:'Prosto + odnoga w prawo'};
+function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.map(q=>q.slice()),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
 // ---------- geometria ----------
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],add=(a,b)=>[a[0]+b[0],a[1]+b[1]],mul=(a,k)=>[a[0]*k,a[1]*k],len=a=>Math.hypot(a[0],a[1]),nrm=a=>{const l=len(a)||1;return[a[0]/l,a[1]/l]};
 const sm5=t=>{t=Math.max(0,Math.min(1,t));return t*t*t*(t*(6*t-15)+10)};
@@ -44,89 +44,103 @@ function tangents(P){return P.map((p,i)=>nrm(sub(P[Math.min(P.length-1,i+1)],P[M
 const nOf=t=>[-t[1],t[0]];
 function offsetLine(P,T,d){return P.map((p,i)=>{const n=nOf(T[i]);return[p[0]+n[0]*d[i],p[1]+n[1]*d[i]];});}
 function build(){
-  const w=S.w,node=[0,0],A=resample(spline([node,...S.P.a]),0.5),B=resample(spline([node,...S.P.b]),0.5),X=resample(spline([node,S.P.x]),0.5);
+  const w=S.w,node=[0,0],A=resample(spline([node,...S.P.a]),0.5),B=resample(spline([node,...S.P.b]),0.5),X=resample(spline([node,...S.P.x]),0.5);
   const tA=tangents(A.P),tB=tangents(B.P),tX=tangents(X.P);
-  const e=mul(tX[0],-1),nE=nOf(e); // przedluzenie dwupasowej poza wezel; przekroj koncowy dwupasowej jest do niego prostopadly
-  const outer=(Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)];return(nE[0]*bp[0]+nE[1]*bp[1])>0?-1:1;}; // strona, w ktora odnoga ucieka (od drugiej)
-  const sA=outer(B.P),sB=outer(A.P);
-  const arm=(R,t,sg)=>{ // start: srodek pasa o pol pasa od osi, styczna = przedluzenie dwupasowej (koniec prostopadly); potem hermite do wlasnej osi po T metrach
-    const P0=[nE[0]*sg*w/2,nE[1]*sg*w/2];let iT=R.s.findIndex(v=>v>=S.T);if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
+  const e=mul(tX[0],-1),nE=nOf(e); // przedluzenie drogi wjazdowej poza wezel; jej przekroj koncowy jest do niego prostopadly
+  const outer=(Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)];return(nE[0]*bp[0]+nE[1]*bp[1])>0?-1:1;}; // strona (znak wzdluz nE), w ktora odnoga ucieka
+  const sA=outer(B.P),sB=outer(A.P),nX=S.nX,lA=Math.min(nX-1,Math.max(1,S.lA)),lB=nX-lA;
+  const arms=[{R:A,t:tA,sg:sA,l:lA,k:'a'},{R:B,t:tB,sg:sB,l:lB,k:'b'}],neg=arms.find(o=>o.sg<0)||arms[0],pos=arms.find(o=>o!==neg);
+  // polozenie osi w przekroju: parzysta liczba pasow - os w srodku; nieparzysta - (n-1) pasow rdzenia na osi, dodatkowy pas z boku mniejszej odnogi (offset)
+  let xN=nX*w/2;if(nX%2===1){const extraNeg=neg.l<pos.l;xN=extraNeg?w+(nX-1)*w/2:(nX-1)*w/2;}
+  neg.c=-xN+neg.l*w/2;pos.c=-xN+neg.l*w+pos.l*w/2;
+  const arm=o=>{ // start: srodek odnogi w jej czesci przekroju, styczna = przedluzenie drogi wjazdowej (koniec prostopadly); potem hermite do wlasnej osi po T metrach
+    const R=o.R,t=o.t,W=o.l*w,P0=[nE[0]*o.c,nE[1]*o.c];let iT=R.s.findIndex(v=>v>=S.T);if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
     for(let k=0;k<=N;k++){const u=k/N,h00=2*u**3-3*u**2+1,h10=u**3-2*u**2+u,h01=-2*u**3+3*u**2,h11=u**3-u**2;C.push([0,1].map(q=>h00*P0[q]+h10*M0[q]+h01*P1[q]+h11*M1[q]));}
     for(let k=iT+1;k<R.P.length;k++)C.push(R.P[k]);
-    const tc=tangents(C);return{C,tc,L:offsetLine(C,tc,C.map(()=>w/2)),Rr:offsetLine(C,tc,C.map(()=>-w/2)),sg,ax:R.P};};
-  const a=arm(A,tA,sA),b=arm(B,tB,sB);
-  // X: oś od wezla w dol; polygon 2w
-  const xl=offsetLine(X.P,tX,X.P.map(()=>w)),xr=offsetLine(X.P,tX,X.P.map(()=>-w));
-  return{a,b,x:{P:X.P,t:tX,L:xl,R:xr},w};
+    const tc=tangents(C);return{C,tc,W,l:o.l,sg:o.sg,L:offsetLine(C,tc,C.map(()=>W/2)),Rr:offsetLine(C,tc,C.map(()=>-W/2)),ax:R.P};};
+  const a=arm(arms[0]),b=arm(arms[1]);
+  // droga wjazdowa: boki w odleglosci (wzgledem osi) -xN .. nX*w-xN wzdluz nE (nOf(tX) = -nE)
+  const xoff=q=>offsetLine(X.P,tX,X.P.map(()=>-q));
+  return{a,b,x:{P:X.P,t:tX,L:xoff(-xN),R:xoff(nX*w-xN),off:xoff,xN},nE,w,nX};
 }
 // ---------- rysowanie ----------
 const w2s=p=>[OX+p[0]*K,OY+p[1]*K];
 function path(P,close){ctx.beginPath();P.forEach((p,i)=>{const q=w2s(p);i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]);});if(close)ctx.closePath();}
 function stroke(P,col,wm,dash){path(P);ctx.strokeStyle=col;ctx.lineWidth=Math.max(1,wm*K);ctx.setLineDash(dash?dash.map(v=>v*K):[]);ctx.lineCap='butt';ctx.lineJoin='round';ctx.stroke();ctx.setLineDash([]);}
+const ready=()=>S.P&&S.P.a.length&&S.P.b.length&&S.P.x.length;
+function gridStep(){const c=[0.5,1,2,5,10,20];for(const g of c)if(g*K>=22)return g;return 20;}
+function drawGrid(){const g=gridStep(),x0=-OX/K,x1=(W-OX)/K,y0=-OY/K,y1=(H-OY)/K;ctx.save();ctx.lineWidth=1;ctx.font='11px system-ui';ctx.fillStyle='rgba(60,70,80,.75)';
+  for(let x=Math.floor(x0/g)*g;x<=x1;x+=g){const sx=OX+x*K,maj=Math.abs(Math.round(x/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,H);ctx.stroke();if(maj)ctx.fillText(Math.round(x*100)/100+' m',sx+2,H-3);}
+  for(let y=Math.floor(y0/g)*g;y<=y1;y+=g){const sy=OY+y*K,maj=Math.abs(Math.round(y/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(W,sy);ctx.stroke();if(maj)ctx.fillText(Math.round(y*100)/100+' m',3,sy-2);}
+  ctx.restore();}
 function render(){
   if(!S.P)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
-  const G=build(),w=S.w,ROAD='#7c8083',LINE='#f2f2f0';
-  // asfalt
+  if(S.grid)drawGrid();
+  if(ready()){drawRoad();}
+  // uchwyty
+  ctx.fillStyle='#fff';ctx.strokeStyle='#e0245e';ctx.lineWidth=2;[...S.P.a,...S.P.b,...S.P.x].forEach(p=>{const q=w2s(p);ctx.beginPath();ctx.arc(q[0],q[1],6,0,7);ctx.fill();ctx.stroke();});
+  const nq=w2s([0,0]);ctx.beginPath();ctx.arc(nq[0],nq[1],5,0,7);ctx.fillStyle='#e0245e';ctx.fill();
+  if(S.draw){ctx.fillStyle='#1d2733';ctx.font='13px system-ui';ctx.fillText('Rysowanie: '+S.draw.label+' – klikaj punkty (od węzła na zewnątrz), Enter lub „Zakończ" kończy',12,H-12);}
+}
+function drawRoad(){
+  const G=build(),w=S.w,ROAD='#7c8083',LINE='#f2f2f0',nE=G.nE;
   const fill=(L,R)=>{path(L.concat(R.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();};
   fill(G.x.L,G.x.R);fill(G.a.L,G.a.Rr);fill(G.b.L,G.b.Rr);
-  // lata na styku
   const pts=[G.x.L[0],G.x.R[0],G.a.L[0],G.a.Rr[0],G.b.L[0],G.b.Rr[0]];const cx=pts.reduce((s,p)=>s+p[0],0)/6,cy=pts.reduce((s,p)=>s+p[1],0)/6;
   pts.sort((p,q)=>Math.atan2(p[1]-cy,p[0]-cx)-Math.atan2(q[1]-cy,q[0]-cx));path(pts,true);ctx.fillStyle=ROAD;ctx.fill();
-  // klin (miedzy wewnetrznymi krawedziami odnog)
-  const iA=armInner(G.a,0.2),iB=armInner(G.b,0.2),N=Math.min(iA.length,iB.length);
-  const A2=[],B2=[],gap=[];for(let i=0;i<N;i++){const g=len(sub(iA[i],iB[i]));gap.push(g);const u=sm5(Math.max(0,Math.min(1,(g-0.45)/0.8))),m=[(iA[i][0]+iB[i][0])/2,(iA[i][1]+iB[i][1])/2];A2.push([m[0]+(iA[i][0]-m[0])*u,m[1]+(iA[i][1]-m[1])*u]);B2.push([m[0]+(iB[i][0]-m[0])*u,m[1]+(iB[i][1]-m[1])*u]);}
+  // klin: krawedz Neg odnogi od strony + i krawedz Pos odnogi od strony -
+  const neg=G.a.sg<0?G.a:G.b,pos=neg===G.a?G.b:G.a,inN=offsetLine(neg.C,neg.tc,neg.C.map(()=>neg.W/2-0.2)),inP=offsetLine(pos.C,pos.tc,pos.C.map(()=>-(pos.W/2-0.2))),N=Math.min(inN.length,inP.length);
+  const A2=[],B2=[],gap=[];for(let i=0;i<N;i++){const g=len(sub(inN[i],inP[i]));gap.push(g);const u=sm5(Math.max(0,Math.min(1,(g-0.45)/0.8))),m=[(inN[i][0]+inP[i][0])/2,(inN[i][1]+inP[i][1])/2];A2.push([m[0]+(inN[i][0]-m[0])*u,m[1]+(inN[i][1]-m[1])*u]);B2.push([m[0]+(inP[i][0]-m[0])*u,m[1]+(inP[i][1]-m[1])*u]);}
   let ie=N-1;for(let i=0;i<N;i++)if(gap[i]>5){ie=i;break;}
-  path(A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse()),true);ctx.fillStyle=ROAD;ctx.fill();
-  // szewrony
-  if(S.chev){let last=-9;ctx.save();path(A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse()),true);ctx.clip();
+  const wp=A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse());path(wp,true);ctx.fillStyle=ROAD;ctx.fill();
+  if(S.chev){let last=-9;ctx.save();path(wp,true);ctx.clip();
     for(let i=0;i<N;i++){const s=i*0.5;if(gap[i]<1.6||gap[i]>4.4||s-last<1.1)continue;const d=Math.round(0.45*gap[i]/0.5)*(S.mg?-1:1),j=Math.max(0,Math.min(N-1,i+d)),ap=[(A2[i][0]+B2[i][0])/2,(A2[i][1]+B2[i][1])/2];const ex=(p)=>[ap[0]+(p[0]-ap[0])*1.15,ap[1]+(p[1]-ap[1])*1.15];stroke([ex(A2[j]),ap,ex(B2[j])],LINE,0.55);last=s;}ctx.restore();}
-  // linie: srodkowa X (przerywana), krawedzie
-  stroke(G.x.P.map((p,i)=>p),LINE,0.12,[3,6]);
+  // linie pasow wewnatrz drog (przerywane), krawedzie, linie klina
+  const div=(C,tc,W,l,d)=>{for(let k=1;k<l;k++)stroke(offsetLine(C,tc,C.map(()=>-W/2+k*w)),LINE,0.12,[3,6]);};
+  div(G.x.P,G.x.t,0,0);for(let k=1;k<G.nX;k++)stroke(G.x.off(-G.x.xN+k*w),LINE,0.12,[3,6]);
+  [G.a,G.b].forEach(o=>div(o.C,o.tc,o.W,o.l));
   stroke(A2,LINE,0.14);stroke(B2,LINE,0.14);
-  const xe=(sd)=>G.x.P.map((p,i)=>{const n=nOf(G.x.t[i]);return[p[0]+n[0]*sd*(w-0.2),p[1]+n[1]*sd*(w-0.2)];});
-  const xl=xe(+1),xr=xe(-1);
-  [G.a,G.b].forEach(arm=>{
-    const sd=arm.sg>0?1:-1,e=armOuterSide(arm,0.2,sd);
-    // X po tej samej stronie ekranu: porownanie punktu startowego
-    const cand=[xl,xr],best=cand.reduce((a,c)=>len(sub(c[0],e[0]))<len(sub(a[0],e[0]))?c:a);
-    stroke(best.slice().reverse().concat(e.slice(1)),LINE,0.14);});
+  const xe=(q)=>G.x.off(q);const xneg=xe(-G.x.xN+0.2),xpos=xe(G.nX*w-G.x.xN-0.2);
+  [G.a,G.b].forEach(o=>{const sd=o.sg>0?1:-1,e=offsetLine(o.C,o.tc,o.C.map(()=>sd*(o.W/2-0.2))),xs=sd>0?xpos:xneg;stroke(xs.slice().reverse().concat(e.slice(1)),LINE,0.14);});
   if(S.blue){const BL='rgba(47,139,255,.9)';[G.x.L,G.x.R,G.a.L,G.a.Rr,G.b.L,G.b.Rr].forEach(P=>stroke(P,BL,0.1));
-    path(pts,true);ctx.fillStyle='rgba(47,139,255,.18)';ctx.fill();stroke(pts.concat([pts[0]]),BL,0.1); // lata na styku pasow
-    const wp=A2.slice(0,ie+1).concat(B2.slice(0,ie+1).reverse());path(wp,true);ctx.fillStyle='rgba(255,140,0,.18)';ctx.fill();stroke(wp.concat([wp[0]]),'rgba(255,140,0,.95)',0.1); // klin (miejsce laczenia/rozchodzenia sie pasow)
-  }
+    path(pts,true);ctx.fillStyle='rgba(47,139,255,.18)';ctx.fill();stroke(pts.concat([pts[0]]),BL,0.1);
+    path(wp,true);ctx.fillStyle='rgba(255,140,0,.18)';ctx.fill();stroke(wp.concat([wp[0]]),'rgba(255,140,0,.95)',0.1);}
   if(S.sk){stroke(G.a.C,'#ffb000',0.12);stroke(G.b.C,'#ffb000',0.12);}
-  if(S.ax){[[ [0,0],...S.P.a ],[ [0,0],...S.P.b ],[[0,0],S.P.x]].forEach(P=>stroke(spline(P),'#e0245e',0.08));}
-  // uchwyty
-  ctx.fillStyle='#fff';ctx.strokeStyle='#e0245e';ctx.lineWidth=2;[...S.P.a,...S.P.b,S.P.x].forEach(p=>{const q=w2s(p);ctx.beginPath();ctx.arc(q[0],q[1],6,0,7);ctx.fill();ctx.stroke();});
-  const nq=w2s([0,0]);ctx.beginPath();ctx.arc(nq[0],nq[1],5,0,7);ctx.fillStyle='#e0245e';ctx.fill();
+  if(S.ax){[[[0,0],...S.P.a],[[0,0],...S.P.b],[[0,0],...S.P.x]].forEach(P=>P.length>1&&stroke(spline(P),'#e0245e',0.08));}
 }
-function armInner(arm,inset){ // krawedz od strony drugiej odnogi (przeciwna do uciekajacej)
-  const d=arm.sg>0?-(S.w/2-inset):(S.w/2-inset);return offsetLine(arm.C,arm.tc,arm.C.map(()=>d));}
-function armOuterSide(arm,inset,sd){return offsetLine(arm.C,arm.tc,arm.C.map(()=>sd*(S.w/2-inset)));}
 // ---------- UI i uchwyty ----------
 function ui(){const b=$('bar');b.innerHTML='';
   Object.keys(PRESETS).forEach(n=>{const e=document.createElement('button');e.textContent=n;if(n===S.preset)e.className='on';e.onclick=()=>load(n);b.appendChild(e);});
+  const sel=(lab,k,opts,cb)=>{const l=document.createElement('label');l.innerHTML=lab+' <select>'+opts.map(o=>'<option'+(o===S[k]?' selected':'')+'>'+o+'</option>').join('')+'</select>';l.querySelector('select').onchange=e=>{S[k]=+e.target.value;if(S.lA>=S.nX)S.lA=S.nX-1;if(cb)cb();render();ui();};b.appendChild(l);};
+  sel('pasy wjazdu','nX',[2,3,4,5]);sel('pasy odnogi A','lA',Array.from({length:S.nX-1},(_,i)=>i+1));{const l=document.createElement('span');l.style.color='var(--mut)';l.textContent='odnoga B: '+(S.nX-S.lA)+' pas.';b.appendChild(l);}
+  [['x','Rysuj wjazd'],['a','Rysuj odnogę A'],['b','Rysuj odnogę B']].forEach(([k,lab])=>{const e=document.createElement('button');e.textContent=lab;e.onclick=()=>startDraw(k,lab);b.appendChild(e);});
+  if(S.draw){const e=document.createElement('button');e.textContent='Zakończ rysowanie';e.className='on';e.onclick=endDraw;b.appendChild(e);}
   const sl=(lab,k,mn,mx,st)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+S[k]+'> <span>'+S[k]+'</span>';l.querySelector('input').oninput=e=>{S[k]=+e.target.value;l.querySelector('span').textContent=S[k];render();};b.appendChild(l);};
   sl('długość przejścia T [m]','T',10,160,5);sl('szerokość pasa [m]','w',2.5,4.2,0.05);
   const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
-  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('chevrony','chev');ck('chevrony w drugą stronę','mg');}
+  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('chevrony','chev');ck('chevrony w drugą stronę','mg');}
 S.w=3.75;
 function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;render();}
 let drag=null,pan=null;const ptrs=new Map();let pinch=null;
-function hit(e){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let best=null,bd=18;[['a',S.P.a],['b',S.P.b]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-x,q[1]-y);if(d<bd){bd=d;best=[k,i];}}));const q=w2s(S.P.x),d=Math.hypot(q[0]-x,q[1]-y);if(d<bd){best=['x',0];}return best;}
+function hit(e){const m=mpos(e);let best=null,bd=18;[['a',S.P.a],['b',S.P.b],['x',S.P.x]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<bd){bd=d;best=[k,i];}}));return best;}
+const snapP=p=>{if(!S.snap)return p;const g=gridStep();return[Math.round(p[0]/g)*g,Math.round(p[1]/g)*g];};
 const mpos=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
 function zoomAt(mx,my,f){const k=Math.max(2,Math.min(80,K*f));f=k/K;OX=mx-(mx-OX)*f;OY=my-(my-OY)*f;K=k;render();}
-cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,mpos(e));if(ptrs.size===2){drag=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};return;}drag=hit(e);if(!drag){const m=mpos(e);pan={x:m[0],y:m[1],ox:OX,oy:OY};}};
+cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,mpos(e));if(ptrs.size===2){drag=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};return;}if(S.draw){const m=mpos(e);S.draw.pts.push(snapP([(m[0]-OX)/K,(m[1]-OY)/K]));S.P[S.draw.k]=S.draw.pts.map(q=>q.slice());render();return;}drag=hit(e);if(!drag){const m=mpos(e);pan={x:m[0],y:m[1],ox:OX,oy:OY};}};
 cv.onpointermove=e=>{if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,mpos(e));
   if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinch.d>0)zoomAt((a[0]+b[0])/2,(a[1]+b[1])/2,d/pinch.d);pinch.d=d;return;}
-  if(drag){const m=mpos(e),p=[(m[0]-OX)/K,(m[1]-OY)/K];if(drag[0]==='x')S.P.x=p;else S.P[drag[0]][drag[1]]=p;render();}
+  if(drag){const m=mpos(e),p=snapP([(m[0]-OX)/K,(m[1]-OY)/K]);S.P[drag[0]][drag[1]]=p;render();}
   else if(pan){const m=mpos(e);OX=pan.ox+m[0]-pan.x;OY=pan.oy+m[1]-pan.y;render();}};
 cv.onpointerup=cv.onpointercancel=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;drag=null;pan=null;};
 cv.onwheel=e=>{e.preventDefault();const m=mpos(e);zoomAt(m[0],m[1],Math.exp(-e.deltaY*0.0015));};
-cv.ondblclick=e=>{const h=hit(e);if(h){if(h[0]!=='x'&&S.P[h[0]].length>1){S.P[h[0]].splice(h[1],1);render();}return;} // dwuklik na uchwycie usuwa punkt (min. 1 na odnoge)
-  const m=mpos(e);let best=null,bd=16;for(const k of ['a','b']){const line=spline([[0,0],...S.P[k]]);for(const q of line){const sq=w2s(q),d=Math.hypot(sq[0]-m[0],sq[1]-m[1]);if(d<bd){bd=d;best=[k,q];}}}
-  if(!best)return;const arr=S.P[best[0]],pt=[(m[0]-OX)/K,(m[1]-OY)/K],pts=[[0,0],...arr];let bi=0,bdd=1e9;for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1;let t=((pt[0]-a[0])*dx+(pt[1]-a[1])*dy)/l2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(pt[0]-a[0]-t*dx,pt[1]-a[1]-t*dy);if(d<bdd){bdd=d;bi=i;}}
+cv.ondblclick=e=>{const h=hit(e);if(h){if(S.P[h[0]].length>1){S.P[h[0]].splice(h[1],1);render();}return;} // dwuklik na uchwycie usuwa punkt (min. 1 na odnoge)
+  const m=mpos(e);let best=null,bd=16;for(const k of ['a','b','x']){if(!S.P[k].length)continue;const line=spline([[0,0],...S.P[k]]);for(const q of line){const sq=w2s(q),d=Math.hypot(sq[0]-m[0],sq[1]-m[1]);if(d<bd){bd=d;best=[k,q];}}}
+  if(!best)return;const arr=S.P[best[0]],pt=snapP([(m[0]-OX)/K,(m[1]-OY)/K]),pts=[[0,0],...arr];let bi=0,bdd=1e9;for(let i=0;i<pts.length-1;i++){const a=pts[i],b=pts[i+1],dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy||1;let t=((pt[0]-a[0])*dx+(pt[1]-a[1])*dy)/l2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(pt[0]-a[0]-t*dx,pt[1]-a[1]-t*dy);if(d<bdd){bdd=d;bi=i;}}
   arr.splice(bi,0,pt);render();};
+let drawBackup=null;
+function startDraw(k,label){endDraw();drawBackup=S.P[k].map(q=>q.slice());S.draw={k,label,pts:[]};S.P[k]=[];ui();render();}
+function endDraw(){if(!S.draw)return;if(!S.draw.pts.length)S.P[S.draw.k]=drawBackup||[];S.draw=null;drawBackup=null;ui();render();}
+addEventListener('keydown',e=>{if(e.key==='Enter'||e.key==='Escape')endDraw();});
 addEventListener('resize',fit);load(S.preset);fit();
 window.SK={S,build,render,load};
 </script></body></html>

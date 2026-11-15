@@ -63,7 +63,6 @@ const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('can
 // Rejestr typow rozjazdow renderowanych specjalnie. Kazdy typ: gdzie stosowany (hw = regex na highway drog w wezle), co rysuje.
 // Pozostale wezly ida po zwyklej osi OSM. Kolejne typy dopisujemy tutaj.
 const FORK_TYPES = { 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk)/ } };
-const BLEND_PROSTY = 10; // wylot idacy prosto (<10 stopni od przedluzenia dwupasowej): asymetria (przesuniecie o pol pasa) zanika na tylu metrach
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = false;
 const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.14 }, p4: { dash: null, w: 0.12, dbl: 0.12 } };
@@ -239,7 +238,7 @@ function layout() {
           // wykrycie rozjazdu "rozbieznego": wylot od razu skreca od przedluzenia dwupasowej (OSM prowadzi go prosto swoja osia) - wtedy nie wymuszamy rownoleglosci
           const tY0 = (() => { const b0 = atS(o.Q, o.cum, Math.min(8, len)), l0 = dist(o.Q[0], b0) || 1; return [(b0[0] - o.Q[0][0]) / l0, (b0[1] - o.Q[0][1]) / l0]; })(), angY = Math.acos(Math.max(-1, Math.min(1, tY0[0] * uXr[0] + tY0[1] * uXr[1]))) * 180 / Math.PI, diverge = ROZBIEZNY && angY > 10; S.forkAng = (S.forkAng || []).concat(+angY.toFixed(1));
           const Q0 = o.Q.map(q => q.slice()); // ścieżka wylotu: równolegle (P) do przedłużenia dwupasowej, potem krzywa Hermite'a do osi OSM (styczna z obu stron)
-          const par = asym && diverge, Pe = par ? (() => { const bL = atS(o.Q, o.cum, Math.min(30, len)), lL = dist(o.Q[0], bL) || 1, cs = ((bL[0] - o.Q[0][0]) * uXr[0] + (bL[1] - o.Q[0][1]) * uXr[1]) / lL, aL = Math.acos(Math.max(-1, Math.min(1, cs))); return Math.min(12, Math.abs(sh) / Math.max(0.12, Math.sin(aL))); })() : (diverge ? 0 : P), T2e = diverge ? Math.min(T2, 10) : (angY < 10 ? Math.min(T2, BLEND_PROSTY) : T2), sb = Pe + T2e, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, sb + 1), Bm = atS(Q0, o.cum, Math.max(0, sb - 1)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
+          const par = asym && diverge, Pe = par ? (() => { const bL = atS(o.Q, o.cum, Math.min(30, len)), lL = dist(o.Q[0], bL) || 1, cs = ((bL[0] - o.Q[0][0]) * uXr[0] + (bL[1] - o.Q[0][1]) * uXr[1]) / lL, aL = Math.acos(Math.max(-1, Math.min(1, cs))); return Math.min(12, Math.abs(sh) / Math.max(0.12, Math.sin(aL))); })() : (diverge ? 0 : P), T2e = diverge ? Math.min(T2, 10) : T2, sb = Pe + T2e, B = atS(Q0, o.cum, sb), Bp = atS(Q0, o.cum, sb + 1), Bm = atS(Q0, o.cum, Math.max(0, sb - 1)), bl = Math.hypot(Bp[0] - Bm[0], Bp[1] - Bm[1]) || 1, bt = [(Bp[0] - Bm[0]) / bl, (Bp[1] - Bm[1]) / bl];
           const rfP0 = ref(Pe), rfP = diverge && !par ? { p: rfP0.p, t: tY0 } : rfP0, A = [rfP0.p[0] - rfP0.t[1] * sh, rfP0.p[1] + rfP0.t[0] * sh], Ls = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
           for (let jx = 0; jx < n; jx++) {
             const sx = o.cum[jx], jj = e.st ? jx : n - 1 - jx; if (sx >= sb) continue;

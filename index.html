@@ -476,7 +476,7 @@ function rebuild() {
   map.getSource('routes').setData({ type: 'FeatureCollection', features: routeFeatures });
   attachPathsToCrossingEnds(infraFeatures);
   infraFeatures.push(...buildLaneChains(sideItems, infraFeatures));
-  map.getSource('roads').setData({ type: 'FeatureCollection', features: buildCarriageways(sideItems, ways) });
+  lastSideItems = sideItems; lastWays = ways; rebuildRoads();
   // Schemat znaków: dla całego ciągu (kilka odcinków OSM połączonych bez rozgałęzień) znak na początku,
   // na końcu i – gdy ciąg ma ponad 110 m – w równych odstępach pośrodku (nie gęściej niż co ~55 m).
   const signAt = (len, step = 110) => { // step: największy odstęp między znakami (C-13: 110 m, pasy/sierżanty: 80 m)
@@ -556,8 +556,6 @@ function rebuild() {
 
 // Pas rowerowy leży przy krawędzi jezdni, więc przesuwamy go w metrach od osi drogi:
 // pół szerokości jezdni (z tagu width, z liczby pasów albo typowej dla klasy drogi) + pół szerokości pasa rowerowego.
-const HALF_CARRIAGEWAY = { motorway: 5.5, trunk: 3.6, primary: 3.5, secondary: 3.3, tertiary: 3.1, unclassified: 2.8,
-  residential: 2.8, living_street: 2.5, service: 2.2 };
 // Rzeczywista szerokość elementu infrastruktury w metrach (tag width / cycleway:width albo wartość typowa).
 const WIDTH_M = { droga: 2.4, ciag: 2.8, pas: 1.5, kontrapas: 1.5, kontraruch: 0.8, buspas: 1.2, sharrow: 0.8, przejazd: 2.4 };
 // Wygląd „rzeczywisty” (tylko na największym zoomie): nawierzchnia z tagu surface / cycleway:surface.
@@ -576,13 +574,31 @@ function realSurface(cls, t) {
 function widthM(cls, t) { // jednolita szerokość dla klasy (tagi width dawały różnie grube DDR obok siebie)
   return WIDTH_M[cls];
 }
-function laneOffsetM(t) {
-  const width = parseFloat(t.width);
-  if (width > 3 && width < 40) return width / 2 - 0.75;
-  const lanes = parseInt(t.lanes, 10);
-  const half = lanes > 0 && lanes < 10 ? lanes * 1.55 : (HALF_CARRIAGEWAY[(t.highway || '').replace('_link', '')] || 2.8);
-  return half + 0.8;
+// Jezdnia: klasa drogi → szerokość pasa ruchu (m) i „ranga” (która droga jest główna na skrzyżowaniu).
+const ROAD_LANE_W = { motorway: 3.5, trunk: 3.5, primary: 3.5, secondary: 3.25, tertiary: 3.0, unclassified: 2.75, residential: 2.75,
+  living_street: 2.5, service: 2.75, busway: 3.25 };
+const ROAD_RANK = { motorway: 7, trunk: 6, primary: 5, secondary: 4, tertiary: 3, unclassified: 2, residential: 2, busway: 2, living_street: 1, service: 0 };
+const roadClass = t => (t.highway || '').replace('_link', '');
+const hasBikeLaneTag = t => ['cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right'].some(k => /^(opposite_)?lane$/.test(t[k] || ''));
+const isOneway = t => ['yes', '1', 'true', '-1'].includes(t.oneway) || t.junction === 'roundabout';
+// liczba pasów ruchu: n razem, f zgodnie z kierunkiem narysowania, b przeciwnie
+function roadLanes(t) {
+  const int = v => { const n = parseInt(v, 10); return n > 0 && n < 10 ? n : 0; };
+  let n = int(t.lanes), f = int(t['lanes:forward']), b = int(t['lanes:backward']);
+  if (isOneway(t)) { n = n || 1; return t.oneway === '-1' ? { n, f: 0, b: n } : { n, f: n, b: 0 }; }
+  if (!n) n = f + b || (roadClass(t) === 'service' ? 1 : 2);
+  if (!f && !b) { f = Math.ceil(n / 2); b = n - f; } else if (!f) f = Math.max(0, n - b); else if (!b) b = Math.max(0, n - f);
+  return { n: f + b || 1, f, b };
 }
+// połowa szerokości jezdni dla aut (bez pasów rowerowych): tag width (gdy są pasy rowerowe, width obejmuje i je),
+// inaczej liczba pasów × typowa szerokość pasa dla klasy drogi; jednopasmowa dwukierunkowa co najmniej 3,5 m
+function roadHalf(t) {
+  const width = parseFloat(t.width);
+  if (width > 3 && width < 40) return Math.max(1.5, width / 2 - (hasBikeLaneTag(t) ? 1.55 : 0));
+  const { n } = roadLanes(t), lw = ROAD_LANE_W[roadClass(t)] || 2.75;
+  return Math.max(n * lw, isOneway(t) ? 3 : 3.5) / 2;
+}
+function laneOffsetM(t) { return roadHalf(t) + 0.8; } // środek pasa rowerowego tuż przy krawędzi jezdni
 // Równoległe przesunięcie linii o d metrów (d > 0 w prawo od kierunku narysowania), z ograniczonym ścięciem narożników.
 function offsetLine(coords, d) {
   const lat0 = coords[0][1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
@@ -608,51 +624,150 @@ function offsetLine(coords, d) {
 // 3) jeśli na końcu ciągu w osi ulicy zaczyna się droga dla rowerów / przejazd, przesunięcie maleje do zera
 //    na ostatnich ~15 m, więc pas płynnie przechodzi w tę drogę.
 const SMOOTH_M = 12, TAPER_M = 15;
-// Największy zoom: jezdnia ulicy, na której są pasy rowerowe / sierżanty / buspasy, z liniami podziału pasów ruchu.
-// Liczba pasów z tagów lanes, lanes:forward, lanes:backward (bez tagów: 1 na jednokierunkowej, 2 na dwukierunkowej);
-// ruch prawostronny, więc pasy „forward” leżą po prawej stronie kierunku narysowania drogi.
-// Linie: P-1 (przerywana) między pasami w tym samym kierunku, oś jezdni przerywana przy ≤ 3 pasach,
-// podwójna ciągła (P-4) przy 4 i więcej; linia krawędziowa ciągła tylko po stronie bez pasa rowerowego.
+// Największy zoom: jezdnie (wszystkie drogi z kafelków data/roads + ulice z pasami rowerowymi) z liniami pasów ruchu.
+// Linie: P-1 (przerywana) między pasami w tym samym kierunku, przed skrzyżowaniem na pasach ze strzałkami ciągła (P-2) ostatnie 20 m;
+// oś jezdni przerywana przy ≤ 3 pasach, podwójna ciągła (P-4) przy 4 i więcej. Linie są tylko tam, gdzie OSM ma lanes
+// albo droga jest co najmniej tertiary (osiedlowe bez oznakowania). Na skrzyżowaniu linie kończą się przed krawędzią
+// drogi poprzecznej; droga główna (wyższej klasy) ma linie ciągnięte przez wloty bocznych ulic.
+// Strzałki P-8 z turn:lanes (turn:lanes:forward/backward) w każdym pasie, przed końcem odcinka w kierunku jazdy.
+let roadWays = new Map(), lastSideItems = [], lastWays = new Map();
+const roadTiles = new Map(); // klucz kafelka jezdni → 'loading' | 'ok'
+let roadsTimer = null;
+function rebuildRoads() {
+  clearTimeout(roadsTimer);
+  roadsTimer = setTimeout(() => { const src = map.getSource('roads'); if (src) src.setData({ type: 'FeatureCollection', features: buildCarriageways(lastSideItems, lastWays) }); }, 100);
+}
+// kafelki jezdni wczytujemy dopiero od zoomu 17 i tylko w widocznym obszarze
+function loadRoadTiles() {
+  if (map.getZoom() < 17) return;
+  const { dlat, dlon } = window.MS_CONFIG.ROAD_TILE, bb = map.getBounds();
+  for (let x = Math.floor(bb.getWest() / dlon); x <= Math.floor(bb.getEast() / dlon); x++)
+    for (let y = Math.floor(bb.getSouth() / dlat); y <= Math.floor(bb.getNorth() / dlat); y++) {
+      const k = x + '_' + y; if (roadTiles.has(k)) continue;
+      roadTiles.set(k, 'loading');
+      fetch(`data/roads/${REGION_ID}/${k}.json`).then(r => r.ok ? r.json() : []).catch(() => []).then(list => {
+        roadTiles.set(k, 'ok');
+        for (const w of list) roadWays.set(w.i, w);
+        if (list.length) rebuildRoads();
+      });
+    }
+}
 function buildCarriageways(items, ways) {
-  const roads = new Map();
+  const sides = new Map(), roads = new Map(roadWays);
   for (const it of items) {
     const id = it.props.way;
-    if (!roads.has(id)) roads.set(id, { coords: it.coords, tags: (ways.get(id) || {}).tags || {}, offM: it.offM, sides: new Set() });
-    roads.get(id).sides.add(it.props.side);
+    if (!roads.has(id) && ways.get(id)) roads.set(id, { t: ways.get(id).tags || {}, g: it.coords });
+    if (!sides.has(id)) sides.set(id, new Set());
+    sides.get(id).add(it.props.side);
   }
+  const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
+  const nk = c => c[0].toFixed(7) + ',' + c[1].toFixed(7);
+  // węzeł → drogi przez niego przechodzące (end: czy to koniec danej drogi)
+  const at = new Map();
+  for (const [id, r] of roads) r.g.forEach((c, j) => { const k = nk(c); if (!at.has(k)) at.set(k, []); at.get(k).push({ id, end: j === 0 || j === r.g.length - 1 }); });
+  const outerHalf = (id) => { const r = roads.get(id); return roadHalf(r.t) + (sides.get(id) ? 1.7 : 0); };
   const out = [];
-  const feat = (coords, props) => out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords },
-    properties: props });
-  const int = v => { const n = parseInt(v, 10); return n > 0 && n < 10 ? n : 0; };
+  const feat = (coords, props) => coords.length > 1 && out.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: props });
   for (const [id, r] of roads) {
-    const t = r.tags, c = r.coords;
-    if (c.length < 2 || lineLength(c) < 5) continue;
-    const half = Math.max(2, r.offM - 0.8); // krawędź jezdni = wewnętrzna krawędź pasa rowerowego (patrz laneOffsetM)
-    const oneway = ['yes', '1', 'true', '-1'].includes(t.oneway);
-    let n = int(t.lanes), f = int(t['lanes:forward']), b = int(t['lanes:backward']);
-    if (oneway) { n = n || 1; f = t.oneway === '-1' ? 0 : n; b = n - f; }
-    else {
-      if (!n) n = f + b || 2;
-      if (!f && !b) { f = Math.ceil(n / 2); b = n - f; } else if (!f) f = Math.max(0, n - b); else if (!b) b = Math.max(0, n - f);
-      n = f + b || 1;
-    }
-    // nawierzchnia jezdni: szary asfalt (albo kostka); asfalt sięga do zewnętrznej krawędzi pasa rowerowego
-    const L = r.sides.has(-1) ? r.offM + 0.95 : half, R = r.sides.has(1) ? r.offM + 0.95 : half;
+    const t = r.t, c = r.g;
+    if (c.length < 2) continue;
+    const D = [0]; for (let j = 1; j < c.length; j++) D.push(D[j - 1] + Math.hypot((c[j][0] - c[j - 1][0]) * kx, (c[j][1] - c[j - 1][1]) * ky));
+    const len = D[D.length - 1]; if (len < 1) continue;
+    const half = roadHalf(t), sd = sides.get(id) || new Set(), rank = ROAD_RANK[roadClass(t)] ?? 1;
+    const { n, f, b } = roadLanes(t);
+    // nawierzchnia: asfalt sięga do zewnętrznej krawędzi pasa rowerowego
+    const L = sd.has(-1) ? half + 1.75 : half, R = sd.has(1) ? half + 1.75 : half;
     const surf = /^(paving_stones|sett|cobblestone|unhewn_cobblestone|bricks)/.test(t.surface || '') ? 'kostka' : 'asfalt';
-    feat(offsetLine(c, (R - L) / 2), { cls: 'jezdnia', way: id, wm: L + R, real: 'nav-jezdnia-' + surf, lanes: n });
-    // linie podziału pasów ruchu (pozycja od lewej krawędzi, w metrach od osi)
+    feat(Math.abs(R - L) > 0.01 ? offsetLine(c, (R - L) / 2) : c, { cls: 'jezdnia', way: id, wm: L + R, real: 'nav-jezdnia-' + surf });
+    // skrzyżowania: odcinki osi, na których nie malujemy linii
+    const cuts = []; let cutStart = 0, cutEnd = 0;
+    c.forEach((p, j) => {
+      const others = (at.get(nk(p)) || []).filter(o => o.id !== id);
+      if (!others.length) return;
+      const myEnd = j === 0 || j === c.length - 1;
+      if (myEnd && others.length === 1 && others[0].end) return; // zwykłe przedłużenie ulicy
+      if (!myEnd && others.every(o => (ROAD_RANK[roadClass(roads.get(o.id).t)] ?? 1) < rank)) return; // wlot bocznej ulicy
+      const rr = Math.max(...others.map(o => outerHalf(o.id))) + 1.5;
+      cuts.push([D[j] - rr, D[j] + rr]);
+      if (j === 0) cutStart = rr; if (j === c.length - 1) cutEnd = rr;
+    });
+    const keep = (a0 = 0, b0 = len) => { // przedziały [a, b] bez skrzyżowań
+      let segs = [[a0, b0]];
+      for (const [x, y] of cuts) segs = segs.flatMap(([a, bb]) => (y <= a || x >= bb) ? [[a, bb]] : [[a, Math.min(bb, x)], [Math.max(a, y), bb]].filter(([u, v]) => v - u > 1));
+      return segs;
+    };
+    const pointAt = (P, d) => { // punkt na linii P (te same wierzchołki co oś) dla odległości d wzdłuż osi
+      let j = 1; while (j < D.length - 1 && D[j] < d) j++;
+      const u = (d - D[j - 1]) / ((D[j] - D[j - 1]) || 1);
+      return [P[j - 1][0] + (P[j][0] - P[j - 1][0]) * u, P[j - 1][1] + (P[j][1] - P[j - 1][1]) * u];
+    };
+    const sub = (P, a, bb) => { const o = [pointAt(P, a)]; D.forEach((d, j) => { if (d > a && d < bb) o.push(P[j]); }); o.push(pointAt(P, bb)); return o; };
+    const turnF = isOneway(t) ? (t.oneway === '-1' ? '' : t['turn:lanes'] || '') : t['turn:lanes:forward'] || '';
+    const turnB = isOneway(t) ? (t.oneway === '-1' ? t['turn:lanes'] || '' : '') : t['turn:lanes:backward'] || '';
+    const marked = t.lane_markings !== 'no' && n > 1 && (t.lanes || t['lanes:forward'] || rank >= 3) && !/^(service|living_street)$/.test(roadClass(t));
     const lw = 2 * half / n;
-    for (let k = 1; k < n; k++) {
-      const d = -half + k * lw;
+    if (marked) for (let k = 1; k < n; k++) {
+      const d = -half + k * lw, P = offsetLine(c, d);
       if (k === b && f && b) {
-        if (n >= 4) for (const e of [-0.12, 0.12]) feat(offsetLine(c, d + e), { cls: 'jezdnia-linia', way: id, kind: 'ciagla' });
-        else feat(offsetLine(c, d), { cls: 'jezdnia-linia', way: id, kind: 'os' });
-      } else feat(offsetLine(c, d), { cls: 'jezdnia-linia', way: id, kind: 'p1' });
+        if (n >= 4) for (const e of [-0.12, 0.12]) { const Q = offsetLine(c, d + e); for (const [a, bb] of keep()) feat(sub(Q, a, bb), { cls: 'linia', kind: 'ciagla' }); }
+        else for (const [a, bb] of keep()) feat(sub(P, a, bb), { cls: 'linia', kind: 'os' });
+        continue;
+      }
+      // przed skrzyżowaniem pasy ze strzałkami rozdziela linia ciągła (ostatnie 20 m w kierunku jazdy)
+      const fwd = k > b, hasTurn = fwd ? turnF : turnB;
+      for (const [a, bb] of keep()) {
+        let x = a, y = bb;
+        if (hasTurn && fwd && cutEnd && bb >= len - cutEnd - 0.01) { feat(sub(P, Math.max(a, bb - 20), bb), { cls: 'linia', kind: 'ciagla' }); y = bb - 20; }
+        if (hasTurn && !fwd && cutStart && a <= cutStart + 0.01) { feat(sub(P, a, Math.min(bb, a + 20)), { cls: 'linia', kind: 'ciagla' }); x = a + 20; }
+        if (y - x > 1) feat(sub(P, x, y), { cls: 'linia', kind: 'p1' });
+      }
     }
-    // linia krawędziowa tam, gdzie nie ma pasa rowerowego (przy pasie rowerowym granicę wyznacza jego linia)
-    for (const s of [-1, 1]) if (!r.sides.has(s)) feat(offsetLine(c, s * (half - 0.25)), { cls: 'jezdnia-linia', way: id, kind: 'krawedz' });
+    // strzałki P-8
+    for (const [spec, fw] of [[turnF, true], [turnB, false]]) {
+      if (!spec) continue;
+      const list = spec.split('|'), cnt = fw ? f : b;
+      if (list.length !== cnt) continue;
+      const stop = fw ? len - cutEnd : cutStart; // tu kończą się linie przed skrzyżowaniem
+      const ds = [6, 30].map(m => fw ? stop - m : stop + m).filter(d => d > 3 && d < len - 3 && (fw ? d > cutStart + 3 : d < len - cutEnd - 3));
+      list.forEach((v, i) => {
+        const img = arrowKey(v); if (!img) return;
+        const off = fw ? -half + b * lw + (i + 0.5) * lw : -half + b * lw - (i + 0.5) * lw;
+        const P = offsetLine(c, off);
+        for (const d of ds) {
+          const p = pointAt(P, d), q = pointAt(P, Math.min(len, d + 1)), p0 = pointAt(P, Math.max(0, d - 1));
+          const rot = Math.atan2(-(q[1] - p0[1]) * ky, (q[0] - p0[0]) * kx) * 180 / Math.PI + (fw ? 0 : 180);
+          out.push({ type: 'Feature', geometry: { type: 'Point', coordinates: p }, properties: { cls: 'strzalka', img, rot } });
+        }
+      });
+    }
   }
   return out;
+}
+// turn:lanes jednego pasa → nazwa obrazka P-8 (np. 'p8-left-through'); 'none' i puste = bez strzałki
+function arrowKey(v) {
+  const set = new Set();
+  for (const x of v.split(';')) {
+    if (/^(slight_|sharp_)?left$/.test(x)) set.add('left'); else if (/^(slight_|sharp_)?right$/.test(x)) set.add('right');
+    else if (x === 'through') set.add('through'); else if (x === 'reverse') set.add('reverse');
+  }
+  const k = ['reverse', 'left', 'through', 'right'].filter(x => set.has(x));
+  return k.length ? 'p8-' + k.join('-') : '';
+}
+// rysunek strzałki P-8 (patrzy w prawo = w kierunku jazdy; 48 px ≈ 5 m)
+function drawArrowP8(key) {
+  const parts = key.slice(3).split('-');
+  return canvasIcon(48, 32, (g) => {
+    g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt';
+    const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -5.5); g.lineTo(-4, 5.5); g.closePath(); g.fill(); g.restore(); };
+    const fork = parts.includes('through') ? 26 : 30;
+    g.beginPath(); g.moveTo(2, 16); g.lineTo(parts.includes('through') ? 38 : fork, 16); g.stroke();
+    if (parts.includes('through')) head(40, 16, 0);
+    for (const [p, sgn] of [['left', -1], ['right', 1]]) if (parts.includes(p)) {
+      g.beginPath(); g.moveTo(fork - 6, 16); g.quadraticCurveTo(fork + 2, 16, fork + 4, 16 + sgn * 7); g.stroke();
+      head(fork + 5, 16 + sgn * 9.5, sgn * Math.PI / 2 - sgn * 0.35);
+    }
+    if (parts.includes('reverse')) { g.beginPath(); g.moveTo(fork - 8, 16); g.arc(fork - 8, 10, 6, Math.PI / 2, -Math.PI / 2, true); g.stroke(); head(fork - 13, 4, Math.PI); }
+  });
 }
 function buildLaneChains(items, centerFeatures) {
   const lat0 = REGION.center[1] * Math.PI / 180, kx = Math.cos(lat0) * 111320, ky = 110540;
@@ -1086,18 +1201,31 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
   // jezdnia z pasami ruchu (tylko największy zoom, pod całą infrastrukturą rowerową)
   const ROAD_Z = 18;
   const M = (m) => ['interpolate', ['exponential', 2], ['zoom'], 17, ['*', m, PX_PER_M(17)], 22, ['*', m, PX_PER_M(22)]];
+  // krawężnik: najpierw obwódki wszystkich jezdni, potem nawierzchnie – na skrzyżowaniach obwódki znikają pod asfaltem
+  map.addLayer({ id: 'road-kerb', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'),
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': '#c9cdd2', 'line-width': M(['+', ['get', 'wm'], 0.6]) } });
   map.addLayer({ id: 'road-surface', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: isCls('jezdnia'),
     layout: { 'line-cap': 'round', 'line-join': 'round' }, // zaokrąglenie zakrywa szczelinę między kolejnymi odcinkami ulicy
+    // jednolity kolor asfaltu: wzór na zaokrągleniach skrzyżowań dawał ciemne smugi; faktura tylko dla kostki (warstwa niżej)
+    paint: { 'line-color': '#686b70', 'line-width': M(['get', 'wm']) } });
+  map.addLayer({ id: 'road-surface-kostka', type: 'line', source: 'roads', minzoom: ROAD_Z, filter: ['all', isCls('jezdnia'), ['==', ['get', 'real'], 'nav-jezdnia-kostka']],
+    layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-pattern': ['get', 'real'], 'line-width': M(['get', 'wm']) } });
   const MARK_W = M(0.12);
   map.addLayer({ id: 'road-lines-dash', type: 'line', source: 'roads', minzoom: ROAD_Z,
-    filter: ['all', isCls('jezdnia-linia'), ['in', ['get', 'kind'], ['literal', ['p1', 'os']]]],
+    filter: ['all', isCls('linia'), ['in', ['get', 'kind'], ['literal', ['p1', 'os']]]],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#f2f2f2', 'line-opacity': 0.9, 'line-width': MARK_W, 'line-dasharray': ['literal', [25, 50]] } }); // kreska ok. 3 m, przerwa 6 m
   map.addLayer({ id: 'road-lines-solid', type: 'line', source: 'roads', minzoom: ROAD_Z,
-    filter: ['all', isCls('jezdnia-linia'), ['in', ['get', 'kind'], ['literal', ['ciagla', 'krawedz']]]],
+    filter: ['all', isCls('linia'), ['in', ['get', 'kind'], ['literal', ['ciagla']]]],
     layout: { 'line-cap': 'butt', 'line-join': 'round' },
     paint: { 'line-color': '#f2f2f2', 'line-opacity': 0.9, 'line-width': MARK_W } });
+  map.addLayer({ id: 'road-arrows', type: 'symbol', source: 'roads', minzoom: ROAD_Z, filter: isCls('strzalka'),
+    layout: { 'icon-image': ['get', 'img'], 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
+      'icon-allow-overlap': true, 'icon-ignore-placement': true,
+      'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 17, 5 * PX_PER_M(17) / 48, 22, 5 * PX_PER_M(22) / 48] } });
+  map.on('styleimagemissing', e => { if (/^p8-/.test(e.id) && !map.hasImage(e.id)) { const c = drawArrowP8(e.id); map.addImage(e.id, c.getContext('2d').getImageData(0, 0, c.width, c.height), { pixelRatio: PR }); } });
   // „krawężnik”: cienka szara obwódka wokół dróg dla rowerów i ciągów
   map.addLayer({ id: 'infra-casing', type: 'line', source: 'infra', minzoom: 13, filter: isCls('droga', 'ciag'),
     layout: { 'line-cap': 'round', 'line-join': 'round' },
@@ -1232,12 +1360,13 @@ map.once('style.load', () => { // nie czekamy na 'load' (wolne kafle WMS opóźn
 
   requestTiles();
   setInterval(() => requestTiles(), 30 * 1000); // sprawdza co 30 s, czy któryś kafel jest starszy niż REFRESH_MS
-  map.on('moveend', () => { if (!REGION.preload) requestTiles(); });
+  map.on('moveend', () => { if (!REGION.preload) requestTiles(); loadRoadTiles(); });
+  loadRoadTiles();
   if (!location.hash && REGION.preload) map.fitBounds([[REGION.bbox[1], REGION.bbox[0]], [REGION.bbox[3], REGION.bbox[2]]], { padding: 20, duration: 0 });
 });
 
 /* --- klik: dane relacji --- */
-const INFRA_LAYERS = ['road-surface', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
+const INFRA_LAYERS = ['road-kerb', 'road-surface', 'road-surface-kostka', 'road-arrows', 'road-lines-dash', 'road-lines-solid', 'infra-casing', 'infra', 'infra-real', 'infra-real-center', 'infra-real-bike-f', 'infra-real-bike-b', 'infra-real-bike-1', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-zebra', 'infra-przejazd', 'infra-przejazd-sqR', 'infra-przejazd-sqL', 'infra-lane-in', 'infra-lane-out', 'infra-lane-sym', 'infra-arrows', 'infra-arrows-lane', 'infra-sharrow', 'infra-signs'];
 const CLICK_LAYERS = ['bicycle', 'hiking', 'infra', 'infra-lanes', 'infra-kontrapas', 'infra-kontraruch', 'infra-przejazd'];
 map.on('click', (ev) => {
   const p = ev.point, r = 7;

@@ -46,7 +46,7 @@
     </div>
     <div class="row">
       <label>pasy – krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
-      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
+      <label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m, dojście do osi <input type="number" id="fT" value="24" step="1" style="width:56px"> m</label><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render: <input type="number" id="fR" value="12" min="0" step="2" style="width:56px"> m</label><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button><button id="bImp">Wczytaj dane z aktualnego widoku</button><button id="bUndo">↶</button><button id="bRedo">↷</button>
     </div>
     <div id="props"></div>
     <details><summary>Dane</summary>
@@ -510,7 +510,7 @@ cv.addEventListener('pointerdown', e => {
     const sr = S.doc.road[S.sel];
     if (sr) { const G = gp(sr); for (let i = 0; i < G.length - 1; i++) { const a = G[i], b = G[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); if (!sr.rp) sr.rp = sr.pts.map(q => q.slice()); const A = sr.pts[i], B = sr.pts[i + 1]; sr.pts.splice(i + 1, 0, [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2]); sr.nk.splice(i + 1, 0, null); sr.rp.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); S.vsel = i + 1; drag = { m: 'rvtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } } }
     let best = null, bd = 14; S.doc.road.forEach((r, i) => gp(r).forEach((q, vi) => { const d = dist(w2s(q), p); if (d < bd) { bd = d; best = { i, vi }; } }));
-    if (best) { push(); const r = S.doc.road[best.i]; if (!r.rp) r.rp = r.pts.map(q => q.slice()); S.sel = best.i; S.vsel = best.vi; drag = { m: 'rvtx', i: best.i, vi: best.vi, moved: false }; ui(); render(); return; }
+    if (best) { push(); const r = S.doc.road[best.i]; if (!r.rp) r.rp = r.pts.map(q => q.slice()); S.sel = best.i; S.vsel = best.vi; drag = { m: 'rvtx', i: best.i, vi: best.vi, moved: false, base: r.rp.map(q => q.slice()) }; ui(); render(); return; }
   }
   if (S.tool === 'sel') {
     const sr = S.doc.road[S.sel];
@@ -526,7 +526,13 @@ cv.addEventListener('pointermove', e => {
   if (!drag) return; const p = evp(e);
   if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
   if (drag.m === 'pan') { S.view.x = drag.v.x - (p[0] - drag.p[0]) / S.view.k; S.view.y = drag.v.y - (p[1] - drag.p[1]) / S.view.k; render(); }
-  else if (drag.m === 'rvtx') { const w = s2w(p); S.doc.road[drag.i].rp[drag.vi] = [w[0], w[1]]; drag.moved = true; touch(); }
+  else if (drag.m === 'rvtx') {
+    const w = s2w(p), rr = S.doc.road[drag.i], B = drag.base, R0 = Math.max(0, +$('fR').value || 0), dx = w[0] - B[drag.vi][0], dy = w[1] - B[drag.vi][1];
+    const cum = [0]; for (let j = 1; j < B.length; j++) cum.push(cum[j - 1] + dist(B[j - 1], B[j]));
+    // plynne offsetowanie: sasiednie punkty w promieniu R (po dlugosci drogi) przesuwaja sie z lagodnie malejaca waga
+    for (let j = 0; j < B.length; j++) { const da = Math.abs(cum[j] - cum[drag.vi]), u = R0 > 0 ? Math.max(0, 1 - da / R0) : (j === drag.vi ? 1 : 0), wg = j === drag.vi ? 1 : u * u * (3 - 2 * u); rr.rp[j] = [B[j][0] + dx * wg, B[j][1] + dy * wg]; }
+    drag.moved = true; touch();
+  }
   else if (drag.m === 'vtx') { const w = s2w(p); moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
 });
 function endPtr(e) {

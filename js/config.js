@@ -29,6 +29,19 @@
   out geom;`;
   }
 
-  const C = { REGIONS, OVERPASS, buildQuery };
+  // Wszystkie jezdnie (do realistycznego widoku na największym zoomie). Zapisywane w kafelkach
+  // ROAD_TILE (stopnie), żeby przeglądarka wczytywała tylko widoczny fragment miasta.
+  const ROAD_TILE = { dlat: 0.01, dlon: 0.02 };
+  const ROAD_TAGS = ['highway', 'name', 'lanes', 'lanes:forward', 'lanes:backward', 'oneway', 'width', 'surface', 'junction',
+    'turn:lanes', 'turn:lanes:forward', 'turn:lanes:backward', 'lane_markings', 'layer', 'bridge',
+    'cycleway', 'cycleway:both', 'cycleway:left', 'cycleway:right', 'oneway:bicycle'];
+  function buildRoadsQuery(b) {
+    const bb = b.map(v => v.toFixed(5)).join(',');
+    return `[out:json][timeout:180];
+  way[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|busway)(_link)?$"][area!=yes][tunnel!~"^(yes|building_passage)$"][covered!=yes](${bb});
+  out geom;`;
+  }
+
+  const C = { REGIONS, OVERPASS, buildQuery, ROAD_TILE, ROAD_TAGS, buildRoadsQuery };
   if (typeof module !== 'undefined' && module.exports) module.exports = C; else root.MS_CONFIG = C;
 })(typeof window !== 'undefined' ? window : globalThis);

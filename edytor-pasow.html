@@ -230,6 +230,7 @@ function skelFork(X, yl, yr, C, R, gores) {
   arms[0].sg = sA; arms[1].sg = sB;
   const neg = arms.find(o => o.sg < 0) || arms[0], pos = arms.find(o => o !== neg);
   let xN = nX * w / 2; if (nX % 2 === 1) { const extraNeg = neg.l < pos.l; xN = extraNeg ? w + (nX - 1) * w / 2 : (nX - 1) * w / 2; }
+  if (nX % 2 === 1 && R[X.i]._edge) xN = (X.st ? 1 : -1) * (C[X.i].d0 || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
   neg.c = -xN + neg.l * w / 2; pos.c = -xN + neg.l * w + pos.l * w / 2;
   for (const o of arms) {
     const D = o.D, dir = o.sg > 0 ? 1 : -1, lamC = dir * o.c, cD = cumOf(D); let iT = 0;
@@ -314,9 +315,10 @@ function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
   { // strona dodatkowego pasa nieparzystej jezdni jednokierunkowej: z turn:lanes (skrajny pas skreca w lewo/prawo), dalej wzdluz lancucha jezdni; domyslnie po prawej
-    const sg0 = R.map(r => { if (!r.oneway || !/^(motorway|trunk)/.test(r.hw || '') || !r.tl || !((r.lanes | 0) >= 3 && (r.lanes | 0) % 2 === 1)) return 0; const t = r.tl.split('|').map(x => /left/.test(x) ? 'L' : /right/.test(x) ? 'R' : 'T'), n = t.length; if (n < 3) return 0; const restL = t.slice(1).every(x => x === t[1]), restR = t.slice(0, -1).every(x => x === t[0]); return restL && t[0] !== t[1] ? -1 : (restR && t[n - 1] !== t[0] ? 1 : 0); /* pojedynczy pas innego rodzaju na skraju = dodatkowy pas po tej stronie */ });
+    const sg0 = R.map(r => { if (!r.oneway || !/^(motorway|trunk)/.test(r.hw || '') || !r.tl || !((r.lanes | 0) >= 3 && (r.lanes | 0) % 2 === 1)) return 0; const t = r.tl.split('|').map(x => /left/.test(x) ? 'L' : /right/.test(x) ? 'R' : 'T'), n = t.length; if (n < 3) return 0; const restL = t.slice(1).every(x => x === t[1]), restR = t.slice(0, -1).every(x => x === t[0]); return restL && t[0] !== t[1] ? 1 : (restR && t[n - 1] !== t[0] ? -1 : 0); /* pojedynczy pas innego rodzaju na skraju (np. 1 prosto + 2 w prawo): os na granicy tego pasa i reszty */ });
+    const edge0 = sg0.map(v => v !== 0);
     for (let it = 0; it < 60; it++) { let ch = false; for (const [, G] of ends) { if (G.length !== 2 || G[0].i === G[1].i) continue; const [a, b] = G; if (a.st === b.st) continue; const ra = R[a.i], rb = R[b.i]; if ((ra.lanes | 0) !== (rb.lanes | 0) || !ra.oneway || !rb.oneway) continue; if (sg0[a.i] && !sg0[b.i]) { sg0[b.i] = sg0[a.i]; ch = true; } else if (sg0[b.i] && !sg0[a.i]) { sg0[a.i] = sg0[b.i]; ch = true; } } if (!ch) break; }
-    R.forEach((r, i) => Object.defineProperty(r, '_osg', { value: sg0[i] || 1, writable: true, configurable: true, enumerable: false }));
+    R.forEach((r, i) => { Object.defineProperty(r, '_osg', { value: sg0[i] || 1, writable: true, configurable: true, enumerable: false }); Object.defineProperty(r, '_edge', { value: edge0[i], writable: true, configurable: true, enumerable: false }); });
   }
   const C0 = R.map(r => comp(r)), hints = {}, preAr = [];
   for (const [k, G] of ends) { // styczność ramp do jezdni głównej w węźle rozwidlenia/zlania

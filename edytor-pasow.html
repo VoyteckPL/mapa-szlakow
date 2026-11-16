@@ -291,8 +291,9 @@ function skelLanes(G, C, R) {
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
   const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
   SN.forEach(x => { linesW.push({ p: toDp(x), a: 0, b: same(x, SW) ? BIG : T / 2 }); linesN.push({ p: -toDp(x), a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN)) linesW.push({ p: toDp(x), a: T / 2, b: BIG }); });
-  const lin = s => Math.max(0, Math.min(1, s / T)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9; // krawedz 'klina' (nowy pas) rosnie liniowo, druga plynnie
-  set(we, ow.cum.map(s => Ln + (Lm - Ln) * (wR ? sm(s / T) : lin(s))), ow.cum.map(s => Rn + (Rm - Rn) * (wR ? lin(s) : sm(s / T))), linesW);
+  const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
+  const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * cl(s / (0.6 * T)) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
+  set(we, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
   const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
 }
 // laczenie wkladow z obu koncow drogi (kazdy koniec moze miec zmiane liczby pasow): na srodku plynne mieszanie profili

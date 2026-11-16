@@ -182,7 +182,7 @@ function lay(n){const w=S.w;if(n===1)return[-w/2,w/2];return n%2===0?[-n*w/2,n*w
 function drawLanes(){
   const w=S.w,ROAD='#7c8083',LINE='#f2f2f0',raw=[[0,0],...S.P.x],X=resample(fillet(raw,S.R),0.5),P=X.P,t=tangents(P),sc=X.s,tp=S.tp;
   const[LA,RA]=lay(tp.nA),[LB,RB]=lay(tp.nB),k=v=>sm5((v-tp.s0)/tp.len);
-  const kw=v=>Math.max(0,Math.min(1,(v-tp.s0)/tp.len)),wedgeR=Math.abs(RB-RA)>=Math.abs(LB-LA)-1e-9,dL=sc.map(v=>LA+(LB-LA)*(wedgeR?k(v):kw(v))),dR=sc.map(v=>RA+(RB-RA)*(wedgeR?kw(v):k(v))),Lf=offsetLine(P,t,dL),Rt=offsetLine(P,t,dR);
+  const cl=x=>Math.max(0,Math.min(1,x)),wedgeR=Math.abs(RB-RA)>=Math.abs(LB-LA)-1e-9,iL=wedgeR?LA:LB,iR=wedgeR?RB:RA,aa=v=>cl((v-tp.s0)/(0.6*tp.len)),bb=v=>sm5(cl(((v-tp.s0)/tp.len-0.3)/0.7)),dL=sc.map(v=>LA+(iL-LA)*aa(v)+(LB-iL)*bb(v)),dR=sc.map(v=>RA+(iR-RA)*aa(v)+(RB-iR)*bb(v)),Lf=offsetLine(P,t,dL),Rt=offsetLine(P,t,dR);
   if(S.curb){[Lf,Rt].forEach(E=>stroke(E,'#6f716c',0.84));[Lf,Rt].forEach(E=>stroke(E,'#c4c6c0',0.68));}
   const PAT=asphalt()||ROAD;path(Lf.concat(Rt.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();
   // linie pasow: stale polozenia kratki (wielokrotnosci szerokosci pasa), rysowane tam gdzie lezą miedzy krawedziami

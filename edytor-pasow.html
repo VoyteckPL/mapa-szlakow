@@ -51,7 +51,7 @@
   .eb { display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 2px; } #lcP .eb button { width:34px; height:30px; padding:0; border:1px solid #ccc; border-radius:5px; background:#fff; display:grid; place-items:center; } #lcP .eb button:hover { background:#eef4fc !important; }
   @keyframes blk { 0%,100% { background:#fff; box-shadow:none; } 50% { background:#c8f7c5; box-shadow:0 0 0 3px #43a04788; } } #lcP .eb button.blink { animation:blk .5s ease-in-out 3; }
   #tabs, .tab, .tab-off { display:none !important; }
-  #lcSend.act { background:#eef4fc !important; } #lc #oSend { width:100%; height:auto; font-size:12px; padding:5px 8px; } #lc #oLog { width:auto; height:auto; }
+  #lcDrive.act { background:#d9f2ee !important; } #lcSend.act { background:#eef4fc !important; } #lc #oSend { width:100%; height:auto; font-size:12px; padding:5px 8px; } #lc #oLog { width:auto; height:auto; }
   #osmSub { margin-top:6px; padding-top:6px; border-top:1px solid #ddd; width:230px; font-size:12px; white-space:normal; }
   #osmSub .sr { display:flex; align-items:center; gap:6px; margin:3px 0; } #osmSub .sr > span:first-child { width:56px; color:#555; flex:none; } #osmSub input { flex:1; min-width:0; width:auto; font-size:12px; padding:3px 5px; background:#fff; color:#333; border:1px solid #ccc; border-radius:4px; }
   #osmSub .sr button { padding:3px 8px; font-size:12px; border:1px solid #ccc; border-radius:4px; background:#fff; color:#333; width:auto !important; } #oWho { color:#2e7d32; }
@@ -59,6 +59,11 @@
   #oSend { padding:5px 8px; font-size:12px; font-weight:600; color:#fff !important; background:#1e88e5 !important; border:0 !important; border-radius:4px; } #oSend.blink { animation:blk .5s ease-in-out 3; }
   #oSt { margin-top:4px; color:#555; }
   #lcLoad:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
+  #drvHud { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); z-index:7; background:rgba(20,24,32,.78); color:#fff; border-radius:8px; padding:6px 10px; font:12px/1.3 system-ui; text-align:center; display:none; }
+  #drvHud b { font-size:18px; } #drvPad { display:flex; gap:6px; justify-content:center; margin-top:4px; } #drvPad button { width:44px; height:36px; padding:0; font-size:16px; background:#333; color:#fff; border:1px solid #666; }
+  #drvCar { position:absolute; left:50%; top:66%; width:0; height:0; z-index:5; pointer-events:none; display:none; }
+  #drvFog { position:absolute; left:0; right:0; top:0; height:30%; z-index:4; pointer-events:none; display:none; background:linear-gradient(#cfd8e3, rgba(207,216,227,0)); }
+  .drvFace { position:absolute; backface-visibility:visible; }
 </style>
 </head>
 <body>
@@ -75,7 +80,7 @@
       <label class="sl"><svg class="ic" style="color:#fb8c00" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17h5l4-10 4 10h5"/></svg> Przejście <span><span id="fTv">45</span> m</span><input type="range" id="fT" min="25" max="160" step="5" value="45"></label>
       <label><input type="checkbox" id="cAx" checked><svg class="ic" style="color:#1e88e5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="4" r="2"/></svg> Osie OSM</label>
       <hr><b>Edycja</b>
-      <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button><button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#e53935"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button id="lcSend" title="Wyślij zmiany do OSM"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M12 20V8M7 13l5-5 5 5M5 4h14"/></svg></button></div>
+      <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button><button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#e53935"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button id="lcSend" title="Wyślij zmiany do OSM"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M12 20V8M7 13l5-5 5 5M5 4h14"/></svg></button><button id="lcDrive" title="Tryb jazdy 3D (WASD / strzałki)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#00897b"><path d="M5 16V11l2-5h10l2 5v5"/><path d="M3 16h18v3H3z"/><circle cx="7.5" cy="14" r=".8"/><circle cx="16.5" cy="14" r=".8"/></svg></button></div>
       
       
       <div id="osmSub" style="display:none">
@@ -86,7 +91,7 @@
         <button id="oSend">Wyślij</button>
         <div id="oSt"></div>
       </div>
-    </div></div><div id="hint"></div></div>
+    </div></div><div id="hint"></div><div id="drvFog"></div><div id="drvCar"></div><div id="drvHud"><div><b id="drvSp">0</b> km/h</div><div id="drvMsg">↑ gaz · ↓ hamulec · ←/→ zmiana pasa · R zawróć · Esc wyjście</div><div id="drvPad"><button data-k="L">◀</button><button data-k="B">▼</button><button data-k="G">▲</button><button data-k="R">▶</button></div></div></div>
   <div id="panel">
     <div id="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M8 3L4 21M16 3l4 18"/><path d="M12 4v3M12 10v4M12 17v3" stroke="#ffd54a"/></svg></span><span>Roads <i>and</i> Lanes</span></div>
     <div class="row"><input type="text" id="lnk" placeholder="Wklej link z openstreetmap.org (…#map=18/54.4985/18.4614)"><button id="bLnk" class="on">Wczytaj</button></div>
@@ -1044,6 +1049,52 @@ if (!EMBED) (() => {
       save(); touch(); { const sb = $('oSend'); sb.classList.remove('blink'); void sb.offsetWidth; sb.classList.add('blink'); } st(`Wysłano: nowych dróg ${newWays.length}, nowych węzłów ${crt.length}, usuniętych ${dls.length}, przesuniętych ${mod.length}, zmienionych dróg ${wmod.length}${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
     } catch (e) { st('Błąd wysyłki: ' + e.message); liveLog('start wysylka OSM'); liveLog('BLAD wysylki: ' + (e && e.stack || e)); }
   };
+})();
+
+/* ---------- tryb jazdy 3D (lekki): auto trzyma sie pasow renderu ---------- */
+(() => {
+  const D = { on: false, keys: {} }, cache = new WeakMap();
+  const info = ri => { const G = laneGeom(ri); if (!G || G.Q.length < 2) return null; let c = cache.get(G.Q); if (!c) { c = cumOf(G.Q); cache.set(G.Q, c); } return { G, cum: c, len: c[c.length - 1], r: S.doc.road[ri] }; };
+  const grp = r => { const NL = Math.max(1, r.lanes | 0); if (r.oneway) return { f: [0, NL - 1], b: null, NL }; const nb = Math.max(0, Math.min(NL, NL - (r.nf || 1))); return { f: nb < NL ? [nb, NL - 1] : null, b: nb > 0 ? [0, nb - 1] : null, NL }; };
+  const at = (I, s) => { const Q = I.G.Q, c = I.cum; s = Math.max(0, Math.min(I.len, s)); let j = 1; while (j < Q.length - 1 && c[j] < s) j++; const a = Q[j - 1], b = Q[j], l = (c[j] - c[j - 1]) || 1, f = Math.max(0, Math.min(1, (s - c[j - 1]) / l)), dx = b[0] - a[0], dy = b[1] - a[1], dl = Math.hypot(dx, dy) || 1; return { p: [a[0] + dx * f, a[1] + dy * f], t: [dx / dl, dy / dl], j: j - 1, f }; };
+  const pos = (I, s, lf) => { const q = at(I, s), G = I.G, j = q.j, L = G.left[j] + (G.left[j + 1] - G.left[j]) * q.f, W_ = G.lw[j] + (G.lw[j + 1] - G.lw[j]) * q.f, lat = L + (lf + 0.5) * W_, n = [-q.t[1], q.t[0]]; return { p: [q.p[0] + n[0] * lat, q.p[1] + n[1] * lat], t: q.t }; };
+  const mk = () => { // maly model: korpus + kabina (CSS 3D)
+    const car = $('drvCar'); car.innerHTML = ''; const box = (w, l, h, x, y, z, c) => { const e = document.createElement('div'); e.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${l}px;transform-style:preserve-3d`; const f = (st, col) => { const d = document.createElement('div'); d.className = 'drvFace'; d.style.cssText = st + `;background:${col}`; e.appendChild(d); };
+      f(`left:0;top:0;width:${w}px;height:${l}px;transform:translateZ(${z + h}px)`, c[0]); f(`left:0;top:0;width:${w}px;height:${h}px;transform-origin:0 0;transform:translate3d(0,0,${z}px) rotateX(90deg)`, c[1]); f(`left:0;top:${l}px;width:${w}px;height:${h}px;transform-origin:0 0;transform:translate3d(0,0,${z}px) rotateX(90deg)`, c[1]);
+      f(`left:0;top:0;width:${h}px;height:${l}px;transform-origin:0 0;transform:translate3d(0,0,${z}px) rotateY(-90deg)`, c[2]); f(`left:0;top:0;width:${h}px;height:${l}px;transform-origin:0 0;transform:translate3d(${w}px,0,${z}px) rotateY(-90deg)`, c[2]); car.firstChild ? car.insertBefore(e, null) : car.appendChild(e); return e; };
+    const w = 14, l = 32; car.style.transformStyle = 'preserve-3d';
+    box(w, l, 7, -w / 2, -l * 0.7, 1, ['#e53935', '#c62828', '#b71c1c']); box(w - 2, l * 0.42, 5, -w / 2 + 1, -l * 0.7 + l * 0.28, 8, ['#cfe8ff', '#90a4ae', '#78909c']);
+  };
+  const place = () => { // start: zaznaczona droga albo najblizsza srodkowi widoku
+    const c = [S.view.x, S.view.y]; let best = null, bd = 1e9; const cand = S.sel >= 0 ? [S.sel] : S.doc.road.map((_, i) => i);
+    for (const ri of cand) { const I = info(ri); if (!I) continue; const Q = I.G.Q; for (let j = 1; j < Q.length; j++) { const a = Q[j - 1], b = Q[j], dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / l2)), d = Math.hypot(c[0] - a[0] - dx * t, c[1] - a[1] - dy * t); if (d < bd) { bd = d; best = { ri, s: I.cum[j - 1] + (I.cum[j] - I.cum[j - 1]) * t }; } } }
+    if (!best) return false; const I = info(best.ri), g = grp(I.r), dir = g.f ? 1 : -1, rg = dir > 0 ? g.f : g.b; Object.assign(D, { ri: best.ri, s: best.s, dir, laneF: rg[1], laneT: rg[1], v: 0, head: null }); return true;
+  };
+  const next = () => { // przejscie na kolejna droge na koncu odcinka
+    const I = info(D.ri), E = pos(I, D.dir > 0 ? I.len : 0, D.laneF), h = [E.t[0] * D.dir, E.t[1] * D.dir], ni = Math.max(1, I.r.lanes | 0); let best = null, bs = 1e9;
+    S.doc.road.forEach((r, rj) => { if (rj === D.ri) return; const J = info(rj); if (!J) return; const g = grp(r); for (const [rg, dj] of [[g.f, 1], [g.b, -1]]) { if (!rg) continue; for (let gj = rg[0]; gj <= rg[1]; gj++) { const P = pos(J, dj > 0 ? 0 : J.len, gj), d = Math.hypot(P.p[0] - E.p[0], P.p[1] - E.p[1]), hj = [P.t[0] * dj, P.t[1] * dj]; if (d > 10 || h[0] * hj[0] + h[1] * hj[1] < 0.6) continue; const sc = d + 1.5 * Math.abs((ni - 1 - D.laneT) - (g.NL - 1 - gj)); if (sc < bs) { bs = sc; best = { ri: rj, dir: dj, s: dj > 0 ? 0 : J.len, g: gj, rg }; } } } });
+    if (!best) { D.v = 0; D.s = D.dir > 0 ? I.len : 0; $('drvMsg').textContent = 'Koniec drogi – R: zawróć, Esc: wyjście'; return; }
+    D.ri = best.ri; D.dir = best.dir; D.s = best.s; D.laneF = D.laneT = best.g;
+  };
+  const uturn = () => { const I = info(D.ri), g = grp(I.r), other = D.dir > 0 ? g.b : g.f; if (!other) { $('drvMsg').textContent = 'Droga jednokierunkowa – nie można zawrócić'; return; } D.dir = -D.dir; D.laneF = D.laneT = D.dir > 0 ? other[0] : other[1]; D.v = 0; };
+  let last = 0, lastR = 0, rc = [0, 0];
+  const frame = t => {
+    if (!D.on) return; const dt = Math.min(0.05, (t - last) / 1000 || 0.016); last = t; const I = info(D.ri); if (!I) { exit(); return; }
+    const K = D.keys, up = K.ArrowUp || K.w || K.W || K.G, dn = K.ArrowDown || K.s || K.S || K.B; D.v = Math.max(0, Math.min(28, D.v + ((up ? 7 : 0) - (dn ? 16 : 0) - (up ? 0 : 1.2)) * dt)); if (D.v < 0.05 && !up) D.v = 0;
+    D.s += D.dir * D.v * dt; if (D.s >= I.len && D.dir > 0 || D.s <= 0 && D.dir < 0) next();
+    const J = info(D.ri), df = D.laneT - D.laneF; D.laneF += Math.sign(df) * Math.min(Math.abs(df), 1.1 * dt);
+    const P = pos(J, D.s, D.laneF), hd = Math.atan2(P.t[1] * D.dir, P.t[0] * D.dir) * 180 / Math.PI; if (D.head == null) D.head = hd; let dd = ((hd - D.head + 540) % 360) - 180; D.head += dd * Math.min(1, dt * 6);
+    const now = performance.now(); if (now - lastR > 60) { S.view.x = P.p[0]; S.view.y = P.p[1]; rc = P.p.slice(); lastR = now; render(); }
+    const sc = w2s(P.p), tx = sc[0] - W / 2, ty = sc[1] - H / 2; cv.style.transform = `translateY(16%) perspective(560px) rotateX(58deg) rotate(${-(D.head + 90)}deg) scale(2.6) translate(${-tx}px,${-ty}px)`;
+    $('drvSp').textContent = Math.round(D.v * 3.6); if (D.v > 0.3) $('drvMsg').textContent = `pas ${Math.max(1, (J.r.lanes | 0) - Math.round(D.laneT))} od prawej · ←/→ zmiana pasa · R zawróć · Esc`; requestAnimationFrame(frame);
+  };
+  const lane = d => { const I = info(D.ri), g = grp(I.r), rg = D.dir > 0 ? g.f : g.b; if (!rg) return; D.laneT = Math.max(rg[0], Math.min(rg[1], Math.round(D.laneT) + d)); };
+  const onKey = (e, down) => { if (!D.on) return; if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault(); D.keys[e.key] = down; if (!down) return; if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') lane(-1); else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') lane(1); else if (e.key === 'r' || e.key === 'R') uturn(); else if (e.key === 'Escape') exit(); };
+  addEventListener('keydown', e => onKey(e, true)); addEventListener('keyup', e => onKey(e, false));
+  document.querySelectorAll('#drvPad button').forEach(b => { const k = b.dataset.k; const on = v => { if (k === 'G' || k === 'B') D.keys[k] = v; else if (v) lane(k === 'L' ? -1 : 1); }; b.onpointerdown = () => on(true); b.onpointerup = b.onpointerleave = () => on(false); });
+  const enter = () => { if (D.on) return; if (!S.doc.road.length) { say('Najpierw wczytaj drogi (ikona Wczytaj).'); return; } S.dirty = true; render(); if (!place()) { say('Brak dróg do jazdy w widoku.'); return; } D.on = true; D.bk = { x: S.view.x, y: S.view.y, k: S.view.k, pe: cv.style.pointerEvents }; S.view.k = 4; cv.style.pointerEvents = 'none'; cv.style.transformOrigin = '50% 50%'; mk(); for (const id of ['drvCar', 'drvFog', 'drvHud']) $(id).style.display = 'block'; $('lcDrive').classList.add('act'); $('lc').classList.remove('open'); last = performance.now(); lastR = 0; requestAnimationFrame(frame); };
+  const exit = () => { if (!D.on) return; D.on = false; cv.style.transform = ''; cv.style.pointerEvents = D.bk.pe; Object.assign(S.view, { x: D.bk.x, y: D.bk.y, k: D.bk.k }); for (const id of ['drvCar', 'drvFog', 'drvHud']) $(id).style.display = 'none'; $('lcDrive').classList.remove('act'); render(); };
+  $('lcDrive').onclick = () => D.on ? exit() : enter();
 })();
 </script>
 </body>

@@ -427,10 +427,11 @@ function layout() {
     }
     if (r.tlb && !r.oneway) { // strzałki turn:lanes:backward: pasy przeciwnego kierunku, malowane przy początku drogi i obrócone o 180°
       const parts = r.tlb.split('|'), len = c.cum[n - 1], NL = Math.max(1, r.lanes | 0), nbk = NL - (r.nf || 1);
-      if (nbk > 0 && parts.length === nbk && len > 25) for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 3; sa += 21, cnt++) {
+      if (nbk > 0 && parts.length === nbk && len > 25) for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 60; sa += 21, cnt++) {
         const p = atS(Q, c.cum, sa), p2 = atS(Q, c.cum, sa + 1), dx = p2[0] - p[0], dy = p2[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, ang = Math.atan2(dy, dx) * 180 / Math.PI + 90 + 180;
         let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - sa); if (dd < bd) { bd = dd; jn = j; } }
         const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj;
+        if (Math.abs(c.w[jn] / (r.lw || 3.75) - NL) > 0.1) continue;
         parts.forEach((v, k) => {
           const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-'); if (set.has('merge_to_left')) key = 'p9a'; else if (set.has('merge_to_right')) key = 'p9b'; /* strzalki zbiegu pasow */
           if (key === 'through-left-right' || ARR.has(key)) { const lat = leftLat + (nbk - 1 - k + 0.5) * r.lw; arrows.push({ x: p[0] + nx * lat, y: p[1] + ny * lat, rot: ang, type: key }); }

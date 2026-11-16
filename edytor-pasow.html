@@ -76,7 +76,7 @@ const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('canvas'), octx = off.getContext('2d');
 // Rejestr typow rozjazdow renderowanych specjalnie. Kazdy typ: gdzie stosowany (hw = regex na highway drog w wezle), co rysuje.
 // Pozostale wezly ida po zwyklej osi OSM. Kolejne typy dopisujemy tutaj.
-const FORK_TYPES = { 'rozjazd-n': { on: true, opis: 'n pasow -> a+b (szkielet, offset dla nieparzystych)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ } };
+const FORK_TYPES = { 'rozjazd-n': { on: true, opis: 'n pasow -> a+b (szkielet, offset dla nieparzystych)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-3-2+2': { on: true, opis: '3 pasy -> 2+2 (srodkowy pas wspolny)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ } };
 const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search), EKEY = (() => { const m = /#map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); return m ? 'rozj-' + m[1] + '/' + m[2] : 'rozj-x'; })(); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = true, FORK_MARKS = false, P9_TAPER = false;
@@ -245,6 +245,7 @@ function skelFork(X, yl, yr, C, R, gores) {
   let xN = nX * w / 2; if (nX % 2 === 1) { const extraNeg = neg.l < pos.l; xN = extraNeg ? w + (nX - 1) * w / 2 : (nX - 1) * w / 2; }
   if (nX % 2 === 1 && R[X.i]._edge) xN = (X.st ? 1 : -1) * (C[X.i].d0 || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
   neg.c = -xN + neg.l * w / 2; pos.c = -xN + neg.l * w + pos.l * w / 2;
+  if (neg.l + pos.l === nX + 1) { xN = nX * w / 2; neg.c = -xN + neg.l * w / 2; pos.c = xN - pos.l * w / 2; } /* 3->2+2: wspolny pas srodkowy - odnogi startuja nakladajac sie o jeden pas */
   { const tkn = String(R[X.i].tl || '').split('|').filter(Boolean), nt = (!X.st && tkn.length === nX) ? tkn.filter(v => v.split(';').some(x => x === 'through')).length : 0; for (const o of arms) o.straight = nt > 0 && nt < nX && o.l === nt && arms.every(z => z === o || z.l !== nt); } /* turn:lanes: odnoga z pasami 'prosto' biegnie prosto, nie wg osi OSM */
   for (const o of arms) {
     const D = o.D, dir = o.sg > 0 ? 1 : -1, lamC = dir * o.c, cD = cumOf(D); let iT = 0;
@@ -359,7 +360,7 @@ function layout() {
       const X = G[xi], Ys = G.filter((_, a) => a !== xi), wX = rw(R[X.i]);
       if (U[xi][0] * (U[(xi + 1) % 3][0] + U[(xi + 2) % 3][0]) + U[xi][1] * (U[(xi + 1) % 3][1] + U[(xi + 2) % 3][1]) < -1.0 && R[X.i].lanes >= Math.max(R[Ys[0].i].lanes, R[Ys[1].i].lanes)) {
         handled.add(k);
-        const T = R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1 ? 'rozjazd-2-1+1' : (R[X.i].lanes === 3 && Ys.map(e => R[e.i].lanes).sort().join() === '1,2' ? 'rozjazd-3-2+1' : (R[X.i].lanes >= 3 && R[X.i].lanes <= 6 && R[X.i].lanes === R[Ys[0].i].lanes + R[Ys[1].i].lanes ? 'rozjazd-n' : null));
+        const T = R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1 ? 'rozjazd-2-1+1' : (R[X.i].lanes === 3 && R[Ys[0].i].lanes === 2 && R[Ys[1].i].lanes === 2 ? 'rozjazd-3-2+2' : R[X.i].lanes === 3 && Ys.map(e => R[e.i].lanes).sort().join() === '1,2' ? 'rozjazd-3-2+1' : (R[X.i].lanes >= 3 && R[X.i].lanes <= 6 && R[X.i].lanes === R[Ys[0].i].lanes + R[Ys[1].i].lanes ? 'rozjazd-n' : null));
         if (!T || !FORK_TYPES[T].on || !G.some(e => FORK_TYPES[T].hw.test(R[e.i].hw || ''))) continue; // tylko typy z rejestru FORK_TYPES, tylko na wskazanych klasach drog
         (T === 'rozjazd-2-1+1' ? forks : forks3).push(orient(C[X.i], X.st).Q[0]); forkX.set(X.i, X.st);
         // krotki "kikut" osi przy wezle (pierwszy segment < 14 m, ktory ostro skreca wzgledem dalszego przebiegu) nie jest sladem pasa - pomijamy ten wierzcholek tylko w renderze

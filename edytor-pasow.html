@@ -677,10 +677,21 @@ function showLanePal(x, y) {
   d.querySelectorAll('button').forEach(b => b.onclick = () => { const ri = LAN.ri; if (b.dataset.a === 'add') LAN.act.add(ri); else if (b.dataset.a === 'del') LAN.act.del(ri); else LAN.act.toggle(b.dataset.k); showLanePal(x, y); });
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); if ((e.key === 'Delete' || e.key === 'Backspace') && S.vsel >= 0 && S.sel >= 0 && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { const b = $('bDelV'); if (b) { e.preventDefault(); b.click(); } } });
+function forkJson(ri, vi) { // 3 drogi schodzace sie w wezle -> JSON w formacie piaskownicy (rozjazd-szkielet.html): wezel = [0,0], punkty od wezla w dal
+  const r0 = S.doc.road[ri], node = r0.pts[vi], arms = [];
+  S.doc.road.forEach((r, i) => { const n = r.pts.length; for (const [j, st] of [[0, true], [n - 1, false]]) if (dist(r.pts[j], node) < 0.4) { const P = (st ? r.pts : r.pts.slice().reverse()).slice(1).map(q => [+(q[0] - node[0]).toFixed(2), +(q[1] - node[1]).toFixed(2)]); if (P.length) arms.push({ i, l: r.lanes | 0, P }); } });
+  if (new Set(arms.map(a => a.i)).size !== 3 || arms.length !== 3) return null;
+  const U = arms.map(a => { const q = a.P[Math.min(2, a.P.length - 1)], l = Math.hypot(q[0], q[1]) || 1; return [q[0] / l, q[1] / l]; }), mx = Math.max(...arms.map(a => a.l)); let xi = 0, best = 9;
+  U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } });
+  if (arms.filter(a => a.l === mx).length === 1) xi = arms.findIndex(a => a.l === mx);
+  const X = arms[xi], Y = arms.filter((_, a) => a !== xi), t = U[xi], cr = Y.map(a => { const q = a.P[Math.min(2, a.P.length - 1)]; return t[0] * q[1] - t[1] * q[0]; }), li = cr[0] < cr[1] ? 0 : 1, A = Y[li], B = Y[1 - li];
+  return JSON.stringify({ nX: X.l, lA: A.l, P: { x: X.P, a: A.P, b: B.P } });
+}
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
   const d = document.createElement('div'); d.id = 'vbar'; d.style.cssText = 'position:fixed;z-index:15;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
   if (S.vsel > 0 && S.vsel < r.pts.length - 1) { const b = document.createElement('button'); b.textContent = 'Rozdziel drogę w tym punkcie'; b.onclick = () => { const x = document.getElementById('bSplit'); if (x) x.click(); }; d.appendChild(b); }
+  { const fj = (S.vsel === 0 || S.vsel === r.pts.length - 1) ? forkJson(S.sel, S.vsel) : null; if (fj) { const b = document.createElement('button'); b.textContent = 'Kopiuj rozjazd do szkieletu'; b.title = 'Skopiuj 3 drogi tego węzła; w piaskownicy kliknij „Wklej punkty”'; b.onclick = () => { (navigator.clipboard ? navigator.clipboard.writeText(fj) : Promise.reject()).then(() => { b.textContent = 'Skopiowano'; setTimeout(() => { b.textContent = 'Kopiuj rozjazd do szkieletu'; }, 1500); }, () => prompt('Skopiuj:', fj)); }; d.appendChild(b); } }
   const b2 = document.createElement('button'); b2.textContent = 'Usuń punkt'; b2.onclick = () => { const x = document.getElementById('bDelV'); if (x) x.click(); }; d.appendChild(b2); d.onpointerdown = e => e.stopPropagation(); document.body.appendChild(d);
 }
 function props() {

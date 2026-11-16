@@ -79,7 +79,7 @@ function build(){
    const spread=P=>{const n=P.length,r=10;let Q=P.map((v,i)=>{let m=0;for(let k=Math.max(0,i-r);k<=Math.min(n-1,i+r);k++)m=Math.max(m,P[k]);return m;});for(let it=0;it<4;it++){const Z=Q.slice();for(let i=0;i<n;i++){let s2=0,c=0;for(let k=Math.max(0,i-8);k<=Math.min(n-1,i+8);k++){s2+=Q[k];c++;}Z[i]=s2/c;}Q=Z;}return Q;};
    const apply=(O,q,dirs)=>{const n=O.C.length,NN=O.C.map((_,i)=>nOf(nrm(sub(O.C[Math.min(n-1,i+1)],O.C[Math.max(0,i-1)]))));let bi=-1,bm=0;for(let i=0;i<n;i++)if(dirs[i]&&q[i]>bm){bm=q[i];bi=i;}if(bi<0)return;const sg=NN[bi][0]*dirs[bi][0]+NN[bi][1]*dirs[bi][1]>=0?1:-1;
      for(let i=0;i<n;i++)if(q[i]>0.005)O.C[i]=[O.C[i][0]+NN[i][0]*sg*q[i],O.C[i][1]+NN[i][1]*sg*q[i]];O.tc=tangents(O.C);O.L=offsetLine(O.C,O.tc,O.C.map(()=>O.W/2));O.Rr=offsetLine(O.C,O.tc,O.C.map(()=>-O.W/2));};
-   apply(a,spread(pA),dA);apply(b,spread(pB),dB);}
+   const fadeIn=q=>q.map((v,i)=>v*sm5(i*0.5/8));apply(a,fadeIn(spread(pA)),dA);apply(b,fadeIn(spread(pB)),dB);}
   // droga wjazdowa: boki w odleglosci (wzgledem osi) -xN .. nX*w-xN wzdluz nE (nOf(tX) = -nE)
   const xoff=q=>offsetLine(X.P,tX,X.P.map(()=>-q));
   return{a,b,x:{P:X.P,t:tX,L:xoff(-xN),R:xoff(nX*w-xN),off:xoff,xN},nE,w,nX};
@@ -112,6 +112,10 @@ function asphalt(){ // tekstura asfaltu: ziarno + jasniejsze kamyki, kafel zakot
     for(let k=0;k<26;k++){const x=rnd()*N,y=rnd()*N,r=14+rnd()*34,a=(rnd()-0.5)*0.07;for(const dx of[-N,0,N])for(const dy of[-N,0,N]){const gr=g.createRadialGradient(x+dx,y+dy,0,x+dx,y+dy,r);const col=a>0?'255,255,255':'0,0,0';gr.addColorStop(0,'rgba('+col+','+Math.abs(a)+')');gr.addColorStop(1,'rgba('+col+',0)');g.fillStyle=gr;g.fillRect(x+dx-r,y+dy-r,2*r,2*r);}}
     ASP=ctx.createPattern(c,'repeat');}
   const s=K/40;ASP.setTransform(new DOMMatrix([s,0,0,s,OX,OY]));return ASP;}
+function joinInfo(G){const ia=G.a.sg>0?G.a.Rr:G.a.L,ib=G.b.sg>0?G.b.Rr:G.b.L,n=Math.min(ia.length,ib.length),M=[];let iJ=-1,jJ=0;
+  for(let i=0;i<n;i++){let bj=Math.min(ib.length-1,i),bd=1e9;for(let j=Math.max(0,i-60);j<Math.min(ib.length,i+60);j++){const d=Math.hypot(ia[i][0]-ib[j][0],ia[i][1]-ib[j][1]);if(d<bd){bd=d;bj=j;}}
+    if(bd>1.0&&i>2){iJ=i;jJ=bj;break;}M.push([(ia[i][0]+ib[bj][0])/2,(ia[i][1]+ib[bj][1])/2]);}
+  if(iJ<0)return null;return{ia,ib,iJ,jJ,M};}
 function drawRoad(){
   const G=build(),w=S.w,ROAD='#7c8083',LINE='#f2f2f0',nE=G.nE;
   const PAT=asphalt()||ROAD;const fill=(L,R)=>{path(L.concat(R.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();};
@@ -148,7 +152,10 @@ function drawRoad(){
   [G.a,G.b].forEach(o=>div(o.C,o.tc,o.W,o.l));
   // biale krawedzie jezdni leza dokladnie na niebieskich konturach (bez wcinania do srodka), bez klina
   const xneg=G.x.L,xpos=G.x.R;
-  [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,innerEdge=o.sg>0?o.Rr:o.L,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.2);stroke(innerEdge,LINE,0.2);});
+  [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.2);});
+  // wewnetrzne krawedzie odnog: dopoki szczelina < 1 m - jedna wspolna linia posrodku (szczelina wypelniona asfaltem), dalej dwie
+  {const J=joinInfo(G);if(J){const{ia,ib,iJ,jJ,M}=J;path(ia.slice(0,iJ+1).concat(ib.slice(0,jJ+1).reverse()),true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();
+    stroke(M,LINE,0.2);stroke(ia.slice(iJ),LINE,0.2);stroke(ib.slice(jJ),LINE,0.2);stroke([M[M.length-1],ia[iJ]],LINE,0.2);stroke([M[M.length-1],ib[jJ]],LINE,0.2);}}
   if(gore){const v=S.chVar,CW=S.chW;ctx.save();if(v===1){path(gore.clip,true);ctx.clip();}
     gore.ch.forEach(arms=>{const legs=arms.map(o=>{let P;const L=Math.hypot(o.hit[0]-o.m[0],o.hit[1]-o.m[1]);
       if(v===2){const q1=sub(o.hit,mul(o.d,Math.min(1.2,L*0.35))),e2=add(o.hit,mul(o.tan,Math.min(1.4,L*0.5)));P=[o.m];for(let k=0;k<=14;k++){const t=k/14;P.push([0,1].map(c=>(1-t)*(1-t)*q1[c]+2*(1-t)*t*o.hit[c]+t*t*e2[c]));}}

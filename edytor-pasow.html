@@ -789,11 +789,15 @@ $('bRst').onclick = () => {
   push(); const n = resetFromOsm(idx); save(); ui(); touch(); say(`Przywrócono z OSM ${n} dróg w widoku (cofnij: ↶).`);
 };
 $('bRstSel').onclick = () => { if (S.sel < 0) { say('Zaznacz najpierw drogę.'); return; } push(); const n = resetFromOsm([S.sel]); save(); ui(); touch(); say(n ? 'Przywrócono zaznaczoną drogę z OSM (cofnij: ↶).' : 'Nie znaleziono tej drogi w danych OSM.'); };
+function liveLog(m) { console.log('[OSM live]', m); let b = document.getElementById('liveLog'); if (!b) { b = document.createElement('div'); b.id = 'liveLog'; b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99;max-width:min(560px,92vw);background:#111d;color:#cfc;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;max-height:40vh;overflow:auto'; b.innerHTML = '<div style="text-align:right"><button id="llC">kopiuj</button> <button id="llX">×</button></div><pre id="llT" style="margin:0;white-space:pre-wrap;user-select:text"></pre>'; document.body.appendChild(b); b.querySelector('#llX').onclick = () => { b.remove(); }; b.querySelector('#llC').onclick = () => { const t = b.querySelector('#llT').textContent; try { navigator.clipboard.writeText(t); } catch (e) {} }; } b.querySelector('#llT').textContent += new Date().toISOString().slice(11, 19) + ' ' + m + '\n'; }
 async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia drogi o zmienionym ukladzie wezlow (bez nowych/recznych wezlow)
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), lo = Math.min(a.lon, b.lon), hi = Math.max(a.lon, b.lon), la0 = Math.min(a.lat, b.lat), la1 = Math.max(a.lat, b.lat);
   if ((hi - lo) * (la1 - la0) > 0.04) { say('Za duży obszar – przybliż widok i spróbuj ponownie.'); return; }
   say('Pobieram aktualne dane z OSM…');
-  let j; try { const rr = await fetch(`https://api.openstreetmap.org/api/0.6/map.json?bbox=${lo.toFixed(6)},${la0.toFixed(6)},${hi.toFixed(6)},${la1.toFixed(6)}`); if (!rr.ok) throw new Error('HTTP ' + rr.status); j = await rr.json(); } catch (e) { say('Nie udało się pobrać z OSM: ' + e.message); return; }
+  const url = `https://api.openstreetmap.org/api/0.6/map.json?bbox=${lo.toFixed(6)},${la0.toFixed(6)},${hi.toFixed(6)},${la1.toFixed(6)}`; liveLog('start, bbox=' + [lo, la0, hi, la1].map(v => v.toFixed(5)).join(',') + ' pole=' + ((hi - lo) * (la1 - la0)).toFixed(5)); liveLog('GET ' + url);
+  let j; try { const rr = await fetch(url); const tx = await rr.text(); liveLog('HTTP ' + rr.status + ' ' + rr.statusText + ', ' + tx.length + ' znakow, typ ' + rr.headers.get('content-type')); if (!rr.ok) throw new Error('HTTP ' + rr.status + ': ' + tx.slice(0, 300)); j = JSON.parse(tx); } catch (e) { liveLog('BLAD: ' + (e && e.stack || e)); say('Nie udało się pobrać z OSM: ' + e.message + ' (szczegóły w oknie logu)'); return; }
+  liveLog('elementy: ' + j.elements.length + ' (wezly ' + j.elements.filter(e => e.type === 'node').length + ', drogi ' + j.elements.filter(e => e.type === 'way' && e.tags && e.tags.highway).length + ')');
+  try {
   const nodes = new Map(); for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, [e.lon, e.lat]);
   const fresh = new Map(); for (const e of j.elements) if (e.type === 'way' && e.tags && e.tags.highway) { const ll = e.nodes.map(id => nodes.get(id)).filter(Boolean); if (ll.length < 2) continue; fresh.set(e.id, { id: e.id, t: e.tags, g: ll.map(c => proj(c[0], c[1])), nk: ll.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); }
   let del = 0; for (const [id, o] of [...S.osm.ways]) if (!fresh.has(id) && o.g.some((p, i) => { const u = unproj(p); return u.lon >= lo && u.lon <= hi && u.lat >= la0 && u.lat <= la1; })) { S.osm.ways.delete(id); del++; }
@@ -809,7 +813,9 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
     if (ia < 0 && ib < 0) { const m = ks.some(k => w.nk.includes(k)); if (!m) { keep++; continue; } }
     R[i] = makeRoad(w, ia >= 0 && ib >= 0 ? A : 0, ia >= 0 && ib >= 0 ? B : w.g.length - 1); rep++;
   }
+  liveLog(`podmieniono ${rep}, pominieto ${keep}, brak w OSM ${gone}, usunieto z pamieci ${del}`);
   S.undo = []; save(); touch(); ui(); say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
+  } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); }
 }
 $('bLive').onclick = () => refreshLive();
 $('bImp').onclick = async () => {

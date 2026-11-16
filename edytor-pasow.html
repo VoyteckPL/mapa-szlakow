@@ -691,7 +691,8 @@ function forkJson(ri, vi) { // 3 drogi schodzace sie w wezle -> JSON w formacie 
   if (arms.filter(a => a.l === mx).length === 1) xi = arms.findIndex(a => a.l === mx);
   const X = arms[xi], Y = arms.filter((_, a) => a !== xi), t = U[xi], cr = Y.map(a => { const q = a.P[Math.min(2, a.P.length - 1)]; return t[0] * q[1] - t[1] * q[0]; }), li = cr[0] < cr[1] ? 0 : 1, A = Y[li], B = Y[1 - li];
   const Rx = S.doc.road[X.i], cx = S.CC && S.CC[X.i], xN = (Rx._edge && X.l % 2 === 1 && cx) ? +(((X.st ? 1 : -1) * (cx.d0 || 0)) + X.l * (Rx.lw || 3.75) / 2).toFixed(3) : null; /* offset osi z turn:lanes */
-  const ll = unproj(node); return JSON.stringify({ xN, nX: X.l, lA: A.l, geo: { lat: +ll.lat.toFixed(7), lon: +ll.lon.toFixed(7) }, P: { x: X.P, a: A.P, b: B.P } });
+  const ll = unproj(node); const tkn = String(Rx.tl || '').split('|').filter(Boolean), nt = (!X.st && tkn.length === X.l) ? tkn.filter(v => v.split(';').some(x => x === 'through')).length : 0; /* ile pasow wjazdu jedzie prosto */
+  return JSON.stringify({ nt, xN, nX: X.l, lA: A.l, geo: { lat: +ll.lat.toFixed(7), lon: +ll.lon.toFixed(7) }, P: { x: X.P, a: A.P, b: B.P } });
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;

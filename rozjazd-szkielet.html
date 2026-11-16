@@ -69,7 +69,7 @@ function build(){
   const arm=o=>{ // start: srodek odnogi w jej czesci przekroju, styczna = przedluzenie drogi wjazdowej (koniec prostopadly); potem hermite do wlasnej osi po T metrach
     const R=o.R,t=o.t,W=o.l*w,dir=o.sg>0?1:-1,lamC=dir*o.c,Tsel=S.nX>=4?S.T2:S.T;
     // prosto w swoim pasie (rownolegle do drogi wjazdowej), dopoki wlasna os odnogi nie dojdzie do tego pasa; potem hermite o dlugosci przejscia T
-    let sS=0;{const k=R.P.findIndex(q=>dir*(q[0]*nE[0]+q[1]*nE[1])>=lamC);sS=k<0?0:R.s[k];sS=Math.max(0,Math.min(sS,2*Tsel));}
+    let sS=0;{const k=R.P.findIndex(q=>dir*(q[0]*nE[0]+q[1]*nE[1])>=lamC);sS=k<0?0:R.s[k];sS=Math.max(0,Math.min(sS,2*Tsel,R.s[R.s.length-1]-Tsel));}
     const P0=add(mul(nE,o.c),mul(e,sS));let iT=R.s.findIndex(v=>v>=sS+Tsel);if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
     for(let q=0;q<sS-1e-6;q+=0.5)C.push(add(mul(nE,o.c),mul(e,q)));const pre=C.length;
     for(let k=0;k<=N;k++){const u=k/N,h00=2*u**3-3*u**2+1,h10=u**3-2*u**2+u,h01=-2*u**3+3*u**2,h11=u**3-u**2;C.push([0,1].map(q=>h00*P0[q]+h10*M0[q]+h01*P1[q]+h11*M1[q]));}
@@ -84,12 +84,6 @@ function build(){
    const apply=(O,q,dirs)=>{const n=O.C.length,NN=O.C.map((_,i)=>nOf(nrm(sub(O.C[Math.min(n-1,i+1)],O.C[Math.max(0,i-1)]))));let bi=-1,bm=0;for(let i=0;i<n;i++)if(dirs[i]&&q[i]>bm){bm=q[i];bi=i;}if(bi<0)return;const sg=NN[bi][0]*dirs[bi][0]+NN[bi][1]*dirs[bi][1]>=0?1:-1;
      for(let i=0;i<n;i++)if(q[i]>0.005)O.C[i]=[O.C[i][0]+NN[i][0]*sg*q[i],O.C[i][1]+NN[i][1]*sg*q[i]];O.tc=tangents(O.C);O.L=offsetLine(O.C,O.tc,O.C.map(()=>O.W/2));O.Rr=offsetLine(O.C,O.tc,O.C.map(()=>-O.W/2));};
    const fadeIn=q=>q.map((v,i)=>v*sm5(i*0.5/8));apply(a,fadeIn(spread(pA)),dA);apply(b,fadeIn(spread(pB)),dB);}
-  // odsuniecie od osi drogi wjazdowej nie maleje (bez 'wahniecia': odnoga nie wraca w strone drugiej, po prostu idzie rowno i potem odchodzi)
-  {const mono=(O,dir)=>{const n=Math.min(O.nh+1,O.C.length),lam=O.C.slice(0,n).map(p=>dir*(p[0]*nE[0]+p[1]*nE[1]));let mx=-1e9,sh=lam.map(v=>{mx=Math.max(mx,v);return mx-v;});
-     for(let it=0;it<3;it++){const Z=sh.slice();for(let i=0;i<n;i++){let s2=0,c=0;for(let k=Math.max(0,i-6);k<=Math.min(n-1,i+6);k++){s2+=sh[k];c++;}Z[i]=s2/c;}sh=Z;}
-     sh=sh.map((v,i)=>v*(1-sm5((i/n-0.7)/0.3)));let any=false;for(let i=0;i<n;i++)if(sh[i]>0.005){any=true;O.C[i]=[O.C[i][0]+nE[0]*dir*sh[i],O.C[i][1]+nE[1]*dir*sh[i]];}
-     if(any){O.tc=tangents(O.C);O.L=offsetLine(O.C,O.tc,O.C.map(()=>O.W/2));O.Rr=offsetLine(O.C,O.tc,O.C.map(()=>-O.W/2));}};
-   mono(a,a.sg>0?1:-1);mono(b,b.sg>0?1:-1);}
   // droga wjazdowa: boki w odleglosci (wzgledem osi) -xN .. nX*w-xN wzdluz nE (nOf(tX) = -nE)
   const xoff=q=>offsetLine(X.P,tX,X.P.map(()=>-q));
   return{a,b,x:{P:X.P,t:tX,L:xoff(-xN),R:xoff(nX*w-xN),off:xoff,xN},nE,w,nX};

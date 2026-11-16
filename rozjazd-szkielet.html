@@ -29,7 +29,7 @@ const PRESETS={
  'Przykład ze zrzutu':{x:[[4,70]],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
  'Odnoga prawie równolegle':{x:[[0,70]],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
 };
-const S={nX:2,lA:1,grid:true,snap:true,mode:'move',draw:null,w:3.75,T:20,tex:true,curb:true,R:80,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:true,chVar:2,chSp:1.7,chAng:58,chN:8,chW:0.4,preset:'Prosto + odnoga w prawo'};
+const S={scene:'fork',tp:{nA:1,nB:2,s0:30,len:60},saved:{},nX:2,lA:1,grid:true,snap:true,mode:'move',draw:null,w:3.75,T:20,tex:true,curb:true,R:80,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:true,chVar:2,chSp:1.7,chAng:58,chN:8,chW:0.4,preset:'Prosto + odnoga w prawo'};
 function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.map(q=>q.slice()),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
 // ---------- geometria ----------
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],add=(a,b)=>[a[0]+b[0],a[1]+b[1]],mul=(a,k)=>[a[0]*k,a[1]*k],len=a=>Math.hypot(a[0],a[1]),nrm=a=>{const l=len(a)||1;return[a[0]/l,a[1]/l]};
@@ -89,7 +89,7 @@ function drawGrid(){const g=gridStep(),x0=-OX/K,x1=(W-OX)/K,y0=-OY/K,y1=(H-OY)/K
 function render(){
   if(!S.P)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
   if(S.grid)drawGrid();
-  if(ready()){drawRoad();}
+  if(S.scene==='lanes'){if(S.P.x.length)drawLanes();}else if(ready()){drawRoad();}
   // uchwyty
   ctx.fillStyle='#fff';ctx.strokeStyle='#e0245e';ctx.lineWidth=2;[...S.P.a,...S.P.b,...S.P.x].forEach(p=>{const q=w2s(p);ctx.beginPath();ctx.arc(q[0],q[1],6,0,7);ctx.fill();ctx.stroke();});
   const nq=w2s([0,0]);ctx.beginPath();ctx.arc(nq[0],nq[1],5,0,7);ctx.fillStyle='#e0245e';ctx.fill();
@@ -152,7 +152,7 @@ function drawRoad(){
   if(S.ax){[[[0,0],...S.P.a],[[0,0],...S.P.b],[[0,0],...S.P.x]].forEach(P=>P.length>1&&stroke(spline(P),'#e0245e',0.08));}
 }
 // ---------- UI i uchwyty ----------
-function ui(){const b=$('bar');b.innerHTML='';
+function ui(){if(S.scene==='lanes')return uiLanes();const b=$('bar');b.innerHTML='';{const e0=document.createElement('button');e0.textContent='Rozjazd';e0.className='on';b.appendChild(e0);const e1=document.createElement('button');e1.textContent='Zmiana liczby pasów';e1.onclick=()=>setScene('lanes');b.appendChild(e1);}
   Object.keys(PRESETS).forEach(n=>{const e=document.createElement('button');e.textContent=n;if(n===S.preset)e.className='on';e.onclick=()=>load(n);b.appendChild(e);});
   const sel=(lab,k,opts,cb)=>{const l=document.createElement('label');l.innerHTML=lab+' <select>'+opts.map(o=>'<option'+(o===S[k]?' selected':'')+'>'+o+'</option>').join('')+'</select>';l.querySelector('select').onchange=e=>{S[k]=+e.target.value;if(S.lA>=S.nX)S.lA=S.nX-1;if(cb)cb();render();ui();};b.appendChild(l);};
   sel('pasy wjazdu','nX',[2,3,4,5]);sel('pasy odnogi A','lA',Array.from({length:S.nX-1},(_,i)=>i+1));{const l=document.createElement('span');l.style.color='var(--mut)';l.textContent='odnoga B: '+(S.nX-S.lA)+' pas.';b.appendChild(l);}
@@ -163,8 +163,39 @@ function ui(){const b=$('bar');b.innerHTML='';
   sl('długość przejścia T [m]','T',10,160,5);sl('szerokość pasa [m]','w',2.5,4.2,0.05);sl('promień łuku jezdni [m]','R',0,80,5);
   const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
   const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('tekstura asfaltu','tex');ck('krawężniki','curb');ck('szewrony w klinie','chev');sel('szewrony – wariant','chVar',[1,2,3]);}
+
+// ---------- zmiana liczby pasow (przyrost / redukcja) ----------
+// uklad poprzeczny n pasow w ramie drogi (os, kierunek od wezla): parzysta - os w srodku; nieparzysta - rdzen n-1 pasow na osi, dodatkowy pas po stronie +
+function lay(n){const w=S.w;return n%2===0?[-n*w/2,n*w/2]:[-(n-1)*w/2,(n-1)*w/2+w];}
+function drawLanes(){
+  const w=S.w,ROAD='#7c8083',LINE='#f2f2f0',raw=[[0,0],...S.P.x],X=resample(fillet(raw,S.R),0.5),P=X.P,t=tangents(P),sc=X.s,tp=S.tp;
+  const[LA,RA]=lay(tp.nA),[LB,RB]=lay(tp.nB),k=v=>sm5((v-tp.s0)/tp.len);
+  const dL=sc.map(v=>LA+(LB-LA)*k(v)),dR=sc.map(v=>RA+(RB-RA)*k(v)),Lf=offsetLine(P,t,dL),Rt=offsetLine(P,t,dR);
+  if(S.curb){[Lf,Rt].forEach(E=>stroke(E,'#6f716c',0.84));[Lf,Rt].forEach(E=>stroke(E,'#c4c6c0',0.68));}
+  const PAT=asphalt()||ROAD;path(Lf.concat(Rt.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();
+  // linie pasow: stale polozenia kratki (wielokrotnosci szerokosci pasa), rysowane tam gdzie lezą miedzy krawedziami
+  const lo=Math.min(LA,LB),hi=Math.max(RA,RB);
+  for(let q=Math.ceil(lo/w-1e-6);q*w<=hi+1e-6;q++){const pp=q*w;let run=[],rd=[];
+    const flush=()=>{if(run.length>1)stroke(offsetLine(run,rd.map(r=>r.t),rd.map(()=>pp)),LINE,0.12,[3,6]);run=[];rd=[];};
+    for(let i=0;i<P.length;i++){if(pp>dL[i]+0.05&&pp<dR[i]-0.05){run.push(P[i]);rd.push({t:t[i]});}else flush();}flush();}
+  stroke(Lf,LINE,0.2);stroke(Rt,LINE,0.2);
+  if(S.ax)stroke(raw,'#e0245e',0.08);
+  // opisy
+  ctx.save();ctx.fillStyle='#1d2733';ctx.font='12px system-ui';const a=w2s(P[Math.min(P.length-1,Math.round(Math.max(0,tp.s0-12)/0.5))]),b=w2s(P[Math.min(P.length-1,Math.round((tp.s0+tp.len+12)/0.5))]);
+  ctx.fillText(tp.nA+' pas.',a[0]+20,a[1]);ctx.fillText(tp.nB+' pas.',b[0]+20,b[1]);ctx.restore();
+}
+function setScene(sc){if(sc===S.scene)return;endDraw();S.saved[S.scene]=S.P;S.scene=sc;S.P=S.saved[sc]||(sc==='lanes'?{x:[[0,60],[4,110],[12,170]],a:[],b:[]}:null);if(!S.P)load(S.preset);fit();ui();}
+function uiLanes(){const b=$('bar');b.innerHTML='';
+  const sc=(k,lab)=>{const e=document.createElement('button');e.textContent=lab;if(S.scene===k)e.className='on';e.onclick=()=>setScene(k);b.appendChild(e);};sc('fork','Rozjazd');sc('lanes','Zmiana liczby pasów');
+  [[1,2],[2,3],[3,4],[4,5],[2,1],[3,2],[4,3],[5,4],[1,3],[2,4],[3,1],[4,2]].forEach(([a,c])=>{const e=document.createElement('button');e.textContent=a+' → '+c;if(S.tp.nA===a&&S.tp.nB===c)e.className='on';e.onclick=()=>{S.tp.nA=a;S.tp.nB=c;render();ui();};b.appendChild(e);});
+  const sel=(lab,o)=>{const l=document.createElement('label');l.innerHTML=lab+' <select>'+[1,2,3,4,5,6].map(v=>'<option'+(v===S.tp[o]?' selected':'')+'>'+v+'</option>').join('')+'</select>';l.querySelector('select').onchange=e=>{S.tp[o]=+e.target.value;render();ui();};b.appendChild(l);};sel('pasy przed','nA');sel('pasy po','nB');
+  const sl=(lab,o,mn,mx,st,tgt)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+tgt[o]+'> <span>'+tgt[o]+'</span>';l.querySelector('input').oninput=e=>{tgt[o]=+e.target.value;l.querySelector('span').textContent=tgt[o];render();};b.appendChild(l);};
+  sl('początek zmiany [m od węzła]','s0',0,150,5,S.tp);sl('długość zmiany [m]','len',10,160,5,S.tp);sl('szerokość pasa [m]','w',2.5,4.2,0.05,S);sl('promień łuku jezdni [m]','R',0,150,5,S);
+  [['move','Przesuwaj'],['add','Dodaj punkt na osi'],['del','Usuń punkt']].forEach(([k,lab])=>{const e=document.createElement('button');e.textContent=lab;if(S.mode===k)e.className='on';e.onclick=()=>{S.mode=k;ui();};b.appendChild(e);});
+  const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
+  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('oś OSM','ax');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
 S.w=3.75;
-function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;render();}
+function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;if(S.scene==='lanes'){K=Math.max(3,Math.min(10,H/190));OX=W/2-10*K;OY=H*0.04;}else{K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;}render();}
 let drag=null,pan=null;const ptrs=new Map();let pinch=null;
 function hit(e){const m=mpos(e);let best=null,bd=18;[['a',S.P.a],['b',S.P.b],['x',S.P.x]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<bd){bd=d;best=[k,i];}}));return best;}
 const snapP=p=>{if(!S.snap)return p;const g=gridStep();return[Math.round(p[0]/g)*g,Math.round(p[1]/g)*g];};

@@ -207,7 +207,7 @@ function filletPts(pts, r) { // zaokragla zalamania lamanej lukami o promieniu r
   out.push(pts[pts.length - 1].slice()); return out;
 }
 function comp(r, h) {
-  const Q = /^(motorway|trunk)/.test(r.hw || '') ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80)), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, d0 = r.oneway && /^(motorway|trunk)/.test(r.hw || '') && nl >= 3 && nl % 2 === 1 ? (r.lw || 3.75) / 2 : 0, d = Q.map(() => d0); /* jezdnia jednokierunkowa o nieparzystej liczbie pasow: dodatkowy pas zawsze po prawej (stala os w rdzeniu n-1 pasow) */ return { Q, w, d, d0, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+  const Q = /^(motorway|trunk)/.test(r.hw || '') ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80)), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, d0 = r.oneway && /^(motorway|trunk)/.test(r.hw || '') && nl >= 3 && nl % 2 === 1 ? (r._osg || 1) * (r.lw || 3.75) / 2 : 0, d = Q.map(() => d0); /* jezdnia jednokierunkowa o nieparzystej liczbie pasow: dodatkowy pas zawsze po prawej (stala os w rdzeniu n-1 pasow) */ return { Q, w, d, d0, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg, ins = 0) => offsetPts(o.Q, o.d.map((v, i) => v + sg * (o.w[i] / 2 - ins)));
@@ -252,7 +252,7 @@ function skelFork(X, yl, yr, C, R, gores) {
     const apply = (O, q, dirs) => { const n = O.Cd.length, NN = O.Cd.map((_, i) => nOf(nrm(sub(O.Cd[Math.min(n - 1, i + 1)], O.Cd[Math.max(0, i - 1)])))); let bi = -1, bm = 0; for (let i = 0; i < n; i++) if (dirs[i] && q[i] > bm) { bm = q[i]; bi = i; } if (bi < 0) return; const sg = NN[bi][0] * dirs[bi][0] + NN[bi][1] * dirs[bi][1] >= 0 ? 1 : -1; // jedna, stala strona odsuniecia (od drugiej odnogi)
       for (let i = 0; i < n; i++) if (q[i] > 0.005) O.Cd[i] = [O.Cd[i][0] + NN[i][0] * sg * q[i], O.Cd[i][1] + NN[i][1] * sg * q[i]]; };
     const fadeIn = q => q.map((v, i) => v * sm5(i * 0.5 / 8)); apply(A, fadeIn(qA), dirA); apply(B, fadeIn(qB), dirB); }
-  for (const o of arms) { const c = C[o.ye.i], Q = o.ye.st ? o.Cd : o.Cd.slice().reverse(); c.Q = Q; c.w = Q.map(() => o.l * w); { const d0a = (R[o.ye.i].oneway && /^(motorway|trunk)/.test(R[o.ye.i].hw || '') && o.l >= 3 && o.l % 2 === 1) ? w / 2 : 0, cq = cumOf(Q), Lq = cq[cq.length - 1], Lfa = Math.max(1, Math.min(150, Lq - Math.min(T, Lq / 2))); c.d0 = d0a; c.d = Q.map((_, j) => d0a * sm5(((o.ye.st ? cq[j] : Lq - cq[j]) - Math.min(T, Lq / 2)) / Lfa)); } c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q); }
+  for (const o of arms) { const c = C[o.ye.i], Q = o.ye.st ? o.Cd : o.Cd.slice().reverse(); c.Q = Q; c.w = Q.map(() => o.l * w); { const d0a = (R[o.ye.i].oneway && /^(motorway|trunk)/.test(R[o.ye.i].hw || '') && o.l >= 3 && o.l % 2 === 1) ? (R[o.ye.i]._osg || 1) * w / 2 : 0, cq = cumOf(Q), Lq = cq[cq.length - 1], Lfa = Math.max(1, Math.min(150, Lq - Math.min(T, Lq / 2))); c.d0 = d0a; c.d = Q.map((_, j) => d0a * sm5(((o.ye.st ? cq[j] : Lq - cq[j]) - Math.min(T, Lq / 2)) / Lfa)); } c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q); }
   { const c = C[X.i], dc = (xN - nX * w / 2), Ln = c.cum[c.cum.length - 1], T0 = Math.min(T, Ln / 2), Lf = Math.max(1, Math.min(150, Ln - T0)); // krotka droga: offset gasnie do konca drogi, nie zostaje schodka na styku // offset nieparzystej jezdni tylko przy rozjezdzie, potem plynnie wraca do osi (bez schodka na styku z dalsza czescia drogi)
     c.w = c.Q.map(() => nX * w); c.d = c.Q.map((_, j) => { const sj = X.st ? c.cum[j] : Ln - c.cum[j]; const g = (X.st ? 1 : -1) * dc, d0 = c.d0 || 0; return d0 + (g - d0) * (1 - sm5((sj - T0) / Lf)); }); c.e = c.Q.map(() => 0); c.tf = undefined; }
   if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem
@@ -285,8 +285,8 @@ function skelLanes(G, C, R) {
   const n0 = R[G[0].i].lanes, n1 = R[G[1].i].lanes, we = n0 > n1 ? G[0] : G[1], ne = n0 > n1 ? G[1] : G[0], m = Math.max(n0, n1), n = Math.min(n0, n1), w = R[we.i].lw || 3.75;
   const cw = C[we.i], ow = orient(cw, we.st), node = ow.Q[0], u = unitFrom(cw, we.st); let bd = 100, sf = 1; // strona zewnetrzna = od najblizszej innej drogi
   R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
-  const lay = (k, e) => k === 1 ? [-w / 2, w / 2] : k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
-  let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { best = { N }; break; } } /* offset nieparzystych zawsze po tej samej stronie (e=1), gdy sie miesci */ const Nu = best ? best.N : lay(n, 1);
+  const lay = (k, e) => k === 1 ? [-w / 2, w / 2] : k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), e0 = sf * (we.st ? 1 : -1) * (R[we.i]._osg || 1), Wu = lay(m, e0); // (e0: dodatkowy nieparzysty pas po stronie offsetu drogi: z turn:lanes albo domyslnie po prawej) rama u: zewnetrzna strona = +
+  let best = null; for (const e of [e0, -e0]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { best = { N }; break; } } /* offset nieparzystych zawsze po tej samej stronie (e=1), gdy sie miesci */ const Nu = best ? best.N : lay(n, e0);
   const toD = I => sf > 0 ? I : [-I[1], -I[0]], [Lm, Rm] = toD(Wu), [Ln, Rn] = toD(Nu); // w ramie wiekszej drogi (os. od wezla, +d = prawo)
   // wklad kazdego konca drogi przechowujemy jako funkcje odleglosci od tego konca (nie indeksu), bo skelFork potem przelicza Q (inna liczba punktow)
   const set = (e, cum, dLo, dRo, lines) => { const c = C[e.i];
@@ -313,6 +313,11 @@ function finalizeLanes(C, R) {
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
+  { // strona dodatkowego pasa nieparzystej jezdni jednokierunkowej: z turn:lanes (skrajny pas skreca w lewo/prawo), dalej wzdluz lancucha jezdni; domyslnie po prawej
+    const sg0 = R.map(r => { if (!r.oneway || !/^(motorway|trunk)/.test(r.hw || '') || !r.tl || !((r.lanes | 0) >= 3 && (r.lanes | 0) % 2 === 1)) return 0; const t = r.tl.split('|').map(x => /left/.test(x) ? 'L' : /right/.test(x) ? 'R' : 'T'), n = t.length; if (n < 3) return 0; const restL = t.slice(1).every(x => x === t[1]), restR = t.slice(0, -1).every(x => x === t[0]); return restL && t[0] !== t[1] ? -1 : (restR && t[n - 1] !== t[0] ? 1 : 0); /* pojedynczy pas innego rodzaju na skraju = dodatkowy pas po tej stronie */ });
+    for (let it = 0; it < 60; it++) { let ch = false; for (const [, G] of ends) { if (G.length !== 2 || G[0].i === G[1].i) continue; const [a, b] = G; if (a.st === b.st) continue; const ra = R[a.i], rb = R[b.i]; if ((ra.lanes | 0) !== (rb.lanes | 0) || !ra.oneway || !rb.oneway) continue; if (sg0[a.i] && !sg0[b.i]) { sg0[b.i] = sg0[a.i]; ch = true; } else if (sg0[b.i] && !sg0[a.i]) { sg0[a.i] = sg0[b.i]; ch = true; } } if (!ch) break; }
+    R.forEach((r, i) => Object.defineProperty(r, '_osg', { value: sg0[i] || 1, writable: true, configurable: true, enumerable: false }));
+  }
   const C0 = R.map(r => comp(r)), hints = {}, preAr = [];
   for (const [k, G] of ends) { // styczność ramp do jezdni głównej w węźle rozwidlenia/zlania
     if (!(G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3)) continue;

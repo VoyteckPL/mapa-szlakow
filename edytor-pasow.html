@@ -646,6 +646,7 @@ function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
   drawTiles();
+  if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; }
   if ($('cLay').checked) {
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); octx.clearRect(0, 0, W, H); drawLayer(octx);
@@ -684,8 +685,9 @@ function render() {
   if (FORK_MARKS) for (const f of S.forks3 || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(30,120,255,.22)'; ctx.fill(); ctx.strokeStyle = '#1e78ff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-u'; ctx.fillStyle = '#1e78ff'; ctx.textAlign = 'center'; ctx.fillText('3→2+1', q[0], q[1] - 24); ctx.textAlign = 'start'; }
   if (FORK_MARKS) for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
-  const bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : 100; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar + ' m', 12, H - 22);
+  drawScale();
 }
+function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : k > 0.3 ? 100 : k > 0.08 ? 500 : 2000; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar >= 1000 ? bar / 1000 + ' km' : bar + ' m', 12, H - 22); }
 function touch() { S.dirty = true; render(); }
 function say(t) { $('st').textContent = t; }
 function resize() { const r = $('stage').getBoundingClientRect(); DPR = window.devicePixelRatio || 1; W = r.width; H = r.height; for (const c of [cv, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } render(); }
@@ -927,7 +929,7 @@ cv.addEventListener('pointerdown', e => {
 });
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, evp(e));
-  if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.5, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
+  if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.02, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
   if (!drag) return; const p = evp(e);
   if (drag.m === 'axisIns') { if (dist(p, drag.p) < 5) return; const r = S.doc.road[drag.i], i = drag.seg, pj = axisProj(r, s2w(drag.p)); push(); r.pts.splice(i + 1, 0, pj.p); r.nk.splice(i + 1, 0, null); if (r.rp) r.rp.splice(i + 1, 0, [(r.rp[i][0] + r.rp[i + 1][0]) / 2, (r.rp[i][1] + r.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: drag.i, vi: i + 1, moved: true }; ui(); }
   if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
@@ -956,7 +958,7 @@ function endPtr(e) {
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('contextmenu', e => e.preventDefault());
-let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.5, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
+let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.02, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
 window.addEventListener('keydown', e => { if (e.key === 'Enter' && S.draw && document.activeElement.tagName !== 'INPUT') finishDraw(); if (e.key === 'Escape') setTool('sel'); });
 window.addEventListener('resize', resize);
 

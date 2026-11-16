@@ -61,6 +61,7 @@
   #oList { margin:5px 0; padding:5px 7px; background:#f4f7fb; border-radius:4px; color:#333; max-height:150px; overflow:auto; } #oList div { margin:1px 0; }
   #oSend { padding:5px 8px; font-size:12px; font-weight:600; color:#fff !important; background:#1e88e5 !important; border:0 !important; border-radius:4px; } #oSend.blink { animation:blk .5s ease-in-out 3; }
   #oSt { margin-top:4px; color:#555; }
+  #lcLoad:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
 </style>
 </head>
 <body>
@@ -645,6 +646,7 @@ function drawGroup(g, ly) {
 function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
+  { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } } }
   drawTiles();
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; }
@@ -874,7 +876,7 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
   } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
 }
 $('bLive').onclick = () => refreshLive();
-async function loadFresh() { if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
+async function loadFresh() { if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k) < 16) { say('Przybliż mapę do zoomu 16, żeby pobrać dane.'); return; } if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
 $('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;

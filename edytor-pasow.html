@@ -678,7 +678,7 @@ function render() {
     ctx.font = '10px system-ui'; ctx.textAlign = 'center';
     D.road.forEach((r, i) => {
       const c = HW_COL[(r.hw || '').replace('_link', '')] || '#6a7f94', isSel = i === S.sel;
-      pathOf(ctx, smoothDense(r.pts, 3, (S.hints[i] || {}).tin, (S.hints[i] || {}).tout, (S.hints[i] || {}).sm), false); ctx.strokeStyle = isSel ? '#ffd23f' : c; ctx.lineWidth = isSel ? 3 : 1.8; ctx.stroke();
+      pathOf(ctx, r.pts, false); ctx.strokeStyle = isSel ? '#ffd23f' : c; /* os OSM: prosta lamana, bez wygladzania */ ctx.lineWidth = isSel ? 3 : 1.8; ctx.stroke();
       if (k > 6 || isSel) r.pts.forEach((p, vi) => { const s = w2s(p); if (s[0] < -10 || s[1] < -10 || s[0] > W + 10 || s[1] > H + 10) return; ctx.beginPath(); ctx.arc(s[0], s[1], isSel ? (vi === S.vsel ? 7 : 5) : (r.nk[vi] ? 3.5 : 2.5), 0, 7); ctx.fillStyle = isSel ? (vi === S.vsel ? '#ff5a36' : '#ffd23f') : '#fff'; ctx.fill(); ctx.strokeStyle = c; ctx.lineWidth = 1.2; ctx.stroke(); });
       if (r.rp) { ctx.strokeStyle = 'rgba(0,200,255,.9)'; ctx.lineWidth = 1; r.pts.forEach((q, j) => { const a = w2s(q), b = w2s(r.rp[j]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); }); ctx.setLineDash([4, 3]); ctx.lineWidth = 1.6; pathOf(ctx, smoothDense(r.rp, 3), false); ctx.stroke(); ctx.setLineDash([]); }
       if (S.tool === 'rend') { gp(r).forEach((q, vi) => { const s = w2s(q); if (s[0] < -10 || s[1] < -10 || s[0] > W + 10 || s[1] > H + 10) return; ctx.fillStyle = vi === S.vsel && isSel ? '#ff5a36' : '#00c8ff'; ctx.fillRect(s[0] - 4, s[1] - 4, 8, 8); ctx.strokeStyle = '#003'; ctx.lineWidth = 1; ctx.strokeRect(s[0] - 4, s[1] - 4, 8, 8); }); }
@@ -690,6 +690,9 @@ function render() {
   }
   if (S.tool === 'sel' && !EMBED) for (const z of PZI) { const q = w2s(z.p); if (q[0] < -20 || q[1] < -20 || q[0] > W + 20 || q[1] > H + 20) continue; const cl = ['#1f9a4c', '#e08a00', '#d22'][z.lvl]; ctx.beginPath(); ctx.arc(q[0], q[1], z.lvl ? 12 : 9, 0, 7); ctx.fillStyle = ['rgba(30,160,80,.25)', 'rgba(240,150,0,.30)', 'rgba(220,40,40,.30)'][z.lvl]; ctx.fill(); ctx.strokeStyle = cl; ctx.lineWidth = 2.5; ctx.stroke();
     if (k > 2) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = ['#13703a', '#a35f00', '#b11'][z.lvl]; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
+  if (PZ.live) { const z = PZ.live, a = w2s(z.node), b = w2s(z.w); ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = z.snap ? '#1f9a4c' : '#333'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
+    const t1 = `${z.lab}: ${z.a >= 0 ? '+' : ''}${z.a.toFixed(1)}°${z.snap ? ' ✓' : ''}`, t2 = z.eng; ctx.font = 'bold 14px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(t1, b[0] + 14, b[1] - 16); ctx.fillStyle = z.snap ? '#13703a' : '#222'; ctx.fillText(t1, b[0] + 14, b[1] - 16);
+    ctx.font = '11px system-ui'; ctx.strokeText(t2, b[0] + 14, b[1]); ctx.fillStyle = '#333'; ctx.fillText(t2, b[0] + 14, b[1]); ctx.restore(); } /* kat na zywo przy przeciaganiu */
   if (FORK_MARKS) for (const f of S.forks3 || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(30,120,255,.22)'; ctx.fill(); ctx.strokeStyle = '#1e78ff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-u'; ctx.fillStyle = '#1e78ff'; ctx.textAlign = 'center'; ctx.fillText('3→2+1', q[0], q[1] - 24); ctx.textAlign = 'start'; }
   if (FORK_MARKS) for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
@@ -902,7 +905,18 @@ function pzSection(r, mut, bind) {
   return `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1" title="${tip}">Preset ${cfg.name} ⓘ</b><button id="pzX" style="padding:2px 8px">×</button></div><div class="row" style="margin:4px 0;gap:4px">` + ['A', 'B', 'C', 'D'].map(t => `<button data-pz="${t}" class="${t === F.type ? 'on' : ''}" title="${PZ_SET[t].name}" style="padding:3px 10px">${t}${t === F.auto ? '*' : ''}</button>`).join('') + `</div>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
     + `<div class="row" style="margin-top:4px"><label>${F.type === 'B' ? 'kąt gałęzi' : 'kąt zjazdu'} <input id="pzTh" type="number" min="${cfg.lo}" max="${cfg.hi}" step="1" value="${th}" style="width:56px">°</label><button id="pzGo" class="on">Popraw geometrię</button></div>`;
 }
-const PZ = { th: null, key: '', type: null };
+var PZ = { th: null, key: '', type: null, live: null };
+function pzSnap(dr, w) { // przeciaganie wezla galezi przy rozwidleniu: kat na zywo + przyciaganie do katow presetu
+  for (const z of PZI) { if (dist(z.p, w) > 120) continue; const F = pzDetect(z.p); if (!F) continue;
+    for (const k of ['main', 'exit']) { const br = F[k], i = br.refs.findIndex((f, j) => j > 0 && f.ri === dr.i && f.vi === dr.vi); if (i < 0) continue;
+      const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', side = Math.sign(F.a0.exit - F.a0.main) || 1;
+      const T = k === 'main' && F.type !== 'B' ? [0] : F.type === 'B' ? [12, 15, 18].map(t => t * (k === 'main' ? -1 : 1)) : (top ? [22, 25, 30] : [30, 35, 40]).map(t => t * side);
+      const d = dist(F.node, w), a = pzN(pzB(F.node, w) - F.din), tol = Math.max(1.5, Math.atan(6 / S.view.k / Math.max(d, 1)) / PZ_R); let best = null;
+      for (const t of T) if (Math.abs(a - t) <= tol && (best == null || Math.abs(a - t) < Math.abs(a - best))) best = t;
+      const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)];
+      const P = br.P.slice(); P[i] = q; return { w: q, node: F.node, a: ang, snap: best != null, eng: pzEval(F, br, P), lab: k === 'main' ? (F.type === 'B' ? 'lewa' : 'na wprost') : (F.type === 'B' ? 'prawa' : 'zjazd') }; } }
+  return null;
+}
 function pzBar(r, mut) { // plywajacy pasek presetu nad mapa (panel „Wybrana droga” jest ukryty); dziala tez na telefonie
   const o = document.getElementById('pzbar'); if (o) o.remove(); if (!r || S.tool !== 'sel' || EMBED) return;
   const bind = [], h = pzSection(r, mut, bind); if (!h) return;
@@ -1055,7 +1069,7 @@ cv.addEventListener('pointermove', e => {
     drag.moved = true; touch();
   }
   else if (drag.m === 'lax') { const w = s2w(p), rr = S.doc.road[drag.i]; if (rr && rr.la && rr.la[drag.g]) { rr.la[drag.g][drag.vi] = w; drag.moved = true; render(); } }
-  else if (drag.m === 'vtx') { const w = s2w(p); moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
+  else if (drag.m === 'vtx') { let w = s2w(p); const sn = pzSnap(drag, w); if (sn) w = sn.w; PZ.live = sn; moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
 });
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;
@@ -1066,7 +1080,7 @@ function endPtr(e) {
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }
-  if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
+  PZ.live = null; if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
   save(); render();
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);

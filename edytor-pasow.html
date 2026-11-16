@@ -76,14 +76,14 @@
     <div class="row" id="tools"></div>
     <div class="row" id="drawbar" style="display:none"><button id="bFinish" class="on">Zakończ</button><button id="bCancel" class="warn">Anuluj</button></div>
     <div class="row"><button id="bUndo" title="Cofnij">↶ Cofnij</button><button id="bRedo" title="Ponów">↷ Ponów</button></div>
-    <div id="tabs"><button data-t="road">Droga</button><button data-t="osm">OSM</button><button data-t="data">Dane</button></div>
+    <div id="tabs"><button data-t="osm">OSM</button><button data-t="data">Dane</button></div>
     <div class="tab" data-t="osm">
     <h4>Dane drogowe z OSM</h4>
     <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     </div>
     <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne</option><option value="orto" selected>Geoportal</option><option value="ortolo">low</option><option value="esri">Esri</option></select><input type="checkbox" id="cSm"><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
-    <div class="tab" data-t="road">
+    <div class="tab-off" style="display:none">
     <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>
     </div>
@@ -788,9 +788,9 @@ function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski b
 }
 function showTab(t) { window.__tab = t; document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('act', b.dataset.t === t)); document.querySelectorAll('.tab').forEach(d => d.classList.toggle('act', d.dataset.t === t)); try { localStorage.setItem('edytor-tab-v1', t); } catch (e) {} }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
-(() => { let t = 'road'; try { t = localStorage.getItem('edytor-tab-v1') || 'road'; } catch (e) {} showTab(t === 'map' ? 'road' : t); })();
+(() => { let t = 'osm'; try { t = localStorage.getItem('edytor-tab-v1') || 'osm'; } catch (e) {} showTab(t === 'osm' || t === 'data' ? t : 'osm'); })();
 function props() {
-  const el = $('props'), r = S.doc.road[S.sel]; if (r && S.sel !== window.__ls) showTab('road'); window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
+  const el = $('props'), r = S.doc.road[S.sel]; window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
   const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { r[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${r[key] ? 'checked' : ''}> ${label}</label>`; };
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { const N = Math.max(1, Math.round(v)); if (r.osm) { r.tg = r.tg || {}; const b = baseTags(r).lanes || ''; if (String(N) === b) delete r.tg.lanes; else r.tg.lanes = String(N); if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); r.lanes = N; } else r.lanes = N; })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'

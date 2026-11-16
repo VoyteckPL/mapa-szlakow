@@ -249,7 +249,8 @@ function skelFork(X, yl, yr, C, R, gores) {
       for (let i = 0; i < n; i++) if (q[i] > 0.005) O.Cd[i] = [O.Cd[i][0] + NN[i][0] * sg * q[i], O.Cd[i][1] + NN[i][1] * sg * q[i]]; };
     apply(A, qA, dirA); apply(B, qB, dirB); }
   for (const o of arms) { const c = C[o.ye.i], Q = o.ye.st ? o.Cd : o.Cd.slice().reverse(); c.Q = Q; c.w = Q.map(() => o.l * w); c.d = Q.map(() => 0); c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q); }
-  { const c = C[X.i], dc = (xN - nX * w / 2) * (X.st ? 1 : -1); c.w = c.Q.map(() => nX * w); c.d = c.Q.map(() => dc); c.e = c.Q.map(() => 0); c.tf = undefined; }
+  { const c = C[X.i], dc = (xN - nX * w / 2), Ln = c.cum[c.cum.length - 1], Lf = Math.max(1, Math.min(150, Ln - T)); // offset nieparzystej jezdni tylko przy rozjezdzie, potem plynnie wraca do osi (bez schodka na styku z dalsza czescia drogi)
+    c.w = c.Q.map(() => nX * w); c.d = c.Q.map((_, j) => { const sj = X.st ? c.cum[j] : Ln - c.cum[j]; return (X.st ? 1 : -1) * dc * (1 - sm5((sj - T) / Lf)); }); c.e = c.Q.map(() => 0); c.tf = undefined; }
   if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem
   // klin z szewronami (wariant 1: ramiona konczace sie rowno z krawedzia), rowne odstepy wzdluz osi klina
   const A = arms[0], B = arms[1], edge = (o, sg) => offsetPts(o.Cd, sg * o.l * w / 2), ia = edge(A, A.sg > 0 ? -1 : 1), ib = edge(B, B.sg > 0 ? -1 : 1);

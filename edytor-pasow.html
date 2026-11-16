@@ -559,7 +559,7 @@ async function fetchTile(kind, z, x, y, im) {
 function tile(kind, z, x, y) { const k = kind + z + '/' + x + '/' + y; let im = TILES.get(k); if (!im) { im = new Image(); im.onload = () => render(); TILES.set(k, im); fetchTile(kind, z, x, y, im); } return im; }
 function drawTiles() {
   if (!$('cTile').checked) return;
-  const kind = $('bm').value; let z = Math.round(Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k)); z = Math.max(2, Math.min(kind === 'orto' ? 20 : kind === 'ortolo' ? 18 : 19, z));
+  const kind = $('bm').value; if (kind === 'quiet') { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#eceef1'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore(); return; } let z = Math.round(Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k)); z = Math.max(2, Math.min(kind === 'orto' ? 20 : kind === 'ortolo' ? 18 : 19, z));
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), n = 2 ** z;
   const tx = lon => (lon + 180) / 360 * n, ty = lat => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
   const lonOf = x => x / n * 360 - 180, latOf = y => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;

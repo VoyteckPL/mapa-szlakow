@@ -667,8 +667,14 @@ function showLanePal(x, y) {
   d.querySelectorAll('button').forEach(b => b.onclick = () => { const ri = LAN.ri; if (b.dataset.a === 'add') LAN.act.add(ri); else if (b.dataset.a === 'del') LAN.act.del(ri); else LAN.act.toggle(b.dataset.k); showLanePal(x, y); });
 }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideLanePal(); if ((e.key === 'Delete' || e.key === 'Backspace') && S.vsel >= 0 && S.sel >= 0 && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) { const b = $('bDelV'); if (b) { e.preventDefault(); b.click(); } } });
+function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
+  const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
+  const d = document.createElement('div'); d.id = 'vbar'; d.style.cssText = 'position:fixed;z-index:15;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
+  if (S.vsel > 0 && S.vsel < r.pts.length - 1) { const b = document.createElement('button'); b.textContent = 'Rozdziel drogę w tym punkcie'; b.onclick = () => { const x = document.getElementById('bSplit'); if (x) x.click(); }; d.appendChild(b); }
+  const b2 = document.createElement('button'); b2.textContent = 'Usuń punkt'; b2.onclick = () => { const x = document.getElementById('bDelV'); if (x) x.click(); }; d.appendChild(b2); d.onpointerdown = e => e.stopPropagation(); document.body.appendChild(d);
+}
 function props() {
-  const el = $('props'), r = S.doc.road[S.sel]; if (!r) { el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
+  const el = $('props'), r = S.doc.road[S.sel]; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
   const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { r[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${r[key] ? 'checked' : ''}> ${label}</label>`; };
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { r.lanes = Math.max(1, Math.round(v)); })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'
@@ -678,7 +684,7 @@ function props() {
   if (r.osm) h += laneEditor(r, mut, bind);
   if (r.osm) { const bt = baseTags(r), et = effTags(r); h += `<details ${r.tg && Object.keys(r.tg).length ? 'open' : ''}><summary>Tagi OSM tej drogi${r.tg && Object.keys(r.tg).length ? ' (zmienione: ' + Object.keys(r.tg).length + ')' : ''}</summary>` + TAGK.map(([k, lab], i) => { const ch = r.tg && k in r.tg; return `<div class="row"><label style="${ch ? 'color:#e58a00;font-weight:600' : ''}">${lab} <input id="tg${i}" data-k="${k}" value="${(et[k] || '').replace(/"/g, '&quot;')}" placeholder="${bt[k] ? '' : 'brak tagu'}" style="width:190px"></label></div>`; }).join('') + `<div class="small">Zmiana przelicza render od razu. Do OSM trafia przez „Wyślij do OSM” (zmieniane są tylko pola oznaczone na pomarańczowo).</div>` + (r.tg && Object.keys(r.tg).length ? '<div class="row"><button id="bTgReset">Cofnij tagi</button></div>' : '') + '</details>';
     bind.push(() => { TAGK.forEach(([k], i) => { const inp = $('tg' + i); if (!inp) return; inp.onchange = () => mut(() => { const v = inp.value.trim(), b = baseTags(r)[k] || ''; r.tg = r.tg || {}; if (v === b) delete r.tg[k]; else r.tg[k] = v === '' ? null : v; if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); }); }); const br = $('bTgReset'); if (br) br.onclick = () => mut(() => { delete r.tg; applyTags(r); }); }); }
-  el.innerHTML = h; bind.forEach(f => f());
+  el.innerHTML = h; bind.forEach(f => f()); setTimeout(vbar, 0);
   $('pc').onchange = () => mut(() => { r.centre = $('pc').value; });
   if ($('bRz')) $('bRz').onclick = () => mut(() => { delete r.rp; });
   $('bRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });

@@ -836,9 +836,9 @@ function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   let type, main = null, exit = null;
   if (lk[0] !== lk[1] || rk[0] !== rk[1]) { const mi = lk[0] !== lk[1] ? (lk[0] ? 1 : 0) : (rk[0] > rk[1] ? 0 : 1); main = Y[mi]; exit = Y[1 - mi]; type = top ? (X.lanes >= 3 && main.lanes === X.lanes - 1 ? 'C' : 'A') : 'D'; }
   else { type = 'B'; const s = ang(Y[0]) < ang(Y[1]); main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } // B: main = lewa, exit = prawa
-  return { node, X, main, exit, type, din, a0: { main: ang(main), exit: ang(exit) } };
+  return { node, X, main, exit, type, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
 }
-const PZ_SET = { A: { name: 'A · zjazd z autostrady/ekspresowej', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, C: { name: 'C · odgałęzienie pasa 3→2+1', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, D: { name: 'D · zjazd na zwykłej drodze', lo: 30, hi: 40, mw: 25, ew: 21, fade: 45 }, B: { name: 'B · rozwidlenie równorzędne', lo: 12, hi: 18, mw: 0, ew: 25, fade: 60 } };
+const PZ_SET = { A: { name: 'A · zjazd z autostrady/ekspresowej', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, C: { name: 'C · odgałęzienie pasa 3→2+1', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, D: { name: 'D · zjazd na zwykłej drodze', lo: 30, hi: 40, mw: 25, ew: 25, fade: 45 }, B: { name: 'B · rozwidlenie równorzędne', lo: 12, hi: 18, mw: 0, ew: 25, fade: 60 } };
 function pzRay(a, F, th, cfg) { // galaz: od wezla po promieniu pod katem th az do przeciecia z oryginalna osia (min. ew m), dalej oryginal
   const node = F.node, P = a.P.map(q => q.slice()), c = cumOf(P), v = [Math.cos((F.din + th) * PZ_R), Math.sin((F.din + th) * PZ_R)], crs = q => v[0] * (q[1] - node[1]) - v[1] * (q[0] - node[0]);
   let D = 0; for (let i = 1; i < P.length; i++) { if (c[i - 1] < cfg.ew) continue; const s0 = crs(P[i - 1]), s1 = crs(P[i]); if (s0 === 0 || s0 * s1 < 0) { const t = s0 / (s0 - s1), q = [P[i - 1][0] + t * (P[i][0] - P[i - 1][0]), P[i - 1][1] + t * (P[i][1] - P[i - 1][1])]; D = dist(q, node); break; } }
@@ -868,16 +868,22 @@ function pzApply(F, plan) {
     a.refs.forEach((f, i) => { const qi = ins && i >= ins.k ? i + 1 : i, q = Q[qi], o = a.P[i]; if (i > 0 && dist(q, o) > 0.01) { moveNode(S.doc.road[f.ri], f.vi, q[0], q[1]); S.doc.road.forEach(rr => rr.pts.forEach((p, j) => { if (dist(p, o) < 0.05) moveNode(rr, j, q[0], q[1]); })); } }); /* wspolne konce drog bez klucza wezla tez */
     if (ins) { const f = a.refs[ins.k], r = S.doc.road[f.ri], at = f.dir === 1 ? f.vi : f.vi + 1, q = Q[ins.k]; r.pts.splice(at, 0, q.slice()); r.nk.splice(at, 0, null); if (r.rp) r.rp.splice(at, 0, q.slice()); } }
 }
+function pzForce(F, t) { // recznie wybrany preset: B = lewa/prawa, A/C/D = na wprost (mniejszy kat) + zjazd
+  if (t === F.type) return F; const Y = [F.main, F.exit], a = Y.map(F.ang); let m, e;
+  if (t === 'B') { [m, e] = a[0] < a[1] ? Y : [Y[1], Y[0]]; } else if (F.type === 'B') { [m, e] = Math.abs(a[0]) <= Math.abs(a[1]) ? Y : [Y[1], Y[0]]; } else { m = F.main; e = F.exit; }
+  return { ...F, type: t, main: m, exit: e, a0: { main: F.ang(m), exit: F.ang(e) } };
+}
 function pzSection(r, mut, bind) {
-  if (S.vsel < 0 || !r.pts[S.vsel]) return ''; const F = pzDetect(r.pts[S.vsel]); if (!F) return '';
-  const cfg = PZ_SET[F.type], th = PZ.th != null && PZ.key === F.node.join() ? PZ.th : pzDefault(F), plan = pzPlan(F, th), nm = F.type === 'B' ? ['lewa', 'prawa'] : ['na wprost', 'zjazd'];
+  if (S.vsel < 0 || !r.pts[S.vsel]) return ''; let F = pzDetect(r.pts[S.vsel]); if (!F) return '';
+  if (PZ.key !== F.node.join()) { PZ.key = F.node.join(); PZ.th = null; PZ.type = null; } if (PZ.type) F = pzForce(F, PZ.type);
+  const cfg = PZ_SET[F.type], th = PZ.th != null ? PZ.th : pzDefault(F), plan = pzPlan(F, th), nm = F.type === 'B' ? ['lewa', 'prawa'] : ['na wprost', 'zjazd'];
   const row = (lab, br, P0, pl) => `<div class="small" style="margin-top:3px"><b>${lab}</b> (${br.hw})<br>teraz: ${pzEval(F, br, P0)}<br>po: ${pzEval(F, br, pl.Q)}${pl.mx > 0.3 ? ` · przesunięcie do ${pl.mx.toFixed(1)} m` : ''}${pl.far ? ' · <b style="color:#e58a00">oś za płaska: zjazd odsunięty, sprawdź z ortofoto</b>' : ''}</div>`;
-  bind.push(() => { $('pzTh').onchange = () => { PZ.key = F.node.join(); PZ.th = Math.min(cfg.hi, Math.max(cfg.lo, +$('pzTh').value)); props(); }; $('pzGo').onclick = () => mut(() => { pzApply(F, pzPlan(F, th)); PZ.th = null; }); $('pzX').onclick = () => { S.vsel = -1; ui(); touch(); }; });
-  const tip = `G = GraphHopper, V = Valhalla, O = OSRM (kąt względem wjazdu, + w prawo). Węzeł rozwidlenia zostaje; ${F.type === 'B' ? 'obie gałęzie' : 'zjazd'}: pod zadanym kątem od węzła${cfg.mw ? '; na wprost: węzły w pierwszych ' + cfg.mw + ' m w linii prostej' : ''}. Cofnij: Ctrl+Z / ↶ Cofnij.`;
-  return `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1" title="${tip}">Preset ${cfg.name} ⓘ</b><button id="pzX" style="padding:2px 8px">×</button></div>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
+  bind.push(() => { document.querySelectorAll('#pzbar [data-pz]').forEach(b => b.onclick = () => { PZ.type = b.dataset.pz; PZ.th = null; props(); }); $('pzTh').onchange = () => { PZ.th = Math.min(cfg.hi, Math.max(cfg.lo, +$('pzTh').value)); props(); }; $('pzGo').onclick = () => mut(() => { pzApply(F, pzPlan(F, th)); PZ.th = null; }); $('pzX').onclick = () => { S.vsel = -1; ui(); touch(); }; });
+  const tip = `G = GraphHopper, V = Valhalla, O = OSRM (kąt względem wjazdu, + w prawo). Węzeł rozwidlenia zostaje; ${F.type === 'B' ? 'obie gałęzie' : 'zjazd'}: pod zadanym kątem od węzła${cfg.mw ? '; na wprost: węzły w pierwszych ' + cfg.mw + ' m w linii prostej' : ''}. Cofnij: Ctrl+Z / ↶ Cofnij. * = wykryty automatycznie. A zjazd z autostrady/ekspresowej (22–30°), B rozwidlenie równorzędne (±12–18°), C 3→2+1 (22–30°), D zjazd na zwykłej drodze (30–40°).`;
+  return `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1" title="${tip}">Preset ${cfg.name} ⓘ</b><button id="pzX" style="padding:2px 8px">×</button></div><div class="row" style="margin:4px 0;gap:4px">` + ['A', 'B', 'C', 'D'].map(t => `<button data-pz="${t}" class="${t === F.type ? 'on' : ''}" title="${PZ_SET[t].name}" style="padding:3px 10px">${t}${t === F.auto ? '*' : ''}</button>`).join('') + `</div>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
     + `<div class="row" style="margin-top:4px"><label>${F.type === 'B' ? 'kąt gałęzi' : 'kąt zjazdu'} <input id="pzTh" type="number" min="${cfg.lo}" max="${cfg.hi}" step="1" value="${th}" style="width:56px">°</label><button id="pzGo" class="on">Popraw geometrię</button></div>`;
 }
-const PZ = { th: null, key: '' };
+const PZ = { th: null, key: '', type: null };
 function pzBar(r, mut) { // plywajacy pasek presetu nad mapa (panel „Wybrana droga” jest ukryty); dziala tez na telefonie
   const o = document.getElementById('pzbar'); if (o) o.remove(); if (!r || S.tool !== 'sel' || EMBED) return;
   const bind = [], h = pzSection(r, mut, bind); if (!h) return;

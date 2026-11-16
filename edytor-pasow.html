@@ -194,7 +194,19 @@ async function loadLink(txt) {
 }
 
 // ---------- układ automatyczny ----------
-function filletPts(pts, r) { // zaokragla zalamania lamanej lukami o promieniu r (os OSM zostaje ostra; zaokraglona jest tylko jezdnia)
+// przed zaokragleniem: gdy sasiednie odcinki sa za krotkie, zeby zmiescil sie luk o promieniu >= minR (polowa szerokosci jezdni + zapas), usuwamy blizszy wezel - inaczej wewnetrzna krawedz sie zawija (kolce)
+function thinForRadius(pts, minR) {
+  if (minR <= 0 || pts.length < 3) return pts; let P = pts.map(q => q.slice());
+  for (let it = 0; it < 80; it++) { let ch = false;
+    for (let i = 1; i < P.length - 1 && !ch; i++) { const p0 = P[i - 1], p1 = P[i], p2 = P[i + 1], l1 = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]), l2 = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]); if (l1 < 1e-6 || l2 < 1e-6) continue;
+      const cs = ((p0[0] - p1[0]) * (p2[0] - p1[0]) + (p0[1] - p1[1]) * (p2[1] - p1[1])) / (l1 * l2), ang = Math.acos(Math.max(-1, Math.min(1, cs))); if (ang > 3.1 || ang < 0.05) continue;
+      const need = minR / Math.tan(ang / 2), lim = Math.min(l1 * (i === 1 ? 0.9 : 0.5), l2 * (i === P.length - 2 ? 0.9 : 0.5)); if (need <= lim) continue;
+      if (l1 <= l2 && i - 1 > 0) { P.splice(i - 1, 1); ch = true; } else if (l2 < l1 && i + 1 < P.length - 1) { P.splice(i + 1, 1); ch = true; } else if (i - 1 > 0 && i + 1 < P.length - 1) { P.splice(l1 <= l2 ? i - 1 : i + 1, 1); ch = true; } }
+    if (!ch) break; }
+  return P;
+}
+function filletPts(pts, r, minR) {
+  pts = thinForRadius(pts, minR || 0); // zaokragla zalamania lamanej lukami o promieniu r (os OSM zostaje ostra; zaokraglona jest tylko jezdnia)
   if (pts.length < 3 || r <= 0) return pts.map(q => q.slice()); const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], len = a => Math.hypot(a[0], a[1]), nrm = a => { const l = len(a) || 1; return [a[0] / l, a[1] / l]; }, out = [pts[0].slice()];
   for (let i = 1; i < pts.length - 1; i++) {
     const p0 = pts[i - 1], p1 = pts[i], p2 = pts[i + 1], d1 = nrm(sub(p0, p1)), d2 = nrm(sub(p2, p1)), l1 = len(sub(p0, p1)), l2 = len(sub(p2, p1));
@@ -207,7 +219,7 @@ function filletPts(pts, r) { // zaokragla zalamania lamanej lukami o promieniu r
   out.push(pts[pts.length - 1].slice()); return out;
 }
 function comp(r, h) {
-  const Q = /^(motorway|trunk)/.test(r.hw || '') ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80)), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, d0 = r.oneway && /^(motorway|trunk)/.test(r.hw || '') && nl >= 3 && nl % 2 === 1 ? (r._osg || 1) * (r.lw || 3.75) / 2 : 0, d = Q.map(() => d0); /* standardowy offset 3-pasmowki (dodatkowy pas po prawej) na calej dlugosci; konfiguracja turn:lanes prosto|w prawo|w prawo ma ponadto rozjazd liczony od tego offsetu (_edge) */ return { Q, w, d, d0, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+  const Q = /^(motorway|trunk)/.test(r.hw || '') ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80), rw(r) / 2 + 0.5), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, d0 = r.oneway && /^(motorway|trunk)/.test(r.hw || '') && nl >= 3 && nl % 2 === 1 ? (r._osg || 1) * (r.lw || 3.75) / 2 : 0, d = Q.map(() => d0); /* standardowy offset 3-pasmowki (dodatkowy pas po prawej) na calej dlugosci; konfiguracja turn:lanes prosto|w prawo|w prawo ma ponadto rozjazd liczony od tego offsetu (_edge) */ return { Q, w, d, d0, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg, ins = 0) => offsetPts(o.Q, o.d.map((v, i) => v + sg * (o.w[i] / 2 - ins)));
@@ -361,6 +373,16 @@ function layout() {
     }
   }
   finalizeLanes(C, R);
+  // zszycie polaczen dwoch drog (taka sama lub rozna liczba pasow): krawedzie obu jezdni na styku maja sie schodzic; roznica rozkladana plynnie wzdluz obu drog
+  for (const [k, G] of ends) {
+    if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
+    const ed = G.map(e => { const c = C[e.i], n = c.Q.length, j = e.st ? 0 : n - 1, d = c.d[j], w = c.w[j]; if (!isFinite(d) || !isFinite(w)) return null; return e.st ? [d - w / 2, d + w / 2] : [-d - w / 2, -d + w / 2]; });
+    if (!ed[0] || !ed[1]) continue;
+    const A = ed[0], B = [-ed[1][1], -ed[1][0]], tg = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+    if (Math.abs(A[0] - B[0]) > 6 || Math.abs(A[1] - B[1]) > 6 || (Math.abs(A[0] - B[0]) < 0.02 && Math.abs(A[1] - B[1]) < 0.02)) continue;
+    G.forEach((e, a) => { const c = C[e.i], n = c.Q.length, Ln = c.cum[n - 1], Lf = Math.max(2, Math.min(40, Ln / 2)), cur = ed[a], want = a === 0 ? tg : [-tg[1], -tg[0]], dL = want[0] - cur[0], dR = want[1] - cur[1];
+      for (let j = 0; j < n; j++) { const s = e.st ? c.cum[j] : Ln - c.cum[j], f = 1 - sm5(s / Lf); if (f <= 0) continue; const dd = (dL + dR) / 2 * f, dw = (dR - dL) * f; c.d[j] += e.st ? dd : -dd; c.w[j] += dw; } });
+  }
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
   const polys = [], lines = [], arrows = preAr.slice();
   forkLinks.forEach(l => lines.push(l));

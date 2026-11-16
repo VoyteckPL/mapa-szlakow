@@ -360,8 +360,8 @@ function layout() {
         // krotki "kikut" osi przy wezle (pierwszy segment < 14 m, ktory ostro skreca wzgledem dalszego przebiegu) nie jest sladem pasa - pomijamy ten wierzcholek tylko w renderze
         for (const e of Ys) {
           const G0 = gp(R[e.i]); if (G0.length < 3) continue; const P0 = e.st ? G0 : G0.slice().reverse(), d1 = dist(P0[0], P0[1]);
-          if (d1 < 14) { const u1 = [(P0[1][0] - P0[0][0]) / d1, (P0[1][1] - P0[0][1]) / d1], l2 = dist(P0[0], P0[2]) || 1, u2 = [(P0[2][0] - P0[0][0]) / l2, (P0[2][1] - P0[0][1]) / l2];
-            if (Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1]))) * 180 / Math.PI > 15) { const keepIdx = e.st ? [0].concat(G0.map((_, i) => i).slice(2)) : G0.map((_, i) => i).slice(0, G0.length - 2).concat([G0.length - 1]); C[e.i] = comp({ ...R[e.i], pts: keepIdx.map(i => G0[i]), rp: null }, hints[e.i]); }
+          if (d1 < 15) { const u1 = [(P0[1][0] - P0[0][0]) / d1, (P0[1][1] - P0[0][1]) / d1], l2 = dist(P0[0], P0[2]) || 1, u2 = [(P0[2][0] - P0[0][0]) / l2, (P0[2][1] - P0[0][1]) / l2];
+            if (Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1]))) * 180 / Math.PI > 8) { const keepIdx = e.st ? [0].concat(G0.map((_, i) => i).slice(2)) : G0.map((_, i) => i).slice(0, G0.length - 2).concat([G0.length - 1]); C[e.i] = comp({ ...R[e.i], pts: keepIdx.map(i => G0[i]), rp: null }, hints[e.i]); }
           }
         }
         const mu = [U[0][0] + U[1][0] + U[2][0] - U[xi][0], U[0][1] + U[1][1] + U[2][1] - U[xi][1]], ml = Math.hypot(...mu) || 1, m = [mu[0] / ml, mu[1] / ml], nR = [-m[1], m[0]];
@@ -685,7 +685,7 @@ function forkJson(ri, vi) { // 3 drogi schodzace sie w wezle -> JSON w formacie 
   U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } });
   if (arms.filter(a => a.l === mx).length === 1) xi = arms.findIndex(a => a.l === mx);
   const X = arms[xi], Y = arms.filter((_, a) => a !== xi), t = U[xi], cr = Y.map(a => { const q = a.P[Math.min(2, a.P.length - 1)]; return t[0] * q[1] - t[1] * q[0]; }), li = cr[0] < cr[1] ? 0 : 1, A = Y[li], B = Y[1 - li];
-  return JSON.stringify({ nX: X.l, lA: A.l, P: { x: X.P, a: A.P, b: B.P } });
+  const ll = unproj(node); return JSON.stringify({ nX: X.l, lA: A.l, geo: { lat: +ll.lat.toFixed(7), lon: +ll.lon.toFixed(7) }, P: { x: X.P, a: A.P, b: B.P } });
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;

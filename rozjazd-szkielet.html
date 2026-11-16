@@ -29,7 +29,7 @@ const PRESETS={
  'Przykład ze zrzutu':{x:[[4,70]],a:[[-10,-35],[-14,-75]],b:[[6,-30],[18,-62]]},
  'Odnoga prawie równolegle':{x:[[0,70]],a:[[0,-40],[0,-90]],b:[[3,-30],[9,-60]]}
 };
-const S={scene:'fork',tp:{nA:1,nB:2,s0:30,len:60},saved:{},nX:2,lA:1,grid:true,snap:true,mode:'move',draw:null,w:3.75,T:45,T2:80,tex:true,curb:true,R:80,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:false,chVar:2,chSp:1.7,chAng:58,chN:8,chW:0.4,preset:'Prosto + odnoga w prawo'};
+const S={geo:null,bg:false,scene:'fork',tp:{nA:1,nB:2,s0:30,len:60},saved:{},nX:2,lA:1,grid:true,snap:true,mode:'move',draw:null,w:3.75,T:45,T2:80,tex:true,curb:true,R:80,off:true,P:null,ax:true,sk:false,blue:false,mg:false,chev:false,chVar:2,chSp:1.7,chAng:58,chN:8,chW:0.4,preset:'Prosto + odnoga w prawo'};
 function load(n){const p=PRESETS[n];S.preset=n;S.P={x:p.x.map(q=>q.slice()),a:p.a.map(q=>q.slice()),b:p.b.map(q=>q.slice())};render();ui();}
 // ---------- geometria ----------
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],add=(a,b)=>[a[0]+b[0],a[1]+b[1]],mul=(a,k)=>[a[0]*k,a[1]*k],len=a=>Math.hypot(a[0],a[1]),nrm=a=>{const l=len(a)||1;return[a[0]/l,a[1]/l]};
@@ -53,8 +53,11 @@ function resample(Q,ds){const out=[Q[0]],cum=[0];let acc=0,next=ds;let c=0;for(l
 function tangents(P){return P.map((p,i)=>nrm(sub(P[Math.min(P.length-1,i+1)],P[Math.max(0,i-1)])));}
 const nOf=t=>[-t[1],t[0]];
 function offsetLine(P,T,d){return P.map((p,i)=>{const n=nOf(T[i]);return[p[0]+n[0]*d[i],p[1]+n[1]*d[i]];});}
+function stubTrim(arr){ // krotki kikut przy wezle (pierwszy punkt <15 m od wezla, odbijajacy os w bok) nie jest sladem pasa - pomijamy go w obliczeniach (jak w edytorze)
+  if(arr.length<3)return arr;const p0=arr[0],p1=arr[1],d1=Math.hypot(p0[0],p0[1]),d2=Math.hypot(p1[0]-p0[0],p1[1]-p0[1]);if(d1<1e-6||d2<1e-6||d1>=15)return arr;
+  const c=(p0[0]*(p1[0]-p0[0])+p0[1]*(p1[1]-p0[1]))/(d1*d2),ang=Math.acos(Math.max(-1,Math.min(1,c)))*180/Math.PI;return ang>8?arr.slice(1):arr;}
 function build(){
-  const w=S.w,node=[0,0],A=resample(fillet([node,...S.P.a],S.R),0.5),B=resample(fillet([node,...S.P.b],S.R),0.5),X=resample(fillet([node,...S.P.x],S.R),0.5);
+  const w=S.w,node=[0,0],A=resample(fillet([node,...stubTrim(S.P.a)],S.R),0.5),B=resample(fillet([node,...stubTrim(S.P.b)],S.R),0.5),X=resample(fillet([node,...S.P.x],S.R),0.5);
   const tA=tangents(A.P),tB=tangents(B.P),tX=tangents(X.P);
   const e=mul(tX[0],-1),nE=nOf(e); // przedluzenie drogi wjazdowej poza wezel; jej przekroj koncowy jest do niego prostopadly
   const outer=(Pb)=>{const bp=Pb[Math.min(Pb.length-1,30)];return(nE[0]*bp[0]+nE[1]*bp[1])>0?-1:1;}; // strona (znak wzdluz nE), w ktora odnoga ucieka
@@ -98,10 +101,20 @@ function drawGrid(){const g=gridStep(),x0=-OX/K,x1=(W-OX)/K,y0=-OY/K,y1=(H-OY)/K
   for(let x=Math.floor(x0/g)*g;x<=x1;x+=g){const sx=OX+x*K,maj=Math.abs(Math.round(x/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,H);ctx.stroke();if(maj)ctx.fillText(Math.round(x*100)/100+' m',sx+2,H-3);}
   for(let y=Math.floor(y0/g)*g;y<=y1;y+=g){const sy=OY+y*K,maj=Math.abs(Math.round(y/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(W,sy);ctx.stroke();if(maj)ctx.fillText(Math.round(y*100)/100+' m',3,sy-2);}
   ctx.restore();}
+// podklad: ortofoto Geoportal (WMS HR) pod rozjazdem skopiowanym z edytora; uklad: metry od wezla, x na wschod, y na poludnie
+const TLS=new Map();
+function drawTiles(){const g=S.geo;if(!g)return;const cl=Math.cos(g.lat*Math.PI/180),mpp0=156543.03*cl;let z=Math.round(Math.log2(mpp0*K));z=Math.max(2,Math.min(20,z));const n=2**z,R=20037508.342789244;
+  const toLL=p=>({lon:g.lon+p[0]/(111320*cl),lat:g.lat-p[1]/110540}),tx=lon=>(lon+180)/360*n,ty=lat=>(1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*n,lonOf=x=>x/n*360-180,latOf=y=>Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI,toW=(lon,lat)=>[(lon-g.lon)*111320*cl,-(lat-g.lat)*110540];
+  const a=toLL([(0-OX)/K,(0-OY)/K]),b=toLL([(W-OX)/K,(H-OY)/K]),x0=Math.floor(tx(a.lon)),x1=Math.floor(tx(b.lon)),y0=Math.floor(ty(a.lat)),y1=Math.floor(ty(b.lat));if((x1-x0+1)*(y1-y0+1)>60)return;
+  for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){const k=z+'/'+x+'/'+y;let im=TLS.get(k);if(!im){im=new Image();im.onload=()=>render();const mc=(xx,yy)=>[xx/n*2*R-R,R-yy/n*2*R],A=mc(x,y+1),B=mc(x+1,y);im.src='https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/HighResolution?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Raster&STYLES=&FORMAT=image/jpeg&TRANSPARENT=FALSE&CRS=EPSG:3857&WIDTH=512&HEIGHT=512&BBOX='+A[0]+','+A[1]+','+B[0]+','+B[1];TLS.set(k,im);}
+    if(!im.complete||!im.naturalWidth)continue;const p=w2s(toW(lonOf(x),latOf(y))),q=w2s(toW(lonOf(x+1),latOf(y+1)));ctx.drawImage(im,p[0],p[1],q[0]-p[0]+0.6,q[1]-p[1]+0.6);}}
 function render(){saveState();
   if(!S.P)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
+  if(S.bg&&S.geo&&S.scene==='fork')drawTiles();
   if(S.grid)drawGrid();
+  ctx.globalAlpha=(S.bg&&S.geo&&S.scene==='fork')?0.6:1;
   if(S.scene==='lanes'){if(S.P.x.length)drawLanes();}else if(ready()){drawRoad();}
+  ctx.globalAlpha=1;
   // uchwyty
   ctx.fillStyle='#fff';ctx.strokeStyle='#e0245e';ctx.lineWidth=2;[...S.P.a,...S.P.b,...S.P.x].forEach(p=>{const q=w2s(p);ctx.beginPath();ctx.arc(q[0],q[1],6,0,7);ctx.fill();ctx.stroke();});
   const nq=w2s([0,0]);ctx.beginPath();ctx.arc(nq[0],nq[1],5,0,7);ctx.fillStyle='#e0245e';ctx.fill();
@@ -178,7 +191,7 @@ function ui(){if(S.scene==='lanes')return uiLanes();const b=$('bar');b.innerHTML
   const sl=(lab,k,mn,mx,st)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+S[k]+'> <span>'+S[k]+'</span>';l.querySelector('input').oninput=e=>{S[k]=+e.target.value;l.querySelector('span').textContent=S[k];render();};b.appendChild(l);};
   sl('długość przejścia T [m] (2–3 pasy)','T',10,160,5);sl('T dla 4+ pasów [m]','T2',10,160,5);sl('szerokość pasa [m]','w',2.5,4.2,0.05);sl('promień łuku jezdni [m]','R',0,80,5);
   const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
-  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>{delete VW[S.scene];fit();};b.appendChild(fb);const cb=document.createElement('button');cb.textContent='Kopiuj punkty';cb.onclick=()=>{const j=JSON.stringify({nX:S.nX,lA:S.lA,P:S.P});(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>{cb.textContent='Skopiowano';setTimeout(()=>cb.textContent='Kopiuj punkty',1500);},()=>prompt('Skopiuj:',j));};b.appendChild(cb);const pb=document.createElement('button');pb.textContent='Wklej punkty';pb.title='Wklej rozjazd skopiowany z edytora pasów (przycisk Kopiuj rozjazd do szkieletu)';pb.onclick=async()=>{let t='';try{t=await navigator.clipboard.readText();}catch(e){}let j=null;try{j=JSON.parse(t);}catch(e){}if(!j||!j.P){t=prompt('Wklej skopiowany rozjazd (JSON):')||'';try{j=JSON.parse(t);}catch(e){j=null;}}if(!j||!j.P||!j.P.x||!j.P.a||!j.P.b){pb.textContent='Nie rozpoznano';setTimeout(()=>pb.textContent='Wklej punkty',1500);return;}if(S.scene!=='fork')setScene('fork');S.nX=j.nX||S.nX;S.lA=j.lA||S.lA;S.preset=null;S.P={x:j.P.x.map(q=>q.slice()),a:j.P.a.map(q=>q.slice()),b:j.P.b.map(q=>q.slice())};delete VW[S.scene];ui();fit();{const all=[[0,0],...S.P.x,...S.P.a,...S.P.b],x0=Math.min(...all.map(q=>q[0])),x1=Math.max(...all.map(q=>q[0])),y0=Math.min(...all.map(q=>q[1])),y1=Math.max(...all.map(q=>q[1]));K=Math.max(0.3,Math.min(16,0.9*Math.min(W/Math.max(10,x1-x0),H/Math.max(10,y1-y0))));OX=W/2-K*(x0+x1)/2;OY=H/2-K*(y0+y1)/2;}render();saveState();};b.appendChild(pb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
+  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>{delete VW[S.scene];fit();};b.appendChild(fb);const cb=document.createElement('button');cb.textContent='Kopiuj punkty';cb.onclick=()=>{const j=JSON.stringify({nX:S.nX,lA:S.lA,P:S.P});(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>{cb.textContent='Skopiowano';setTimeout(()=>cb.textContent='Kopiuj punkty',1500);},()=>prompt('Skopiuj:',j));};b.appendChild(cb);const pb=document.createElement('button');pb.textContent='Wklej punkty';pb.title='Wklej rozjazd skopiowany z edytora pasów (przycisk Kopiuj rozjazd do szkieletu)';pb.onclick=async()=>{let t='';try{t=await navigator.clipboard.readText();}catch(e){}let j=null;try{j=JSON.parse(t);}catch(e){}if(!j||!j.P){t=prompt('Wklej skopiowany rozjazd (JSON):')||'';try{j=JSON.parse(t);}catch(e){j=null;}}if(!j||!j.P||!j.P.x||!j.P.a||!j.P.b){pb.textContent='Nie rozpoznano';setTimeout(()=>pb.textContent='Wklej punkty',1500);return;}if(S.scene!=='fork')setScene('fork');S.nX=j.nX||S.nX;S.lA=j.lA||S.lA;S.preset=null;S.geo=j.geo||null;S.bg=!!j.geo;S.P={x:j.P.x.map(q=>q.slice()),a:j.P.a.map(q=>q.slice()),b:j.P.b.map(q=>q.slice())};delete VW[S.scene];ui();fit();{const all=[[0,0],...S.P.x,...S.P.a,...S.P.b],x0=Math.min(...all.map(q=>q[0])),x1=Math.max(...all.map(q=>q[0])),y0=Math.min(...all.map(q=>q[1])),y1=Math.max(...all.map(q=>q[1]));K=Math.max(0.3,Math.min(16,0.9*Math.min(W/Math.max(10,x1-x0),H/Math.max(10,y1-y0))));OX=W/2-K*(x0+x1)/2;OY=H/2-K*(y0+y1)/2;}render();saveState();};b.appendChild(pb);const cl=document.createElement('button');cl.textContent='Usuń wszystko';cl.onclick=()=>{endDraw();S.P={x:[],a:[],b:[]};S.preset=null;S.geo=null;S.bg=false;ui();render();saveState();};b.appendChild(cl);ck('siatka','grid');ck('podkład Geoportal (z edytora)','bg');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
 
 // ---------- zmiana liczby pasow (przyrost / redukcja) ----------
 // uklad poprzeczny n pasow w ramie drogi (os, kierunek od wezla): parzysta - os w srodku; nieparzysta - rdzen n-1 pasow na osi, dodatkowy pas po stronie +
@@ -234,7 +247,7 @@ function startDraw(k,label){endDraw();drawBackup=S.P[k].map(q=>q.slice());S.draw
 function endDraw(){if(!S.draw)return;if(!S.draw.pts.length)S.P[S.draw.k]=drawBackup||[];S.draw=null;drawBackup=null;ui();render();}
 addEventListener('keydown',e=>{if(e.key==='Enter'||e.key==='Escape')endDraw();});
 // zapis stanu (widok, punkty, ustawienia) w przegladarce - po odswiezeniu wraca to, co bylo
-const SKEY='szkielet-stan-v1',SAVE_F=['scene','tp','nX','lA','w','T','T2','R','grid','snap','ax','sk','blue','tex','curb','preset','P','saved'],VW=window.VW=window.VW||{};
+const SKEY='szkielet-stan-v1',SAVE_F=['scene','tp','nX','lA','w','T','T2','R','grid','snap','ax','sk','blue','tex','curb','preset','P','saved','geo','bg'],VW=window.VW=window.VW||{};
 let saveT=0;function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{try{VW[S.scene]=[K,OX,OY];const o={};SAVE_F.forEach(k=>o[k]=S[k]);localStorage.setItem(SKEY,JSON.stringify({S:o,VW}));}catch(e){}},300);}
 let restored=false;try{const j=JSON.parse(localStorage.getItem(SKEY)||'null');if(j&&j.S&&j.S.P){Object.assign(S,j.S);Object.assign(VW,j.VW||{});restored=true;}}catch(e){}
 addEventListener('resize',fit);addEventListener('pagehide',()=>{try{VW[S.scene]=[K,OX,OY];const o={};SAVE_F.forEach(k=>o[k]=S[k]);localStorage.setItem(SKEY,JSON.stringify({S:o,VW}));}catch(e){}});

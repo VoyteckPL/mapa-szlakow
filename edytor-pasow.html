@@ -369,7 +369,9 @@ function layout() {
     polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
-    if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const clen = c.cum[n - 1]; for (const l of c.lat.lines) { const c0 = l.st ? l.a : clen - l.b, c1 = l.st ? l.b : clen - l.a; addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && c.cum[j] >= c0 - 1e-6 && c.cum[j] <= c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); } }
+    if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const lwr = r.lw || 3.75, mm = c.w.map(v => v / lwr), full = mm.map(m => Math.abs(m - Math.round(m)) < 0.04), mx = Math.round(Math.max(...mm));
+      for (let k = 1; k < mx; k++) addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * lwr)), 'p1', keep.map((kk, j) => kk && full[j] && k < Math.round(mm[j]))); // pelne pasy: dzielniki ida za osia i szerokoscia drogi (plynny offset)
+      const clen = c.cum[n - 1]; for (const l of c.lat.lines) { const c0 = l.st ? l.a : clen - l.b, c1 = l.st ? l.b : clen - l.a; addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && !full[j] && c.cum[j] >= c0 - 1e-6 && c.cum[j] <= c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); } }
     if (!c.lat && r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';

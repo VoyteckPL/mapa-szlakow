@@ -688,8 +688,8 @@ function render() {
     });
     ctx.textAlign = 'start';
   }
-  if (S.tool === 'sel' && !EMBED) for (const z of PZI) { const q = w2s(z.p); if (q[0] < -20 || q[1] < -20 || q[0] > W + 20 || q[1] > H + 20) continue; ctx.beginPath(); ctx.arc(q[0], q[1], 12, 0, 7); ctx.fillStyle = z.lvl > 1 ? 'rgba(220,40,40,.30)' : 'rgba(240,150,0,.30)'; ctx.fill(); ctx.strokeStyle = z.lvl > 1 ? '#d22' : '#e08a00'; ctx.lineWidth = 2.5; ctx.stroke();
-    if (k > 2) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = z.lvl > 1 ? '#b11' : '#a35f00'; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
+  if (S.tool === 'sel' && !EMBED) for (const z of PZI) { const q = w2s(z.p); if (q[0] < -20 || q[1] < -20 || q[0] > W + 20 || q[1] > H + 20) continue; const cl = ['#1f9a4c', '#e08a00', '#d22'][z.lvl]; ctx.beginPath(); ctx.arc(q[0], q[1], z.lvl ? 12 : 9, 0, 7); ctx.fillStyle = ['rgba(30,160,80,.25)', 'rgba(240,150,0,.30)', 'rgba(220,40,40,.30)'][z.lvl]; ctx.fill(); ctx.strokeStyle = cl; ctx.lineWidth = 2.5; ctx.stroke();
+    if (k > 2) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = ['#13703a', '#a35f00', '#b11'][z.lvl]; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
   if (FORK_MARKS) for (const f of S.forks3 || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(30,120,255,.22)'; ctx.fill(); ctx.strokeStyle = '#1e78ff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-u'; ctx.fillStyle = '#1e78ff'; ctx.textAlign = 'center'; ctx.fillText('3→2+1', q[0], q[1] - 24); ctx.textAlign = 'start'; }
   if (FORK_MARKS) for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
@@ -837,7 +837,9 @@ function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   const lk = Y.map(a => /_link/.test(a.hw)), rk = Y.map(a => RANK[(a.hw || '').replace('_link', '')] || 1), base = (X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk';
   let type, main = null, exit = null;
   if (lk[0] !== lk[1] || rk[0] !== rk[1]) { const mi = lk[0] !== lk[1] ? (lk[0] ? 1 : 0) : (rk[0] > rk[1] ? 0 : 1); main = Y[mi]; exit = Y[1 - mi]; type = top ? (X.lanes >= 3 && main.lanes === X.lanes - 1 ? 'C' : 'A') : 'D'; }
-  else { type = 'B'; const s = ang(Y[0]) < ang(Y[1]); main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } // B: main = lewa, exit = prawa
+  else { const tk = String(X.tl || '').split('|'), has = re => tk.some(t => t.split(';').some(x => re.test(x))), hT = has(/^through$/), hR = has(/right/), hL = has(/left/), s = ang(Y[0]) < ang(Y[1]);
+    if (hT && hR !== hL) { /* turn:lanes np. through|right: galaz po stronie through jedzie prosto, druga to zjazd */ main = hR ? (s ? Y[0] : Y[1]) : (s ? Y[1] : Y[0]); exit = main === Y[0] ? Y[1] : Y[0]; type = top ? (X.lanes >= 3 && main.lanes === X.lanes - 1 ? 'C' : 'A') : 'D'; }
+    else { type = 'B'; main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } } // B: main = lewa, exit = prawa
   return { node, X, main, exit, type, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
 }
 const PZ_SET = { A: { name: 'A · zjazd z autostrady/ekspresowej', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, C: { name: 'C · odgałęzienie pasa 3→2+1', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, D: { name: 'D · zjazd na zwykłej drodze', lo: 30, hi: 40, mw: 25, ew: 25, fade: 45 }, B: { name: 'B · rozwidlenie równorzędne', lo: 12, hi: 18, mw: 0, ew: 25, fade: 60 } };
@@ -876,7 +878,8 @@ function pzScan() {
     if (F.type === 'B') { if (m.concat(x).some(q => q.c === 'prosto' && q.e !== 'O')) { msg.push('rozwidlenie za płaskie'); lvl = Math.max(lvl, 1); } }
     else { const md = Math.max(...m.map(q => Math.abs(q.a))); if (m.some(q => q.c !== 'prosto')) { msg.push('na wprost: ' + m.find(q => q.c !== 'prosto').c + ' (' + md.toFixed(0) + '°)'); lvl = 2; } else if (md > 3) { msg.push('na wprost krzywo ' + md.toFixed(0) + '°'); lvl = Math.max(lvl, 1); }
       if (top && x.some(q => q.c === 'prosto')) { msg.push('zjazd za płaski'); lvl = 2; } else if (top && x.some(q => q.c === 'skręt' || q.c === 'ostro')) { msg.push('zjazd za ostry'); lvl = Math.max(lvl, 1); } }
-    if (lvl) out.push({ p: p.slice(), lvl, msg: msg.join(', ') }); } });
+    const am = m.find(q => q.e === 'V').a, ax = x.find(q => q.e === 'V').a, ag = F.type === 'B' ? `${am.toFixed(0)}° / +${ax.toFixed(0)}°` : `prosto ${am >= 0 ? '+' : ''}${am.toFixed(0)}°, zjazd ${ax >= 0 ? '+' : ''}${ax.toFixed(0)}°`;
+    out.push({ p: p.slice(), lvl, msg: F.type + ': ' + (lvl ? msg.join(', ') : 'OK ' + ag) }); } });
   return out;
 }
 function pzApply(F, plan) {

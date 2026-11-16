@@ -153,6 +153,7 @@ const proj = (lon, lat) => [(lon - S.org.lon) * 111320 * Math.cos(S.org.lat * Ma
 const unproj = p => ({ lon: S.org.lon + p[0] / (111320 * Math.cos(S.org.lat * Math.PI / 180)), lat: S.org.lat - p[1] / 110540 });
 function segDist(p, a, b) { const x = b[0] - a[0], y = b[1] - a[1], l2 = x * x + y * y || 1; let t = ((p[0] - a[0]) * x + (p[1] - a[1]) * y) / l2; t = Math.max(0, Math.min(1, t)); return Math.hypot(p[0] - a[0] - x * t, p[1] - a[1] - y * t); }
 function offsetPts(P, d) { // d > 0 w prawo od kierunku
+  if (P.length < 2) return P.map(q => [q[0], q[1]]); /* zdegenerowana droga (1 punkt) - bez przesuniecia */
   const o = [], nr = (a, b) => { const x = b[0] - a[0], y = b[1] - a[1], l = Math.hypot(x, y) || 1; return [-y / l, x / l]; };
   for (let i = 0; i < P.length; i++) {
     const n1 = i > 0 ? nr(P[i - 1], P[i]) : null, n2 = i < P.length - 1 ? nr(P[i], P[i + 1]) : null;
@@ -876,7 +877,7 @@ async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmieni
   liveLog(`podmieniono ${rep}, pominieto ${keep}, brak w OSM ${gone}, usunieto z pamieci ${del}`);
   S.undo = []; save(); if (!bb || rep || tagN || del) { touch(); if (!bb) ui(); } if (!bb) say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, tagi zaktualizowane ${tagN}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
     return true;
-  } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
+  } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); try { const bad = []; S.doc.road.forEach((r, i) => { const nul = (r.pts || []).filter(q => !q || !isFinite(q[0]) || !isFinite(q[1])).length, cq = S.CC && S.CC[i] ? S.CC[i].Q : null; if (nul || !r.pts || r.pts.length < 2 || (r.rp && r.rp.length !== r.pts.length) || (r.nk && r.nk.length !== r.pts.length) || !cq || cq.length < 2 || cq.some(q => !q)) bad.push(`#${i} way ${r.osm} ${r.hw} lanes=${r.lanes} pts=${(r.pts || []).length} rp=${r.rp ? r.rp.length : '-'} nk=${r.nk ? r.nk.length : '-'} puste=${nul} Q=${cq ? cq.length : '-'}`); }); liveLog('BLAD diagnoza (drogi z problemem): ' + (bad.length ? '\n' + bad.slice(0, 12).join('\n') : 'brak')); } catch (e2) { liveLog('BLAD diagnoza nie powiodla sie: ' + e2.message); } say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
 }
 $('bLive').onclick = () => refreshLive();
 async function loadFresh() { if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k) < 16) { say('Przybliż mapę do zoomu 16, żeby pobrać dane.'); return; } if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }

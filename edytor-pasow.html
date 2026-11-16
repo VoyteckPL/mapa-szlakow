@@ -380,6 +380,22 @@ function layout() {
   }
   // slip lane / boczna droga konczaca sie w srodku wiekszej drogi (wezel lezy wewnatrz jej przebiegu): jezdnia konczy sie na krawedzi glownej, asfalt ciagly, bez linii krawedzi wewnatrz
   const sub2 = (a, b) => [a[0] - b[0], a[1] - b[1]], nrm2 = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; };
+  const slipEnd = (e, rA, cA, nd, nB, sd, ext, sinT, cosT, wA) => { // przytnij koniec bocznej drogi do krawedzi drogi glownej
+    const sCut = Math.max(0, Math.min(40, (ext - (wA / 2) * cosT) / sinT - 0.8)), o = orient(cA, e.st), L = o.cum[o.cum.length - 1]; if (sCut < 0.5 || sCut > L - 2) return;
+    const Qn = cA.Q, n = Qn.length, cum = cA.cum, idx = e.st ? cum.findIndex(v => v >= sCut) : (() => { let j = n - 1; while (j > 0 && L - cum[j] < sCut) j--; return j; })(); if (idx < 0) return;
+    const pt = atS(o.Q, o.cum, sCut), keep = e.st ? [pt, ...Qn.slice(idx)] : [...Qn.slice(0, idx + 1), pt];
+    const cut = arr => arr && arr.length === n ? (e.st ? [arr[idx], ...arr.slice(idx)] : [...arr.slice(0, idx + 1), arr[idx]]) : arr;
+    (cA.slip = cA.slip || []).push({ nd, nB, sd, ext }); cA.Q = keep; cA.w = cut(cA.w); cA.d = cut(cA.d); cA.e = cut(cA.e); cA.cum = cumOf(keep); cA.trim = (cA.trim || 0) + sCut;
+  };
+  // koniec bocznej drogi w srodku wiekszej drogi (wezel wewnetrzny jej przebiegu)
+  for (const [k, G] of ends) {
+    if (G.length !== 1 || (nodeRoads.get(k) || []).length !== 2) continue; const e = G[0], bi = nodeRoads.get(k).find(i => i !== e.i), rA = R[e.i], rB = R[bi], iB = rB.nk.indexOf(k); if (iB <= 0 || iB >= rB.nk.length - 1) continue;
+    if ((rB.lanes | 0) <= (rA.lanes | 0) || (RANK[(rB.hw || '').replace('_link', '')] || 1) < (RANK[(rA.hw || '').replace('_link', '')] || 1)) continue;
+    const cA = C[e.i], cB = C[bi], nd = orient(cA, e.st).Q[0]; let bj = 0, bd = 1e9; cB.Q.forEach((q, j) => { const d = dist(q, nd); if (d < bd) { bd = d; bj = j; } }); if (bd > 3) continue;
+    const tB = nrm2(sub2(cB.Q[Math.min(cB.Q.length - 1, bj + 1)], cB.Q[Math.max(0, bj - 1)])), U = unitFrom(cA, e.st), sinT = Math.abs(tB[0] * U[1] - tB[1] * U[0]), cosT = Math.abs(tB[0] * U[0] + tB[1] * U[1]); if (sinT < 0.3) continue;
+    const nB = [-tB[1], tB[0]], sd = U[0] * nB[0] + U[1] * nB[1] > 0 ? 1 : -1, dB = (cB.d && cB.d[bj]) || 0, wB = (cB.w && cB.w[bj]) || rw(rB), ext = sd > 0 ? dB + wB / 2 : -(dB - wB / 2);
+    slipEnd(e, rA, cA, nd, nB, sd, ext, sinT, cosT, rw(rA));
+  }
   for (const [k, G] of ends) {
     if (G.some(g => forkX.has(g.i)) || G.length !== 3 || (nodeRoads.get(k) || []).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue; // wezel 3 drog: dwie przeciwlegle (droga glowna) + boczna (slip lane)
     const Us = G.map(e => unitFrom(C[e.i], e.st)); let pr = null, bestDot = 9; for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) { const dd = Us[a][0] * Us[b][0] + Us[a][1] * Us[b][1]; if (dd < bestDot) { bestDot = dd; pr = [a, b]; } }
@@ -387,11 +403,7 @@ function layout() {
     if (Math.min(...lb) <= (rA.lanes | 0) || pr.some(x => (RANK[(R[G[x].i].hw || '').replace('_link', '')] || 1) < (RANK[(rA.hw || '').replace('_link', '')] || 1))) continue;
     const cA = C[e.i], nd = orient(cA, e.st).Q[0], tB = nrm2(sub2(Us[pr[0]], Us[pr[1]])), U = Us[ti], sinT = Math.abs(tB[0] * U[1] - tB[1] * U[0]), cosT = Math.abs(tB[0] * U[0] + tB[1] * U[1]); if (sinT < 0.3) continue;
     const nB = [-tB[1], tB[0]], sd = U[0] * nB[0] + U[1] * nB[1] > 0 ? 1 : -1, wB = Math.max(...pr.map(x => rw(R[G[x].i]))), g0 = G[pr[0]], cB0 = C[g0.i], dB = (g0.st ? 1 : -1) * ((cB0.d && cB0.d[g0.st ? 0 : cB0.d.length - 1]) || 0), ext = sd > 0 ? dB + wB / 2 : -(dB - wB / 2), wA = rw(rA); /* krawedz drogi glownej po stronie slip lane (z offsetem d) */
-    const sCut = Math.max(0, Math.min(40, (ext - (wA / 2) * cosT) / sinT - 0.8)), o = orient(cA, e.st), L = o.cum[o.cum.length - 1]; if (sCut < 0.5 || sCut > L - 2) continue;
-    const Qn = cA.Q, n = Qn.length, cum = cA.cum, idx = e.st ? cum.findIndex(v => v >= sCut) : (() => { let j = n - 1; while (j > 0 && L - cum[j] < sCut) j--; return j; })(); if (idx < 0) continue;
-    const pt = atS(o.Q, o.cum, sCut), keep = e.st ? [pt, ...Qn.slice(idx)] : [...Qn.slice(0, idx + 1), pt];
-    const cut = arr => arr && arr.length === n ? (e.st ? [arr[idx], ...arr.slice(idx)] : [...arr.slice(0, idx + 1), arr[idx]]) : arr;
-    cA.slip = { nd, nB, sd, ext }; cA.Q = keep; cA.w = cut(cA.w); cA.d = cut(cA.d); cA.e = cut(cA.e); cA.cum = cumOf(keep); cA.trim = (cA.trim || 0) + sCut;
+    slipEnd(e, rA, cA, nd, nB, sd, ext, sinT, cosT, wA);
   }
   finalizeLanes(C, R);
   // zszycie polaczen dwoch drog (taka sama lub rozna liczba pasow): krawedzie obu jezdni na styku maja sie schodzic; roznica rozkladana plynnie wzdluz obu drog
@@ -412,7 +424,7 @@ function layout() {
     rng[i] = [lines.length, arrows.length, polys.length];
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: gp(r)[j], rad: rad + 1.5 }); });
-    const inB = p => c.slip && ((p[0] - c.slip.nd[0]) * c.slip.nB[0] + (p[1] - c.slip.nd[1]) * c.slip.nB[1]) * c.slip.sd < c.slip.ext - 0.05; /* punkt wewnatrz asfaltu drogi glownej (slip lane) */
+    const inB = p => c.slip && c.slip.some(sl => ((p[0] - sl.nd[0]) * sl.nB[0] + (p[1] - sl.nd[1]) * sl.nB[1]) * sl.sd < sl.ext - 0.05); /* punkt wewnatrz asfaltu drogi glownej (slip lane) */
     const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad) && !inB(q));
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;

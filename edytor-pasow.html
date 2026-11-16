@@ -398,19 +398,6 @@ function layout() {
     }
   });
   R.forEach((r, i) => { const ly = r.ly | 0, nx = rng[i + 1] || [lines.length, arrows.length, polys.length], b = rng[i]; if (!b) return; for (let j = b[0]; j < nx[0]; j++) lines[j].ly = ly; for (let j = b[1]; j < nx[1]; j++) arrows[j].ly = ly; for (let j = b[2]; j < nx[2]; j++) { polys[j].ly = ly; polys[j].br = !!r.br; } });
-  { // dwie rownolegle linie ciagle tuz obok siebie (krawedzie sasiednich ramion) -> jedna linia posrodku, nie "gruba"
-    const TH = 0.6, CS = 2, sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), grid = new Map(), cellKey = (x, y) => x + ',' + y;
-    sol.forEach((l, li) => { for (let k = 0; k + 1 < l.P.length; k++) { const a = l.P[k], b = l.P[k + 1], x0 = Math.floor((Math.min(a[0], b[0]) - TH) / CS), x1 = Math.floor((Math.max(a[0], b[0]) + TH) / CS), y0 = Math.floor((Math.min(a[1], b[1]) - TH) / CS), y1 = Math.floor((Math.max(a[1], b[1]) + TH) / CS);
-      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const kk = cellKey(x, y); (grid.get(kk) || grid.set(kk, []).get(kk)).push([li, a, b]); } } });
-    const out = [];
-    sol.forEach((l, li) => { const P = l.P, n = P.length; let run = []; const fl = () => { if (run.length > 1) out.push(Object.assign({}, l, { P: run })); run = []; };
-      for (let k = 0; k < n; k++) { const p = P[k], pa = P[Math.max(0, k - 1)], pb = P[Math.min(n - 1, k + 1)], tl = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) || 1, tx = (pb[0] - pa[0]) / tl, ty = (pb[1] - pa[1]) / tl; let bd = TH, bj = -1, bq = null;
-        for (const [lj, a, b] of grid.get(cellKey(Math.floor(p[0] / CS), Math.floor(p[1] / CS))) || []) { if (lj === li || (sol[lj].ly | 0) !== (l.ly | 0)) continue; const sx = b[0] - a[0], sy = b[1] - a[1], sl = Math.hypot(sx, sy) || 1; if (Math.abs(tx * sy - ty * sx) / sl > 0.3) continue;
-          const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * sx + (p[1] - a[1]) * sy) / (sl * sl))), qx = a[0] + sx * t, qy = a[1] + sy * t, d = Math.hypot(p[0] - qx, p[1] - qy); if (d < bd) { bd = d; bj = lj; bq = [qx, qy]; } }
-        if (bj < 0) run.push(p); else if (bj > li) run.push([(p[0] + bq[0]) / 2, (p[1] + bq[1]) / 2]); else fl(); }
-      fl(); });
-    lines.length = 0; lines.push(...rest, ...out);
-  }
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
     const sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), tol = 0.7; let ch = true;
     while (ch) { ch = false;

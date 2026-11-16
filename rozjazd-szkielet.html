@@ -152,11 +152,7 @@ function drawRoad(){
   [G.a,G.b].forEach(o=>div(o.C,o.tc,o.W,o.l));
   // biale krawedzie jezdni leza dokladnie na niebieskich konturach (bez wcinania do srodka), bez klina
   const xneg=G.x.L,xpos=G.x.R;
-  [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.2);});
-  { // wspolna krawedz miedzy ramionami = jedna linia (srednia), a dalej, gdy ramiona sie rozchodza, kazda osobno
-    const inn=o=>o.sg>0?o.Rr:o.L,IA=inn(G.a),IB=inn(G.b),near=(p,Q)=>{let bd=1e9,bq=null;for(const q of Q){const d=Math.hypot(p[0]-q[0],p[1]-q[1]);if(d<bd){bd=d;bq=q;}}return[bd,bq];};
-    const TH=0.6,runs=(A,B,mid)=>{let run=[];const fl=()=>{if(run.length>1)stroke(run,LINE,0.2);run=[];};for(const p of A){const[d,q]=near(p,B);const close=d<TH;if(mid?close:!close)run.push(mid?[(p[0]+q[0])/2,(p[1]+q[1])/2]:p);else fl();}fl();};
-    runs(IA,IB,true);runs(IA,IB,false);runs(IB,IA,false);}
+  [G.a,G.b].forEach(o=>{const outerEdge=o.sg>0?o.L:o.Rr,innerEdge=o.sg>0?o.Rr:o.L,xs=o.sg>0?xpos:xneg;stroke(xs.slice().reverse().concat(outerEdge.slice(1)),LINE,0.2);stroke(innerEdge,LINE,0.2);});
   if(gore){const v=S.chVar,CW=S.chW;ctx.save();if(v===1){path(gore.clip,true);ctx.clip();}
     gore.ch.forEach(arms=>{const legs=arms.map(o=>{let P;const L=Math.hypot(o.hit[0]-o.m[0],o.hit[1]-o.m[1]);
       if(v===2){const q1=sub(o.hit,mul(o.d,Math.min(1.2,L*0.35))),e2=add(o.hit,mul(o.tan,Math.min(1.4,L*0.5)));P=[o.m];for(let k=0;k<=14;k++){const t=k/14;P.push([0,1].map(c=>(1-t)*(1-t)*q1[c]+2*(1-t)*t*o.hit[c]+t*t*e2[c]));}}

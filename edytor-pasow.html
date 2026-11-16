@@ -653,7 +653,7 @@ function render() {
   { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } } }
   drawTiles();
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
-  if (S.dirty || !L) { L = layout(); S.dirty = false; }
+  if (S.dirty || !L) { L = layout(); S.dirty = false; try { PZI = pzScan(); } catch (e) { PZI = []; console.warn('pzScan', e); } }
   if ($('cLay').checked) {
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); octx.clearRect(0, 0, W, H); drawLayer(octx);
     ctx.globalAlpha = +$('rA').value; ctx.drawImage(off, 0, 0, W, H); ctx.globalAlpha = 1;
@@ -688,6 +688,8 @@ function render() {
     });
     ctx.textAlign = 'start';
   }
+  if (S.tool === 'sel' && !EMBED) for (const z of PZI) { const q = w2s(z.p); if (q[0] < -20 || q[1] < -20 || q[0] > W + 20 || q[1] > H + 20) continue; ctx.beginPath(); ctx.arc(q[0], q[1], 12, 0, 7); ctx.fillStyle = z.lvl > 1 ? 'rgba(220,40,40,.30)' : 'rgba(240,150,0,.30)'; ctx.fill(); ctx.strokeStyle = z.lvl > 1 ? '#d22' : '#e08a00'; ctx.lineWidth = 2.5; ctx.stroke();
+    if (k > 2) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = z.lvl > 1 ? '#b11' : '#a35f00'; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
   if (FORK_MARKS) for (const f of S.forks3 || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(30,120,255,.22)'; ctx.fill(); ctx.strokeStyle = '#1e78ff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-u'; ctx.fillStyle = '#1e78ff'; ctx.textAlign = 'center'; ctx.fillText('3→2+1', q[0], q[1] - 24); ctx.textAlign = 'start'; }
   if (FORK_MARKS) for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
@@ -824,7 +826,7 @@ function pzWalk(ri, vi, dir) { // galaz od wezla w dal (do ~130 m), takze przez 
   while (s < 130 && g++ < 400) { const nj = j + dir;
     if (nj < 0 || nj >= r.pts.length) { const e = r.pts[j], cand = []; S.doc.road.forEach((o, oi) => { if (o === r) return; const n = o.pts.length; if (dist(o.pts[0], e) < 0.4) cand.push([oi, 0, 1]); else if (dist(o.pts[n - 1], e) < 0.4) cand.push([oi, n - 1, -1]); }); if (cand.length !== 1) break; [ri, j, dir] = cand[0]; r = S.doc.road[ri]; continue; }
     s += dist(r.pts[j], r.pts[nj]); j = nj; refs.push({ ri, vi: j, dir }); }
-  return { refs, P: refs.map(f => S.doc.road[f.ri].pts[f.vi].slice()), hw: r0.hw || '', lanes: r0.lanes | 0, into: r0.oneway && refs[0].dir === -1, ow: r0.oneway };
+  return { refs, P: refs.map(f => S.doc.road[f.ri].pts[f.vi].slice()), hw: r0.hw || '', tl: r0.tl || '', lanes: r0.lanes | 0, into: r0.oneway && refs[0].dir === -1, ow: r0.oneway };
 }
 function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
@@ -862,7 +864,21 @@ function pzPlan(F, th) { // th = kat zjazdu (B: polowa rozwarcia)
   const sg = F.a0.exit >= F.a0.main ? 1 : -1; return { main: pzStraight(F.main, F, cfg), exit: pzRay(F.exit, F, sg * th, cfg) };
 }
 function pzDefault(F) { const cfg = PZ_SET[F.type], a = F.type === 'B' ? Math.abs(F.a0.exit - F.a0.main) / 2 : Math.abs(F.a0.exit); return Math.round(Math.min(cfg.hi, Math.max(cfg.lo, a))); }
-function pzEval(F, br, P) { const din = ['G', 'V', 'O'].map(e => pzB(pzEng(e, F.X.P, F.X.hw, F.X.lanes), F.node)); return ['G', 'V', 'O'].map((e, k) => { const a = pzN(pzB(F.node, pzEng(e, P, br.hw, br.lanes)) - din[k]), c = PZ_T[e](Math.abs(a)); return e + ' ' + (a >= 0 ? '+' : '') + a.toFixed(0) + '° ' + c; }).join(' · '); }
+function pzAng(F, br, P) { return ['G', 'V', 'O'].map(e => { const din = pzB(pzEng(e, F.X.P, F.X.hw, F.X.lanes), F.node), a = pzN(pzB(F.node, pzEng(e, P || br.P, br.hw, br.lanes)) - din); return { e, a, c: PZ_T[e](Math.abs(a)) }; }); }
+function pzEval(F, br, P) { return pzAng(F, br, P).map(x => x.e + ' ' + (x.a >= 0 ? '+' : '') + x.a.toFixed(0) + '° ' + x.c).join(' · '); }
+var PZI = []; // wykryte problemy rozwidlen (autostrady/ekspresowe i drogi z turn:lanes through)
+function pzScan() {
+  const seen = new Set(), out = [];
+  S.doc.road.forEach(r => { const rb = (r.hw || '').replace('_link', ''); if (r.pts.length < 2 || !(rb === 'motorway' || rb === 'trunk' || /through/.test(r.tl || ''))) return; /* tylko konce drog kandydatow (wydajnosc) */
+    for (const p of [r.pts[0], r.pts[r.pts.length - 1]]) { const k = p[0].toFixed(1) + ',' + p[1].toFixed(1); if (seen.has(k)) continue; seen.add(k);
+    const F = pzDetect(p); if (!F) continue; const b = (F.X.hw || '').replace('_link', ''), top = b === 'motorway' || b === 'trunk', tl = /through/.test(F.X.tl || ''); if (!top && !tl) continue;
+    const m = pzAng(F, F.main), x = pzAng(F, F.exit), msg = []; let lvl = 0;
+    if (F.type === 'B') { if (m.concat(x).some(q => q.c === 'prosto' && q.e !== 'O')) { msg.push('rozwidlenie za płaskie'); lvl = Math.max(lvl, 1); } }
+    else { const md = Math.max(...m.map(q => Math.abs(q.a))); if (m.some(q => q.c !== 'prosto')) { msg.push('na wprost: ' + m.find(q => q.c !== 'prosto').c + ' (' + md.toFixed(0) + '°)'); lvl = 2; } else if (md > 3) { msg.push('na wprost krzywo ' + md.toFixed(0) + '°'); lvl = Math.max(lvl, 1); }
+      if (top && x.some(q => q.c === 'prosto')) { msg.push('zjazd za płaski'); lvl = 2; } else if (top && x.some(q => q.c === 'skręt' || q.c === 'ostro')) { msg.push('zjazd za ostry'); lvl = Math.max(lvl, 1); } }
+    if (lvl) out.push({ p: p.slice(), lvl, msg: msg.join(', ') }); } });
+  return out;
+}
 function pzApply(F, plan) {
   for (const k of ['main', 'exit']) { const a = F[k], { Q, ins } = plan[k];
     a.refs.forEach((f, i) => { const qi = ins && i >= ins.k ? i + 1 : i, q = Q[qi], o = a.P[i]; if (i > 0 && dist(q, o) > 0.01) { moveNode(S.doc.road[f.ri], f.vi, q[0], q[1]); S.doc.road.forEach(rr => rr.pts.forEach((p, j) => { if (dist(p, o) < 0.05) moveNode(rr, j, q[0], q[1]); })); } }); /* wspolne konce drog bez klucza wezla tez */
@@ -999,6 +1015,7 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
   const p = evp(e), w = s2w(p);
+  if (S.tool === 'sel' && !EMBED && ptrs.size === 1) { const z = PZI.find(z => dist(w2s(z.p), p) < 16); if (z) { for (let i = 0; i < S.doc.road.length; i++) { const r = S.doc.road[i], j = r.pts.findIndex(q => dist(q, z.p) < 0.4); if (j >= 0) { S.sel = i; S.vsel = j; break; } } drag = null; ui(); render(); return; } }
   if (e.button === 1 || e.button === 2 || S.tool === 'pan') { drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; return; }
   if (S.tool === 'rend') {
     const sr = S.doc.road[S.sel];

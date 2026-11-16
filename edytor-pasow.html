@@ -428,13 +428,17 @@ function layout() {
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
   const polys = [], lines = [], arrows = preAr.slice();
   forkLinks.forEach(l => lines.push(l));
+  // obrysy jezdni (do ukrywania linii krawedzi wewnatrz asfaltu sasiednich drog - zamiast kolowego wycinania wokol wezlow)
+  const PO = C.map(c => { const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0; const Lf = offsetPts(c.Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(c.Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j))); return Lf.concat(Rt.slice().reverse()); });
+  const inPoly = (pt, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
+  const connNb = R.map((r, i) => { const set = new Set(); r.nk.forEach(k => { if (!k || handled.has(k)) return; for (const j of nodeRoads.get(k) || []) { if (j === i) continue; const G = ends.get(k) || [], gi = G.find(e => e.i === i), gj = G.find(e => e.i === j); if (gi && gj) { const a = unitFrom(C[i], gi.st), b = unitFrom(C[j], gj.st); if (a[0] * b[0] + a[1] * b[1] < -0.8) continue; } set.add(j); } }); return [...set]; });
   const rng = [];
   R.forEach((r, i) => {
     rng[i] = [lines.length, arrows.length, polys.length];
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
     r.nk.forEach((k, j) => { if (!k || handled.has(k)) return; const ids = nodeRoads.get(k); if (!ids || ids.length < 2) return; let rad = 0; for (const o of ids) if (o !== i) rad = Math.max(rad, rw(R[o]) / 2); cuts.push({ p: gp(r)[j], rad: rad + 1.5 }); });
     const inB = p => c.slip && c.slip.some(sl => ((p[0] - sl.nd[0]) * sl.nB[0] + (p[1] - sl.nd[1]) * sl.nB[1]) * sl.sd < sl.ext - 0.05); /* punkt wewnatrz asfaltu drogi glownej (slip lane) */
-    const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad) && !inB(q));
+    const keep = Q.map(q => !cuts.some(ct => dist(q, ct.p) < ct.rad) && !inB(q)), keepE = Q.map(q => !inB(q));
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
     const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
@@ -449,10 +453,11 @@ function layout() {
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
       addLine(DL, dst); // linia pasow przed rozjazdem tez przerywana, jak reszta drogi
     }
-    if (r.edge || /^(motorway|trunk|primary|secondary)/.test(r.hw || '')) {
+    if (r.edge || /^(motorway|trunk|primary|secondary|tertiary)/.test(r.hw || '')) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));
       const PLe = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), PRe = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
-      addLine(PLe, 'p2', kpe(-1).map((v, j) => v && !inB(PLe[j]))); addLine(PRe, 'p2', kpe(1).map((v, j) => v && !inB(PRe[j])));
+      const hideN = p => connNb[i].some(j => inPoly(p, PO[j])), mkE = (P, sg) => keepE.map((v, j) => v && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s) && !inB(P[j]) && !hideN(P[j]));
+      addLine(PLe, 'p2', mkE(PLe, -1)); addLine(PRe, 'p2', mkE(PRe, 1));
     }
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const NL = Math.max(1, r.lanes | 0), nb = NL - (r.oneway ? NL : r.nf);
@@ -563,7 +568,11 @@ function drawGroup(g, ly) {
   const k = S.view.k; g.lineJoin = 'round'; const PAT = asphaltPat(g, k) || '#7c8083'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
   if (ly > 0) for (const q of Lp) if (q.br && q.P.length > 2) { g.save(); g.lineCap = 'butt'; g.lineJoin = 'miter'; pathOf(g, q.P, true); g.strokeStyle = 'rgba(20,22,26,.14)'; g.lineWidth = 1.6 * k; g.stroke(); g.restore(); } // cień wiaduktu na niższych drogach
   for (const q of Lp) if (q.P.length > 2 && q.kerb !== false) { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const [col, wd] of [['#6f716c', 0.84], ['#c4c6c0', 0.68]]) { g.strokeStyle = col; g.lineWidth = Math.max(1.5, wd * k); for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } } // krawezniki: waski jasny pasek na zewnatrz konturu (wnetrze przykrywa jezdnia)
-  for (const q of Lp) if (q.P.length > 2) { pathOf(g, q.P, true); g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill(); g.fillStyle = PAT; g.fill(); g.stroke(); if (ly > 0 && q.br) { g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.strokeStyle = '#9ea2a8'; g.lineWidth = Math.max(1.5, 0.55 * k); g.stroke(); } } }
+  { // asfalt jezdni: jeden wspolny obrys (jednolita powierzchnia bez szwow miedzy jezdniami); kierunek obrysow ujednolicony, zeby nakladajace sie nie wycinaly dziur
+    g.beginPath(); let any = false; for (const q of Lp) if (q.P.length > 2) { let P = q.P.map(w2s), ar = 0; for (let i = 0; i < P.length; i++) { const a2 = P[i], b2 = P[(i + 1) % P.length]; ar += a2[0] * b2[1] - b2[0] * a2[1]; } if (ar < 0) P = P.reverse(); P.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); any = true; }
+    if (any) { g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill('nonzero'); g.fillStyle = PAT; g.fill('nonzero'); }
+  }
+  for (const q of Lp) if (q.P.length > 2) { if (ly > 0 && q.br) { g.lineCap = 'butt'; for (const E of [q.L, q.R]) { pathOf(g, E, false); g.strokeStyle = '#9ea2a8'; g.lineWidth = Math.max(1.5, 0.55 * k); g.stroke(); } } }
   for (const q of Lg) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill(); g.fillStyle = PAT; g.fill(); g.stroke(); }
   for (const q of Lg) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
   const line = (P, st, col) => {

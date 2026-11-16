@@ -814,28 +814,47 @@ if (!EMBED) (() => {
     S.doc.road.forEach(r => { if (!r.osm) return; r.nk.forEach((k, i) => { if (!k) return; const [lo, la] = k.split(',').map(Number), u = unproj(r.pts[i]), d = Math.hypot((u.lon - lo) * 111320 * Math.cos(la * Math.PI / 180), (u.lat - la) * 110540); if (d < 0.15) return; const o = mv.get(k); if (o) { if (Math.hypot((u.lon - o.lon) * 70000, (u.lat - o.lat) * 110540) > 0.3) conflict++; o.ways.add(r.osm); } else mv.set(k, { lon: u.lon, lat: u.lat, d, ways: new Set([r.osm]) }); }); });
     return { mv, conflict };
   }
+  const sent = new Map(); // droga OSM -> lista kluczy wezlow po ostatniej wysylce
+  function structPlan(id, Wk) { // dodane/usuniete wezly: porownanie wezlow drog w edytorze z pierwotna lista wezlow drogi OSM
+    const edits = []; let warn = 0;
+    for (const r of S.doc.road) { if (r.osm !== id) continue; let nk = r.nk.slice(), pts = r.pts.map(q => q.slice());
+      if (!nk.length || nk[0] == null || nk[nk.length - 1] == null) { warn++; continue; }
+      let ia = Wk.indexOf(nk[0]), ib = Wk.lastIndexOf(nk[nk.length - 1]); if (ia < 0 || ib < 0) { warn++; continue; }
+      if (ia > ib) { nk.reverse(); pts.reverse(); ia = Wk.indexOf(nk[0]); ib = Wk.lastIndexOf(nk[nk.length - 1]); if (ia < 0 || ib < 0 || ia > ib) { warn++; continue; } }
+      const old = Wk.slice(ia, ib + 1), seq = nk.map((k, i) => k == null ? { pt: pts[i] } : k);
+      if (seq.length === old.length && seq.every((x, i) => x === old[i])) continue; edits.push({ ia, ib, seq, old }); }
+    edits.sort((a, b) => a.ia - b.ia); const ok = []; for (const e of edits) { if (ok.length && e.ia < ok[ok.length - 1].ib) { warn++; continue; } ok.push(e); }
+    const keep = new Set(ok.flatMap(e => e.seq.filter(x => typeof x === 'string'))), removed = [...new Set(ok.flatMap(e => e.old).filter(k => !keep.has(k)))], added = ok.flatMap(e => e.seq.filter(x => typeof x !== 'string'));
+    return { edits: ok, removed, added, warn };
+  }
+  function structCount() { let add = 0, del = 0; for (const id of new Set(S.doc.road.filter(r => r.osm).map(r => r.osm))) { const Wk = sent.get(id) || (osmWay(id) && osmWay(id).nk); if (!Wk) continue; const pl = structPlan(id, Wk); add += pl.added.length; del += pl.removed.length; } return { add, del }; }
   function tagChanges() { const m = new Map(); S.doc.road.forEach(r => { if (r.osm && r.tg && Object.keys(r.tg).length) m.set(r.osm, { ...(m.get(r.osm) || {}), ...r.tg }); }); return m; }
-  let armed = 0; setInterval(() => { const n = moves().mv.size, t = tagChanges().size; if (!armed) st(n || t ? `Do wysłania: węzłów ${n}, dróg z tagami ${t}` : 'Brak zmian do wysłania.'); }, 2000);
+  let armed = 0; setInterval(() => { const n = moves().mv.size, t = tagChanges().size, sc = structCount(); if (!armed) st(n || t || sc.add || sc.del ? `Do wysłania: przesunięte węzły ${n}, nowe ${sc.add}, usunięte ${sc.del}, dróg z tagami ${t}` : 'Brak zmian do wysłania.'); }, 2000);
   $('oSend').onclick = async () => {
     const T = tok(); if (!T) { st('Najpierw się zaloguj.'); return; }
-    const { mv, conflict } = moves(), tgc = tagChanges(); if (!mv.size && !tgc.size) { st('Nic do wysłania.'); return; }
-    if (!armed) { armed = Date.now(); const mx = mv.size ? Math.max(...[...mv.values()].map(v => v.d)) : 0; st(`Wysłać do OSM: węzłów ${mv.size}${mv.size ? ` (największe przesunięcie ${mx.toFixed(1)} m)` : ''}, tagów dróg ${tgc.size}${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
+    const { mv, conflict } = moves(), tgc = tagChanges(); const sc0 = structCount(); if (!mv.size && !tgc.size && !sc0.add && !sc0.del) { st('Nic do wysłania.'); return; }
+    if (!armed) { armed = Date.now(); const mx = mv.size ? Math.max(...[...mv.values()].map(v => v.d)) : 0; st(`Wysłać do OSM: nowych węzłów ${sc0.add}, usuniętych ${sc0.del}; przesuniętych ${mv.size}${mv.size ? ` (największe przesunięcie ${mx.toFixed(1)} m)` : ''}, tagów dróg ${tgc.size}${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
     if (Date.now() - armed > 20000) { armed = 0; return; } armed = 0; if (conflict) { st('Sprzeczne pozycje tego samego węzła – popraw i spróbuj ponownie.'); return; }
     const H = { Authorization: 'Bearer ' + T };
     try {
-      st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...[...mv.values()].flatMap(v => [...v.ways]), ...tgc.keys()])], nodes = new Map(), wayEl = new Map();
-      for (const id of wayIds) { const r = await fetch(`${API}/way/${id}/full.json`, { headers: H }); if (!r.ok) throw new Error('way ' + id + ': ' + r.status); for (const e of (await r.json()).elements) { if (e.type === 'node') nodes.set(key(e.lon, e.lat), e); else if (e.type === 'way') wayEl.set(e.id, e); } }
-      const mod = [], miss = []; for (const [k, v] of mv) { const n = nodes.get(k); if (n) mod.push([n, v, k]); else miss.push(k); }
+      st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...[...mv.values()].flatMap(v => [...v.ways]), ...tgc.keys(), ...S.doc.road.filter(r => r.osm).map(r => r.osm)])], nodes = new Map(), wayEl = new Map(), byId = new Map();
+      for (const id of wayIds) { const r = await fetch(`${API}/way/${id}/full.json`, { headers: H }); if (!r.ok) throw new Error('way ' + id + ': ' + r.status); for (const e of (await r.json()).elements) { if (e.type === 'node') { nodes.set(key(e.lon, e.lat), e); byId.set(e.id, e); } else if (e.type === 'way') wayEl.set(e.id, e); } }
+      const mod = [], miss = [], crt = [], dls = [], nodeRefs = new Map(); let tid = 0;
+      for (const [id, w] of wayEl) { const Wk = w.nodes.map(i => byId.get(i)).map(n => n ? key(n.lon, n.lat) : null); if (Wk.some(k => k == null)) continue; const pl = structPlan(id, Wk); if (!pl.edits.length) continue; const arr = w.nodes.slice(), made = []; for (const e of pl.edits.slice().reverse()) arr.splice(e.ia, e.ib - e.ia + 1, ...e.seq.map(x => { if (typeof x === 'string') return byId.get(w.nodes[Wk.indexOf(x)]).id; const u = unproj(x.pt), n = { tid: --tid, lat: u.lat, lon: u.lon, pt: x.pt }; crt.push(n); made.push(n); return n.tid; })); nodeRefs.set(id, arr); for (const k of pl.removed) { const n = byId.get(w.nodes[Wk.indexOf(k)]); if (n && !dls.some(d => d.id === n.id)) dls.push(n); } }
+       for (const [k, v] of mv) { const n = nodes.get(k); if (n) mod.push([n, v, k]); else miss.push(k); }
       const wmod = []; for (const [id, tg] of tgc) { const w = wayEl.get(id); if (!w) continue; const nt = { ...(w.tags || {}) }; for (const [k, v] of Object.entries(tg)) { if (v === null || v === '') delete nt[k]; else nt[k] = v; } if (JSON.stringify(Object.entries(nt).sort()) !== JSON.stringify(Object.entries(w.tags || {}).sort())) wmod.push([w, nt]); }
-      if (!mod.length && !wmod.length) throw new Error('nic nie pasuje do aktualnych danych OSM (ktoś już to zmienił lub zostało wysłane)');
+      for (const [id, arr] of nodeRefs) if (!wmod.some(([w]) => w.id === id)) { const w = wayEl.get(id); wmod.push([w, w.tags || {}]); }
+      if (!mod.length && !wmod.length && !crt.length && !dls.length) throw new Error('nic nie pasuje do aktualnych danych OSM (ktoś już to zmienił lub zostało wysłane)');
       const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       st('Tworzę zestaw zmian…'); const cs = await (await fetch(`${API}/changeset/create`, { method: 'PUT', headers: { ...H, 'Content-Type': 'text/xml' }, body: `<osm><changeset><tag k="created_by" v="mapa-szlakow edytor"/><tag k="comment" v="${esc($('oCom').value || 'Poprawa geometrii')}"/><tag k="source" v="Geoportal ortofotomapa"/></changeset></osm>` }).then(r => { if (!r.ok) throw new Error('changeset: ' + r.status); return r.text(); })).trim();
-      const xml = `<osmChange version="0.6" generator="mapa-szlakow"><modify>${wmod.map(([w, nt]) => `<way id="${w.id}" version="${w.version}" changeset="${cs}">${w.nodes.map(n => `<nd ref="${n}"/>`).join('')}${Object.entries(nt).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</way>`).join('')}${mod.map(([n, v]) => `<node id="${n.id}" version="${n.version}" lat="${v.lat.toFixed(7)}" lon="${v.lon.toFixed(7)}" changeset="${cs}">${Object.entries(n.tags || {}).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</node>`).join('')}</modify></osmChange>`;
+      const xml = `<osmChange version="0.6" generator="mapa-szlakow">${crt.length ? `<create>${crt.map(n => `<node id="${n.tid}" lat="${n.lat.toFixed(7)}" lon="${n.lon.toFixed(7)}" changeset="${cs}"/>`).join('')}</create>` : ''}<modify>${wmod.map(([w, nt]) => `<way id="${w.id}" version="${w.version}" changeset="${cs}">${(nodeRefs.get(w.id) || w.nodes).map(n => `<nd ref="${n}"/>`).join('')}${Object.entries(nt).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</way>`).join('')}${mod.map(([n, v]) => `<node id="${n.id}" version="${n.version}" lat="${v.lat.toFixed(7)}" lon="${v.lon.toFixed(7)}" changeset="${cs}">${Object.entries(n.tags || {}).map(([a, b]) => `<tag k="${esc(a)}" v="${esc(b)}"/>`).join('')}</node>`).join('')}</modify>${dls.length ? `<delete if-unused="true">${dls.map(n => `<node id="${n.id}" version="${n.version}" lat="${n.lat}" lon="${n.lon}" changeset="${cs}"/>`).join('')}</delete>` : ''}</osmChange>`;
       st('Wysyłam…'); const up = await fetch(`${API}/changeset/${cs}/upload`, { method: 'POST', headers: { ...H, 'Content-Type': 'text/xml' }, body: xml }); if (!up.ok) throw new Error('upload: ' + up.status + ' ' + (await up.text()).slice(0, 160));
       await fetch(`${API}/changeset/${cs}/close`, { method: 'PUT', headers: H });
       for (const [, v, k] of mod) S.doc.road.forEach(r => r.nk.forEach((kk, i) => { if (kk === k) r.nk[i] = key(v.lon, v.lat); }));
+      { const kOf = new Map(); byId.forEach((n, id) => kOf.set(id, key(n.lon, n.lat))); for (const [n, v] of mod) kOf.set(n.id, key(v.lon, v.lat)); crt.forEach(n => kOf.set(n.tid, key(n.lon, n.lat)));
+        for (const [id, arr] of nodeRefs) { sent.set(id, arr.map(x => kOf.get(x))); S.doc.road.forEach(r => { if (r.osm === id) r.nk = r.nk.map((k, i) => k == null ? key(unproj(r.pts[i]).lon, unproj(r.pts[i]).lat) : k); }); } }
       for (const [w, nt] of wmod) { const o = osmWay(w.id); if (o) o.t = nt; S.doc.road.forEach(r => { if (r.osm === w.id) delete r.tg; }); }
-      save(); touch(); st(`Wysłano ${mod.length} węzłów i tagi ${wmod.length} dróg${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
+      save(); touch(); st(`Wysłano: nowych węzłów ${crt.length}, usuniętych ${dls.length}, przesuniętych ${mod.length}, zmienionych dróg ${wmod.length}${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
     } catch (e) { st('Błąd wysyłki: ' + e.message); }
   };
 })();

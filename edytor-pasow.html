@@ -35,11 +35,28 @@
   #tabs button { flex:1; padding:8px 4px; border-radius:8px 8px 0 0; border-bottom:0; font-weight:600; }
   #tabs button.act { background:var(--ac); border-color:var(--ac); color:#fff; }
   .tab { display:none; } .tab.act { display:block; }
+  #lc { position:absolute; right:10px; top:10px; z-index:6; }
+  #lc button { width:34px; height:34px; padding:0; font-size:18px; background:var(--pn); box-shadow:0 1px 5px rgba(0,0,0,.4); }
+  #lcP { display:none; position:absolute; right:0; top:0; background:var(--pn); border-radius:6px; padding:8px 12px; box-shadow:0 1px 5px rgba(0,0,0,.4); min-width:170px; }
+  #lc.open #lcB { display:none; } #lc.open #lcP { display:block; }
+  #lcP label { display:flex; margin:4px 0; color:var(--tx); } #lcP hr { border:0; border-top:1px solid var(--bd); margin:8px 0; }
+  #lcP label.sl { justify-content:space-between; } #lcP input[type=range] { width:90px; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="stage"><canvas id="cv"></canvas><div id="hint"></div></div>
+  <div id="stage"><canvas id="cv"></canvas>
+    <div id="lc"><button id="lcB" title="Warstwy">&#9776;</button><div id="lcP">
+      <b>Podkład</b>
+      <label><input type="radio" name="bmr" value="osm"> OSM</label>
+      <label><input type="radio" name="bmr" value="orto"> Geoportal</label>
+      <label><input type="radio" name="bmr" value="quiet"> Jasne tło</label>
+      <hr><b>Warstwy</b>
+      <label><input type="checkbox" id="cLay" checked> Pasy</label>
+      <label class="sl">Krycie <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label>
+      <label class="sl">Przejście <input type="range" id="fT" min="25" max="160" step="5" value="45"> <span id="fTv">45</span> m</label>
+      <label><input type="checkbox" id="cAx" checked> Osie OSM</label>
+    </div></div><div id="hint"></div></div>
   <div id="panel">
     <div class="row"><input type="text" id="lnk" placeholder="Wklej link z openstreetmap.org (…#map=18/54.4985/18.4614)"><button id="bLnk" class="on">Wczytaj</button></div>
     <div class="small" id="st"></div>
@@ -47,23 +64,13 @@
     <div class="row" id="tools"></div>
     <div class="row" id="drawbar" style="display:none"><button id="bFinish" class="on">Zakończ</button><button id="bCancel" class="warn">Anuluj</button></div>
     <div class="row"><button id="bUndo" title="Cofnij">↶ Cofnij</button><button id="bRedo" title="Ponów">↷ Ponów</button></div>
-    <div id="tabs"><button data-t="map">Mapa</button><button data-t="road">Droga</button><button data-t="osm">OSM</button><button data-t="data">Dane</button></div>
+    <div id="tabs"><button data-t="road">Droga</button><button data-t="osm">OSM</button><button data-t="data">Dane</button></div>
     <div class="tab" data-t="osm">
     <h4>Dane drogowe z OSM</h4>
     <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     </div>
-    <div class="tab" data-t="map">
-    <details open><summary>Wygląd mapy</summary>
-      <div class="row"><label><input type="checkbox" id="cTile" checked> podkład</label><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne tło (bez kolorowych dróg)</option><option value="orto" selected>Ortofoto Geoportal (HR)</option><option value="ortolo">Ortofoto Geoportal (low res, szybkie)</option><option value="esri">Satelita Esri (szybki)</option></select></div>
-      <div class="row"><label><input type="checkbox" id="cLay" checked> pasy (render)</label><label><input type="checkbox" id="cAx" checked> osie OSM</label><label><input type="checkbox" id="cSm"> wygładź osie</label><label><input type="checkbox" id="cBlue"> niebieskie kontury jezdni</label></div>
-      <div class="row"><label>krycie pasów <input type="range" id="rA" min="0.2" max="1" step="0.05" value="0.85"></label></div>
-    </details>
-    <details><summary>Ustawienia zaawansowane</summary>
-      <div class="row"><label>rozjazd: równolegle <input type="number" id="fP" value="0" step="1" style="width:56px"> m</label><label>długość przejścia (2→1+1, 3→2+1) <input type="range" id="fT" min="25" max="160" step="5" value="45" style="width:110px"> <span id="fTv">45</span> m</label><label>przejście większych rozjazdów (4+ pasy) <input type="range" id="fT2" min="25" max="160" step="5" value="80" style="width:110px"> <span id="fT2v">80</span> m</label></div>
-      <div class="row"><label title="Przesuń render: sąsiednie punkty drogi w tym promieniu (m) przesuwają się płynnie razem z przeciąganym">płynny offset render <input type="number" id="fRo" value="12" min="0" step="2" style="width:56px"> m</label></div>
-    </details>
-    </div>
+    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne</option><option value="orto" selected>Geoportal</option><option value="ortolo">low</option><option value="esri">Esri</option></select><input type="checkbox" id="cSm"><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
     <div class="tab" data-t="road">
     <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>
@@ -769,7 +776,7 @@ function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski b
 }
 function showTab(t) { window.__tab = t; document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('act', b.dataset.t === t)); document.querySelectorAll('.tab').forEach(d => d.classList.toggle('act', d.dataset.t === t)); try { localStorage.setItem('edytor-tab-v1', t); } catch (e) {} }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
-(() => { let t = 'map'; try { t = localStorage.getItem('edytor-tab-v1') || 'map'; } catch (e) {} showTab(t); })();
+(() => { let t = 'road'; try { t = localStorage.getItem('edytor-tab-v1') || 'road'; } catch (e) {} showTab(t === 'map' ? 'road' : t); })();
 function props() {
   const el = $('props'), r = S.doc.road[S.sel]; if (r && S.sel !== window.__ls) showTab('road'); window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
@@ -844,7 +851,8 @@ $('bImp').onclick = async () => {
 };
 try { const sv = JSON.parse(localStorage.getItem('edytor-podklad-v1') || 'null'); if (sv) { if (sv.bm && [...$('bm').options].some(o => o.value === sv.bm)) $('bm').value = sv.bm; if (typeof sv.tile === 'boolean') $('cTile').checked = sv.tile; } } catch (e) {} // zapamietany podklad
 for (const id of ['cTile', 'cLay', 'cAx', 'cBlue', 'rA', 'bm']) $(id).oninput = () => { try { localStorage.setItem('edytor-podklad-v1', JSON.stringify({ bm: $('bm').value, tile: $('cTile').checked })); } catch (e) {} render(); };
-$('cSm').oninput = () => touch(); $('fP').oninput = () => touch(); $('fT').oninput = () => { $('fTv').textContent = $('fT').value; touch(); }; $('fT2').oninput = () => { $('fT2v').textContent = $('fT2').value; touch(); }; 
+$('cSm').oninput = () => touch(); $('fP').oninput = () => touch(); $('fT').oninput = () => { const v = +$('fT').value; $('fTv').textContent = v; $('fT2').value = Math.round(v * 80 / 45 / 5) * 5; $('fT2v').textContent = $('fT2').value; touch(); }; /* jeden suwak dla wszystkich rozjazdow */
+(() => { const lc = $('lc'); $('lcB').onclick = () => lc.classList.add('open'); lc.onmouseleave = () => lc.classList.remove('open'); const syn = () => { if (![...document.querySelectorAll('input[name=bmr]')].some(r => r.value === $('bm').value)) $('bm').value = 'orto'; document.querySelectorAll('input[name=bmr]').forEach(r => { r.checked = r.value === $('bm').value; }); }; syn(); document.querySelectorAll('input[name=bmr]').forEach(r => r.onchange = () => { $('bm').value = r.value; $('bm').oninput(); }); })(); 
 $('bFinish').onclick = finishDraw; $('bCancel').onclick = () => setTool('sel');
 function finishDraw() { if (S.draw && S.draw.pts.length > 1) { push(); S.doc.road.push(newRoad(S.draw.pts, S.draw.nk)); S.sel = S.doc.road.length - 1; } setTool('sel'); save(); touch(); }
 $('bExp').onclick = () => { $('io').value = JSON.stringify({ org: S.org, doc: S.doc }); };

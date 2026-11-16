@@ -67,10 +67,14 @@ function build(){
   let xN=nX*w/2;if(nX%2===1){const extraNeg=neg.l<pos.l;xN=extraNeg?w+(nX-1)*w/2:(nX-1)*w/2;}
   neg.c=-xN+neg.l*w/2;pos.c=-xN+neg.l*w+pos.l*w/2;
   const arm=o=>{ // start: srodek odnogi w jej czesci przekroju, styczna = przedluzenie drogi wjazdowej (koniec prostopadly); potem hermite do wlasnej osi po T metrach
-    const R=o.R,t=o.t,W=o.l*w,P0=[nE[0]*o.c,nE[1]*o.c];let iT=R.s.findIndex(v=>v>=(S.nX>=4?S.T2:S.T));if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
+    const R=o.R,t=o.t,W=o.l*w,dir=o.sg>0?1:-1,lamC=dir*o.c,Tsel=S.nX>=4?S.T2:S.T;
+    // prosto w swoim pasie (rownolegle do drogi wjazdowej), dopoki wlasna os odnogi nie dojdzie do tego pasa; potem hermite o dlugosci przejscia T
+    let sS=0;{const k=R.P.findIndex(q=>dir*(q[0]*nE[0]+q[1]*nE[1])>=lamC);sS=k<0?0:R.s[k];sS=Math.max(0,Math.min(sS,2*Tsel));}
+    const P0=add(mul(nE,o.c),mul(e,sS));let iT=R.s.findIndex(v=>v>=sS+Tsel);if(iT<1)iT=R.s.length-1;const P1=R.P[iT],T1=t[iT],L=len(sub(P1,P0))||1,N=Math.max(4,Math.ceil(L/0.5)),M0=mul(e,L),M1=mul(T1,L),C=[];
+    for(let q=0;q<sS-1e-6;q+=0.5)C.push(add(mul(nE,o.c),mul(e,q)));const pre=C.length;
     for(let k=0;k<=N;k++){const u=k/N,h00=2*u**3-3*u**2+1,h10=u**3-2*u**2+u,h01=-2*u**3+3*u**2,h11=u**3-u**2;C.push([0,1].map(q=>h00*P0[q]+h10*M0[q]+h01*P1[q]+h11*M1[q]));}
     for(let k=iT+1;k<R.P.length;k++)C.push(R.P[k]);
-    const nh=N,tc=tangents(C);return{C,tc,W,nh,l:o.l,sg:o.sg,L:offsetLine(C,tc,C.map(()=>W/2)),Rr:offsetLine(C,tc,C.map(()=>-W/2)),ax:R.P};};
+    const nh=pre+N,tc=tangents(C);return{C,tc,W,nh,l:o.l,sg:o.sg,L:offsetLine(C,tc,C.map(()=>W/2)),Rr:offsetLine(C,tc,C.map(()=>-W/2)),ax:R.P};};
   const a=arm(arms[0]),b=arm(arms[1]);
   // zakaz nakladania: osie odnog nie zblizaja sie bardziej niz suma polowek szerokosci (krawedz w krawedz); mniejsza odnoga ustepuje, odsuniecie lagodne
   {const hs=(a.l+b.l)*w/2,sh=a.l===b.l?[0.5,0.5]:(a.l<b.l?[1,0]:[0,1]),nA=a.C.length,nB=b.C.length,pA=new Array(nA).fill(0),pB=new Array(nB).fill(0),dA=new Array(nA),dB=new Array(nB);

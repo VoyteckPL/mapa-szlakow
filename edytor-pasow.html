@@ -609,7 +609,7 @@ function applyEmb() {
 function save() { if (EMBED) { if (EDIT) saveEmb(); return; } const h = curHash(); try { if (h) history.replaceState(null, '', h); } catch (e) {} try { localStorage.setItem(KEY, JSON.stringify({ doc: S.doc, view: S.view, org: S.org, h })); } catch (e) {} } // zapamietuje biezaca lokacje (tez w adresie), by odswiezenie nie wracalo do pierwotnej
 $('bUndo').onclick = () => { if (S.undo.length) { S.redo.push(snap()); restore(S.undo.pop()); } };
 $('bRedo').onclick = () => { if (S.redo.length) { S.undo.push(snap()); restore(S.redo.pop()); } };
-function moveNode(r, vi, x, y) { const k = r.nk[vi]; r.pts[vi] = [x, y]; if (k) for (const o of S.doc.road) o.nk.forEach((kk, j) => { if (kk === k) o.pts[j] = [x, y]; }); }
+function moveNode(r, vi, x, y) { const k = r.nk[vi]; const mv = (o, j) => { const dx = x - o.pts[j][0], dy = y - o.pts[j][1]; o.pts[j] = [x, y]; if (o.rp && o.rp[j]) o.rp[j] = [o.rp[j][0] + dx, o.rp[j][1] + dy]; }; mv(r, vi); if (k) for (const o of S.doc.road) o.nk.forEach((kk, j) => { if (kk === k && !(o === r && j === vi)) mv(o, j); }); }
 
 // ---------- UI ----------
 function setTool(t) { LANE_ON = false; hideLanePal(); S.tool = t; S.draw = t === 'road' ? { pts: [], nk: [] } : null; if (t !== 'sel') { S.vsel = -1; } ui(); render(); }

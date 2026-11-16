@@ -305,8 +305,9 @@ function skelLanes(G, C, R) {
 function finalizeLanes(C, R) {
   const at = (cum, v, s) => { const n = cum.length; if (s <= cum[0]) return v[0]; if (s >= cum[n - 1]) return v[n - 1]; let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; } const t = (s - cum[lo]) / ((cum[hi] - cum[lo]) || 1); return v[lo] + (v[hi] - v[lo]) * t; };
   C.forEach((c, i) => { if (!c.contrib) return; const N = c.Q.length, Ln = c.cum[N - 1] || 1, W0 = rw(R[i]), D0 = c.d0 || 0, pA = c.contrib.A, pB = c.contrib.B;
-    c.d = []; c.w = []; for (let j = 0; j < N; j++) { const wB = sm((c.cum[j] / Ln - 0.35) / 0.3), wA = 1 - wB;
-      const LA = pA ? at(pA.s, pA.lo, c.cum[j]) : D0 - W0 / 2, RA = pA ? at(pA.s, pA.hi, c.cum[j]) : D0 + W0 / 2, LB = pB ? -at(pB.s, pB.hi, Ln - c.cum[j]) : D0 - W0 / 2, RB = pB ? -at(pB.s, pB.lo, Ln - c.cum[j]) : D0 + W0 / 2;
+    const d1 = c.d.slice(), w1 = c.w.slice(); c.d = []; c.w = []; for (let j = 0; j < N; j++) { const wB = sm((c.cum[j] / Ln - 0.35) / 0.3), wA = 1 - wB;
+      const dfL = (d1[j] != null ? d1[j] : D0) - (w1[j] != null ? w1[j] : W0) / 2, dfR = (d1[j] != null ? d1[j] : D0) + (w1[j] != null ? w1[j] : W0) / 2; // brak wkladu z tego konca = dotychczasowy uklad drogi (np. offset z rozjazdu)
+      const LA = pA ? at(pA.s, pA.lo, c.cum[j]) : dfL, RA = pA ? at(pA.s, pA.hi, c.cum[j]) : dfR, LB = pB ? -at(pB.s, pB.hi, Ln - c.cum[j]) : dfL, RB = pB ? -at(pB.s, pB.lo, Ln - c.cum[j]) : dfR;
       const L = wA * LA + wB * LB, Rr = wA * RA + wB * RB; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
 }
 function layout() {

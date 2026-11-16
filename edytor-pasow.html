@@ -272,6 +272,15 @@ function skelFork(X, yl, yr, C, R, gores) {
       for (let i = 0; i < n; i++) if (q[i] > 0.005) O.Cd[i] = [O.Cd[i][0] + NN[i][0] * sg * q[i], O.Cd[i][1] + NN[i][1] * sg * q[i]]; };
     const fadeIn = q => q.map((v, i) => v * sm5(i * 0.5 / 8)); apply(A, fadeIn(qA), dirA); apply(B, fadeIn(qB), dirB); }
   for (const o of arms) { const c = C[o.ye.i], Q = o.ye.st ? o.Cd : o.Cd.slice().reverse(); c.Q = Q; c.w = Q.map(() => o.l * w); { const d0a = (R[o.ye.i].oneway && /^(motorway|trunk|primary|secondary)/.test(R[o.ye.i].hw || '') && o.l >= 3 && o.l % 2 === 1) ? (R[o.ye.i]._osg || 1) * w / 2 : 0, cq = cumOf(Q), Lq = cq[cq.length - 1], Lfa = Math.max(1, Math.min(150, Lq - Math.min(T, Lq / 2))); c.d0 = d0a; c.d = Q.map((_, j) => d0a * sm5(((o.ye.st ? cq[j] : Lq - cq[j]) - Math.min(T, Lq / 2)) / Lfa)); } c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q); }
+  if (arms[0].l + arms[1].l === nX + 1) { // 3->2+2: wewnetrzne krawedzie ramion nakladaja sie na wspolnym pasie - nie rysujemy ich, dopoki ramiona sie nie rozsuna
+    const hs = (arms[0].l + arms[1].l) * w / 2;
+    arms.forEach((o, ai) => { const c = C[o.ye.i], oth = arms[1 - ai].Cd, Q = c.Q, st = o.ye.st, n = Q.length;
+      const dOth = j => { const q = Q[j]; let bd = 1e9; for (const p of oth) { const d = Math.hypot(p[0] - q[0], p[1] - q[1]); if (d < bd) bd = d; } return bd; };
+      const m = Q.map((_, j) => dOth(j) < hs - 0.15), j0 = Math.floor(n / 2), t = [Q[Math.min(n - 1, j0 + 1)][0] - Q[j0][0], Q[Math.min(n - 1, j0 + 1)][1] - Q[j0][1]], rt = offsetPts([Q[j0], [Q[j0][0] + t[0], Q[j0][1] + t[1]]], [1, 1])[0];
+      let nearO = oth[0], bd = 1e9; for (const p of oth) { const d = Math.hypot(p[0] - Q[j0][0], p[1] - Q[j0][1]); if (d < bd) { bd = d; nearO = p; } }
+      const sg = ((rt[0] - Q[j0][0]) * (nearO[0] - Q[j0][0]) + (rt[1] - Q[j0][1]) * (nearO[1] - Q[j0][1])) >= 0 ? 1 : -1;
+      c.skipIn = { sg, m }; });
+  }
   { const c = C[X.i], dc = (xN - nX * w / 2), Ln = c.cum[c.cum.length - 1], T0 = Math.min(T, Ln / 2), Lf = Math.max(1, Math.min(150, Ln - T0)); // krotka droga: offset gasnie do konca drogi, nie zostaje schodka na styku // offset nieparzystej jezdni tylko przy rozjezdzie, potem plynnie wraca do osi (bez schodka na styku z dalsza czescia drogi)
     c.w = c.Q.map(() => nX * w); c.d = c.Q.map((_, j) => { const sj = X.st ? c.cum[j] : Ln - c.cum[j]; const g = (X.st ? 1 : -1) * dc, d0 = c.d0 || 0; return d0 + (g - d0) * (1 - sm5((sj - T0) / Lf)); }); c.e = c.Q.map(() => 0); c.tf = undefined; }
   if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem

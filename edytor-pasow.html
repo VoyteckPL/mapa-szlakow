@@ -50,6 +50,8 @@
   #lcB { color:#3949ab; } #lcB:hover { background:#eef4fc !important; }
   .eb { display:flex; gap:6px; margin:4px 0 2px; } #lcP .eb button { width:34px; height:30px; padding:0; border:1px solid #ccc; border-radius:5px; background:#fff; display:grid; place-items:center; } #lcP .eb button:hover { background:#eef4fc !important; }
   @keyframes blk { 0%,100% { background:#fff; box-shadow:none; } 50% { background:#c8f7c5; box-shadow:0 0 0 3px #43a04788; } } #lcP .eb button.blink { animation:blk .5s ease-in-out 3; }
+  #lcClr { display:flex; align-items:center; gap:5px; width:100%; margin-top:4px; padding:4px 8px; font-size:12px; color:#c62828; background:#fff; border:1px solid #ccc; border-radius:5px; } #lcClr:hover { background:#fdecea; }
+  #lc #lcClr { width:100%; height:auto; }
 </style>
 </head>
 <body>
@@ -67,6 +69,7 @@
       <label><input type="checkbox" id="cAx" checked><svg class="ic" style="color:#1e88e5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20L20 4"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="4" r="2"/></svg> Osie OSM</label>
       <hr><b>Edycja</b>
       <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button></div>
+      <button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:#e53935;width:15px;height:15px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Wyczyść</button>
     </div></div><div id="hint"></div></div>
   <div id="panel">
     <div id="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M8 3L4 21M16 3l4 18"/><path d="M12 4v3M12 10v4M12 17v3" stroke="#ffd54a"/></svg></span><span>Roads <i>and</i> Lanes</span></div>
@@ -857,7 +860,7 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
 }
 $('bLive').onclick = () => refreshLive();
 async function loadFresh() { if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
-$('lcLoad').onclick = loadFresh; $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
+$('lcLoad').onclick = loadFresh; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];

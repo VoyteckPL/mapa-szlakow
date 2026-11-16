@@ -230,14 +230,15 @@ function uiLanes(){const b=$('bar');b.innerHTML='';
 S.w=3.75;
 function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;if(VW[S.scene]){[K,OX,OY]=VW[S.scene];}else if(S.scene==='lanes'){K=Math.max(3,Math.min(10,H/190));OX=W/2-10*K;OY=H*0.04;}else{K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;}render();}
 let drag=null,pan=null;const ptrs=new Map();let pinch=null;
-function hit(e){const m=mpos(e);let best=null,bd=18;[['a',S.P.a],['b',S.P.b],['x',S.P.x]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<bd){bd=d;best=[k,i];}}));return best;}
+function hit(e){const m=mpos(e);let best=null,bd=18;{const q=w2s([0,0]),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<12)return['n',0,[(m[0]-OX)/K,(m[1]-OY)/K]];}[['a',S.P.a],['b',S.P.b],['x',S.P.x]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<bd){bd=d;best=[k,i];}}));return best;}
 const snapP=p=>{if(!S.snap)return p;const g=gridStep();return[Math.round(p[0]/g)*g,Math.round(p[1]/g)*g];};
 const mpos=e=>{const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];};
 function zoomAt(mx,my,f){const k=Math.max(2,Math.min(80,K*f));f=k/K;OX=mx-(mx-OX)*f;OY=my-(my-OY)*f;K=k;render();}
 cv.onpointerdown=e=>{cv.setPointerCapture(e.pointerId);ptrs.set(e.pointerId,mpos(e));if(ptrs.size===2){drag=null;pan=null;const [a,b]=[...ptrs.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1])};return;}if(!S.draw&&S.mode==='add'){addPointAt(mpos(e));return;}if(!S.draw&&S.mode==='del'){delPointAt(e);return;}if(S.draw){const m=mpos(e);S.draw.pts.push(snapP([(m[0]-OX)/K,(m[1]-OY)/K]));S.P[S.draw.k]=S.draw.pts.map(q=>q.slice());render();return;}drag=hit(e);if(!drag){const m=mpos(e);pan={x:m[0],y:m[1],ox:OX,oy:OY};}};
 cv.onpointermove=e=>{if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,mpos(e));
   if(pinch&&ptrs.size===2){const [a,b]=[...ptrs.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pinch.d>0)zoomAt((a[0]+b[0])/2,(a[1]+b[1])/2,d/pinch.d);pinch.d=d;return;}
-  if(drag){const m=mpos(e),p=snapP([(m[0]-OX)/K,(m[1]-OY)/K]);S.P[drag[0]][drag[1]]=p;render();}
+  if(drag&&drag[0]==='n'){const m=mpos(e),g=drag[2],d=[(m[0]-OX)/K-g[0],(m[1]-OY)/K-g[1]];for(const k of['a','b','x'])S.P[k]=S.P[k].map(q=>[q[0]-d[0],q[1]-d[1]]);if(S.geo){const cl=Math.cos(S.geo.lat*Math.PI/180);S.geo.lon+=d[0]/(111320*cl);S.geo.lat-=d[1]/110540;}OX+=d[0]*K;OY+=d[1]*K;render();}
+  else if(drag){const m=mpos(e),p=snapP([(m[0]-OX)/K,(m[1]-OY)/K]);S.P[drag[0]][drag[1]]=p;render();}
   else if(pan){const m=mpos(e);OX=pan.ox+m[0]-pan.x;OY=pan.oy+m[1]-pan.y;render();}};
 cv.onpointerup=cv.onpointercancel=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;drag=null;pan=null;};
 cv.onwheel=e=>{e.preventDefault();const m=mpos(e);zoomAt(m[0],m[1],Math.exp(-e.deltaY*0.0015));};

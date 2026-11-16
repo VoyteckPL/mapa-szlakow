@@ -707,7 +707,8 @@ $('bImp').onclick = async () => {
   if ((box[1] - box[0] + 1) * (box[3] - box[2] + 1) > 40) { say('Widok za duży – przybliż mapę.'); return; }
   say('Pobieram dane widoku…'); await loadOsmAround((la + lb) / 2, (lo + hi) / 2, box); push(); importView();
 };
-for (const id of ['cTile', 'cLay', 'cAx', 'cBlue', 'rA', 'bm']) $(id).oninput = () => render();
+try { const sv = JSON.parse(localStorage.getItem('edytor-podklad-v1') || 'null'); if (sv) { if (sv.bm && [...$('bm').options].some(o => o.value === sv.bm)) $('bm').value = sv.bm; if (typeof sv.tile === 'boolean') $('cTile').checked = sv.tile; } } catch (e) {} // zapamietany podklad
+for (const id of ['cTile', 'cLay', 'cAx', 'cBlue', 'rA', 'bm']) $(id).oninput = () => { try { localStorage.setItem('edytor-podklad-v1', JSON.stringify({ bm: $('bm').value, tile: $('cTile').checked })); } catch (e) {} render(); };
 $('cSm').oninput = () => touch(); $('fP').oninput = () => touch(); $('fT').oninput = () => { $('fTv').textContent = $('fT').value; touch(); }; $('fT2').oninput = () => { $('fT2v').textContent = $('fT2').value; touch(); }; $('fR').oninput = () => { $('fRv').textContent = $('fR').value; touch(); };
 $('bFinish').onclick = finishDraw; $('bCancel').onclick = () => setTool('sel');
 function finishDraw() { if (S.draw && S.draw.pts.length > 1) { push(); S.doc.road.push(newRoad(S.draw.pts, S.draw.nk)); S.sel = S.doc.road.length - 1; } setTool('sel'); save(); touch(); }

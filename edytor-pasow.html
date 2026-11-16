@@ -770,7 +770,7 @@ function forkJson(ri, vi) { // 3 drogi schodzace sie w wezle -> JSON w formacie 
   return JSON.stringify({ nt, xN, nX: X.l, lA: A.l, geo: { lat: +ll.lat.toFixed(7), lon: +ll.lon.toFixed(7) }, P: { x: X.P, a: A.P, b: B.P } });
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
-  const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
+  const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (true || EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
   const d = document.createElement('div'); d.id = 'vbar'; d.style.cssText = 'position:fixed;z-index:15;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
   if (S.vsel > 0 && S.vsel < r.pts.length - 1) { const b = document.createElement('button'); b.textContent = 'Rozdziel drogę w tym punkcie'; b.onclick = () => { const x = document.getElementById('bSplit'); if (x) x.click(); }; d.appendChild(b); }
   { const fj = (S.vsel === 0 || S.vsel === r.pts.length - 1) ? forkJson(S.sel, S.vsel) : null; if (fj) { const b = document.createElement('button'); b.textContent = 'Kopiuj rozjazd do szkieletu'; b.title = 'Skopiuj 3 drogi tego węzła; w piaskownicy kliknij „Wklej punkty”'; b.onclick = () => { (navigator.clipboard ? navigator.clipboard.writeText(fj) : Promise.reject()).then(() => { b.textContent = 'Skopiowano'; setTimeout(() => { b.textContent = 'Kopiuj rozjazd do szkieletu'; }, 1500); }, () => prompt('Skopiuj:', fj)); }; d.appendChild(b); } }

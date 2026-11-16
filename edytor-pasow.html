@@ -52,6 +52,15 @@
   @keyframes blk { 0%,100% { background:#fff; box-shadow:none; } 50% { background:#c8f7c5; box-shadow:0 0 0 3px #43a04788; } } #lcP .eb button.blink { animation:blk .5s ease-in-out 3; }
   #lcClr { display:flex; align-items:center; gap:5px; width:100%; margin-top:4px; padding:4px 8px; font-size:12px; color:#c62828; background:#fff; border:1px solid #ccc; border-radius:5px; } #lcClr:hover { background:#fdecea; }
   #lc #lcClr { width:100%; height:auto; }
+  #tabs, .tab, .tab-off { display:none !important; }
+  #lcSend { display:flex; align-items:center; gap:5px; width:100%; margin-top:4px; padding:4px 8px; font-size:12px; color:#1565c0; background:#fff; border:1px solid #ccc; border-radius:5px; } #lcSend:hover, #lcSend.act { background:#eef4fc; }
+  #lc #lcSend, #lc #oSend, #lc #oLog { width:100%; height:auto; }
+  #osmSub { margin-top:6px; padding-top:6px; border-top:1px solid #ddd; width:230px; font-size:12px; white-space:normal; }
+  #osmSub .sr { display:flex; align-items:center; gap:6px; margin:3px 0; } #osmSub .sr > span:first-child { width:56px; color:#555; flex:none; } #osmSub input { flex:1; min-width:0; width:auto; font-size:12px; padding:3px 5px; background:#fff; color:#333; border:1px solid #ccc; border-radius:4px; }
+  #osmSub .sr button { padding:3px 8px; font-size:12px; border:1px solid #ccc; border-radius:4px; background:#fff; color:#333; width:auto !important; } #oWho { color:#2e7d32; }
+  #oList { margin:5px 0; padding:5px 7px; background:#f4f7fb; border-radius:4px; color:#333; max-height:150px; overflow:auto; } #oList div { margin:1px 0; }
+  #oSend { padding:5px 8px; font-size:12px; font-weight:600; color:#fff !important; background:#1e88e5 !important; border:0 !important; border-radius:4px; } #oSend.blink { animation:blk .5s ease-in-out 3; }
+  #oSt { margin-top:4px; color:#555; }
 </style>
 </head>
 <body>
@@ -70,6 +79,15 @@
       <hr><b>Edycja</b>
       <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button></div>
       <button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:#e53935;width:15px;height:15px"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg> Wyczyść</button>
+      <button id="lcSend" title="Wyślij zmiany do OSM"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color:#1e88e5;width:15px;height:15px"><path d="M12 20V8M7 13l5-5 5 5M5 4h14"/></svg> Wyślij do OSM</button>
+      <div id="osmSub" style="display:none">
+        <div class="sr"><span>Client ID</span><input id="oCid" placeholder="z osm.org → Aplikacje OAuth 2"></div>
+        <div class="sr"><button id="oLog">Zaloguj</button><span id="oWho"></span></div>
+        <div class="sr"><span>Opis</span><input id="oCom" value="Zmiana liczby pasów / geometrii (dopasowanie do ortofoto)"></div>
+        <div id="oList"></div>
+        <button id="oSend">Wyślij</button>
+        <div id="oSt"></div>
+      </div>
     </div></div><div id="hint"></div></div>
   <div id="panel">
     <div id="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"><path d="M8 3L4 21M16 3l4 18"/><path d="M12 4v3M12 10v4M12 17v3" stroke="#ffd54a"/></svg></span><span>Roads <i>and</i> Lanes</span></div>
@@ -91,12 +109,7 @@
     <div id="props"></div>
     </div>
     <div class="tab" data-t="osm">
-    <details id="osmx" open><summary>Wyślij do OSM</summary>
-      <div class="row"><label>Client ID <input id="oCid" style="width:180px" placeholder="z osm.org → Aplikacje OAuth 2"></label><button id="oLog">Zaloguj</button><span id="oWho"></span></div>
-      <div class="row"><label>Opis zmiany <input id="oCom" style="width:230px" value="Wygładzenie geometrii rozjazdu (dopasowanie do ortofoto)"></label></div>
-      <div class="row"><button id="oSend">Wyślij do OSM</button><span id="oSt" style="font-size:12px"></span></div>
-      <div style="font-size:12px;opacity:.75">Wysyłane są przesunięte węzły osi OSM i zmienione tagi dróg (nie „render”). Wymaga zalogowania; wysyłka dopiero po drugim kliknięciu.</div>
-    </details>
+
     </div>
     <div class="tab" data-t="data">
     <details open><summary>Dane</summary>
@@ -860,7 +873,7 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
 }
 $('bLive').onclick = () => refreshLive();
 async function loadFresh() { if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
-$('lcLoad').onclick = loadFresh; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
+$('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];
@@ -998,12 +1011,12 @@ if (!EMBED) (() => {
   }
   function structCount() { let add = 0, del = 0, spl = 0; for (const id of new Set(S.doc.road.filter(r => r.osm).map(r => r.osm))) { const Wk = sent.get(id) || (osmWay(id) && osmWay(id).nk); if (!Wk) continue; const pl = structPlan(id, Wk); add += pl.added.length; del += pl.removed.length; spl += pl.news.length; } return { add, del, spl }; }
   function tagChanges() { const m = new Map(); S.doc.road.forEach(r => { if (r.osm && r.tg && Object.keys(r.tg).length) m.set(r.osm, { ...(m.get(r.osm) || {}), ...r.tg }); }); return m; }
-  let armed = 0; setInterval(() => { const n = moves().mv.size, t = tagChanges().size, sc = structCount(); if (!armed) st(n || t || sc.add || sc.del ? `Do wysłania: przesunięte węzły ${n}, nowe ${sc.add}, usunięte ${sc.del}, rozdzielenia ${sc.spl}, dróg z tagami ${t}` : 'Brak zmian do wysłania.'); }, 2000);
+  const showList = () => { const L = $('oList'); if (!L || $('osmSub').style.display === 'none') return; const { mv } = moves(), tg = tagChanges(), sc = structCount(), rows = []; if (mv.size) rows.push(`Przesunięte węzły: ${mv.size} (maks. ${Math.max(...[...mv.values()].map(v => v.d)).toFixed(1)} m)`); if (sc.add) rows.push(`Nowe węzły: ${sc.add}`); if (sc.del) rows.push(`Usunięte węzły: ${sc.del}`); if (sc.spl) rows.push(`Rozdzielenia dróg: ${sc.spl}`); for (const [id, t] of tg) rows.push(`Droga ${id}: ` + Object.entries(t).map(([k, v]) => `${k}=${v === null || v === '' ? '(usuń)' : v}`).join(', ')); L.innerHTML = rows.length ? '<b>Do wysłania:</b>' + rows.map(r => '<div>• ' + r.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</div>').join('') : 'Brak zmian do wysłania.'; };
+  window.__oList = showList; setInterval(showList, 1500);
   $('oSend').onclick = async () => {
     const T = tok(); if (!T) { st('Najpierw się zaloguj.'); return; }
     const { mv, conflict } = moves(), tgc = tagChanges(); const sc0 = structCount(); if (!mv.size && !tgc.size && !sc0.add && !sc0.del && !sc0.spl) { st('Nic do wysłania.'); return; }
-    if (!armed) { armed = Date.now(); const mx = mv.size ? Math.max(...[...mv.values()].map(v => v.d)) : 0; st(`Wysłać do OSM: nowych węzłów ${sc0.add}, usuniętych ${sc0.del}, rozdzieleń drogi ${sc0.spl}; przesuniętych ${mv.size}${mv.size ? ` (największe przesunięcie ${mx.toFixed(1)} m)` : ''}, tagów dróg ${tgc.size}${conflict ? `; ${conflict} węzłów ma sprzeczne pozycje` : ''}? Kliknij ponownie w ciągu 20 s.`); setTimeout(() => { armed = 0; }, 20000); return; }
-    if (Date.now() - armed > 20000) { armed = 0; return; } armed = 0; if (conflict) { st('Sprzeczne pozycje tego samego węzła – popraw i spróbuj ponownie.'); return; }
+    if (conflict) { st('Sprzeczne pozycje tego samego węzła – popraw i spróbuj ponownie.'); return; }
     const H = { Authorization: 'Bearer ' + T };
     try {
       st('Pobieram aktualne węzły z OSM…'); const wayIds = [...new Set([...[...mv.values()].flatMap(v => [...v.ways]), ...tgc.keys(), ...S.doc.road.filter(r => r.osm).map(r => r.osm)])], nodes = new Map(), wayEl = new Map(), byId = new Map();
@@ -1027,8 +1040,8 @@ if (!EMBED) (() => {
         newWays.forEach(nw => { if (nw.r.osm !== nw.id) sent.set(nw.r.osm, nw.refs.map(x => kOf.get(x))); });
         for (const [id, arr] of nodeRefs) { sent.set(id, arr.map(x => kOf.get(x))); S.doc.road.forEach(r => { if (r.osm === id) r.nk = r.nk.map((k, i) => k == null ? key(unproj(r.pts[i]).lon, unproj(r.pts[i]).lat) : k); }); } }
       for (const [w, nt] of wmod) { const o = osmWay(w.id); if (o) o.t = nt; S.doc.road.forEach(r => { if (r.osm === w.id) delete r.tg; }); }
-      save(); touch(); st(`Wysłano: nowych dróg ${newWays.length}, nowych węzłów ${crt.length}, usuniętych ${dls.length}, przesuniętych ${mod.length}, zmienionych dróg ${wmod.length}${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
-    } catch (e) { st('Błąd wysyłki: ' + e.message); }
+      save(); touch(); { const sb = $('oSend'); sb.classList.remove('blink'); void sb.offsetWidth; sb.classList.add('blink'); } st(`Wysłano: nowych dróg ${newWays.length}, nowych węzłów ${crt.length}, usuniętych ${dls.length}, przesuniętych ${mod.length}, zmienionych dróg ${wmod.length}${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
+    } catch (e) { st('Błąd wysyłki: ' + e.message); liveLog('start wysylka OSM'); liveLog('BLAD wysylki: ' + (e && e.stack || e)); }
   };
 })();
 </script>

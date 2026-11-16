@@ -262,7 +262,7 @@ function skelFork(X, yl, yr, C, R, gores) {
     o.Cd = Cd; o.nh = pre + N;
   }
   // zakaz nakladania: osie jezdni zjazdu nie moga zblizyc sie bardziej niz suma polowek szerokosci + margines; odsuwamy lagodnie (mniejsza odnoga ustepuje)
-  { const A = arms[0], B = arms[1], nA = A.Cd.length, nB = B.Cd.length, hs = (A.l + B.l) * w / 2, CL = 0, sh = A.straight !== B.straight ? (A.straight ? [0, 1] : [1, 0]) : (A.l === B.l ? [0.5, 0.5] : (A.l < B.l ? [1, 0] : [0, 1]));
+  if (arms[0].l + arms[1].l !== nX + 1) { const A = arms[0], B = arms[1], nA = A.Cd.length, nB = B.Cd.length, hs = (A.l + B.l) * w / 2, CL = 0, sh = A.straight !== B.straight ? (A.straight ? [0, 1] : [1, 0]) : (A.l === B.l ? [0.5, 0.5] : (A.l < B.l ? [1, 0] : [0, 1]));
     const pA = new Array(nA).fill(0), pB = new Array(nB).fill(0), dirA = new Array(nA), dirB = new Array(nB); let sA2 = 0;
     for (let i = 0; i < nA; i++) { if (i) sA2 += Math.hypot(A.Cd[i][0] - A.Cd[i - 1][0], A.Cd[i][1] - A.Cd[i - 1][1]); let bj = Math.min(nB - 1, i), bd = 1e9; for (let j = Math.max(0, i - 80); j < Math.min(nB, i + 80); j++) { const d = Math.hypot(A.Cd[i][0] - B.Cd[j][0], A.Cd[i][1] - B.Cd[j][1]); if (d < bd) { bd = d; bj = j; } }
       const need = hs + CL * sm5(Math.max(0, sA2 - 6) / 20), def = Math.max(0, need - bd); if (def > 0) { const v = nrm(sub(A.Cd[i], B.Cd[bj])); pA[i] = Math.max(pA[i], def * sh[0]); pB[bj] = Math.max(pB[bj], def * sh[1]); dirA[i] = v; dirB[bj] = mul(v, -1); } }
@@ -457,7 +457,7 @@ function layout() {
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const NL = Math.max(1, r.lanes | 0), nb = NL - (r.oneway ? NL : r.nf);
       if (parts.length === (r.oneway ? NL : r.nf) && len > 25) {
-        for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 60; sa += 21, cnt++) { // strzałki co ok. 21 m na calym odcinku z pelna liczba pasow, liczac od konca drogi
+        for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 60; sa += (c.skipIn ? 38 : 21), cnt++) { // strzałki co ok. 21 m na calym odcinku z pelna liczba pasow, liczac od konca drogi
           const s = len - sa, p = atS(Q, c.cum, s), p2 = atS(Q, c.cum, s + 1), dx = p2[0] - p[0], dy = p2[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
           let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - s); if (dd < bd) { bd = dd; jn = j; } }
           const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj; // krawędź lewa wg faktycznej geometrii (offset, poszerzenie)

@@ -72,6 +72,14 @@ function build(){
     for(let k=iT+1;k<R.P.length;k++)C.push(R.P[k]);
     const tc=tangents(C);return{C,tc,W,l:o.l,sg:o.sg,L:offsetLine(C,tc,C.map(()=>W/2)),Rr:offsetLine(C,tc,C.map(()=>-W/2)),ax:R.P};};
   const a=arm(arms[0]),b=arm(arms[1]);
+  // zakaz nakladania: osie odnog nie zblizaja sie bardziej niz suma polowek szerokosci (krawedz w krawedz); mniejsza odnoga ustepuje, odsuniecie lagodne
+  {const hs=(a.l+b.l)*w/2,sh=a.l===b.l?[0.5,0.5]:(a.l<b.l?[1,0]:[0,1]),nA=a.C.length,nB=b.C.length,pA=new Array(nA).fill(0),pB=new Array(nB).fill(0),dA=new Array(nA),dB=new Array(nB);
+   for(let i=0;i<nA;i++){let bj=Math.min(nB-1,i),bd=1e9;for(let j=Math.max(0,i-80);j<Math.min(nB,i+80);j++){const d=Math.hypot(a.C[i][0]-b.C[j][0],a.C[i][1]-b.C[j][1]);if(d<bd){bd=d;bj=j;}}
+     const def=Math.max(0,hs-bd);if(def>0){const v=nrm(sub(a.C[i],b.C[bj]));pA[i]=Math.max(pA[i],def*sh[0]);pB[bj]=Math.max(pB[bj],def*sh[1]);dA[i]=v;dB[bj]=mul(v,-1);}}
+   const spread=P=>{const n=P.length,r=10;let Q=P.map((v,i)=>{let m=0;for(let k=Math.max(0,i-r);k<=Math.min(n-1,i+r);k++)m=Math.max(m,P[k]);return m;});for(let it=0;it<4;it++){const Z=Q.slice();for(let i=0;i<n;i++){let s2=0,c=0;for(let k=Math.max(0,i-8);k<=Math.min(n-1,i+8);k++){s2+=Q[k];c++;}Z[i]=s2/c;}Q=Z;}return Q;};
+   const apply=(O,q,dirs)=>{const n=O.C.length,NN=O.C.map((_,i)=>nOf(nrm(sub(O.C[Math.min(n-1,i+1)],O.C[Math.max(0,i-1)]))));let bi=-1,bm=0;for(let i=0;i<n;i++)if(dirs[i]&&q[i]>bm){bm=q[i];bi=i;}if(bi<0)return;const sg=NN[bi][0]*dirs[bi][0]+NN[bi][1]*dirs[bi][1]>=0?1:-1;
+     for(let i=0;i<n;i++)if(q[i]>0.005)O.C[i]=[O.C[i][0]+NN[i][0]*sg*q[i],O.C[i][1]+NN[i][1]*sg*q[i]];O.tc=tangents(O.C);O.L=offsetLine(O.C,O.tc,O.C.map(()=>O.W/2));O.Rr=offsetLine(O.C,O.tc,O.C.map(()=>-O.W/2));};
+   apply(a,spread(pA),dA);apply(b,spread(pB),dB);}
   // droga wjazdowa: boki w odleglosci (wzgledem osi) -xN .. nX*w-xN wzdluz nE (nOf(tX) = -nE)
   const xoff=q=>offsetLine(X.P,tX,X.P.map(()=>-q));
   return{a,b,x:{P:X.P,t:tX,L:xoff(-xN),R:xoff(nX*w-xN),off:xoff,xN},nE,w,nX};

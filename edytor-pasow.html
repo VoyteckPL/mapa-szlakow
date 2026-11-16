@@ -871,13 +871,19 @@ function pzApply(F, plan) {
 function pzSection(r, mut, bind) {
   if (S.vsel < 0 || !r.pts[S.vsel]) return ''; const F = pzDetect(r.pts[S.vsel]); if (!F) return '';
   const cfg = PZ_SET[F.type], th = PZ.th != null && PZ.key === F.node.join() ? PZ.th : pzDefault(F), plan = pzPlan(F, th), nm = F.type === 'B' ? ['lewa', 'prawa'] : ['na wprost', 'zjazd'];
-  const row = (lab, br, P0, pl) => `<div class="small"><b>${lab}</b> (${br.hw})<br>teraz: ${pzEval(F, br, P0)}<br>po: ${pzEval(F, br, pl.Q)}${pl.mx > 0.3 ? ` · przesunięcie do ${pl.mx.toFixed(1)} m` : ''}${pl.far ? ' · <b style="color:#e58a00">oś za płaska: zjazd odsunięty, sprawdź z ortofoto</b>' : ''}</div>`;
-  bind.push(() => { $('pzTh').onchange = () => { PZ.key = F.node.join(); PZ.th = Math.min(cfg.hi, Math.max(cfg.lo, +$('pzTh').value)); props(); }; $('pzGo').onclick = () => mut(() => { pzApply(F, pzPlan(F, th)); PZ.th = null; }); });
-  return `<details open><summary>Preset zjazdu: ${cfg.name}</summary>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
-    + `<div class="row"><label>${F.type === 'B' ? 'kąt każdej gałęzi' : 'kąt zjazdu'} [°] <input id="pzTh" type="number" min="${cfg.lo}" max="${cfg.hi}" step="1" value="${th}" style="width:60px"></label><button id="pzGo">Popraw geometrię</button></div>`
-    + `<div class="small">G = GraphHopper, V = Valhalla, O = OSRM (kąt względem wjazdu, + w prawo). Węzeł rozwidlenia zostaje; ${F.type === 'B' ? 'obie gałęzie' : 'zjazd'}: pierwsze ${cfg.ew} m pod zadanym kątem, dalej płynnie do ${cfg.fade} m${cfg.mw ? '; na wprost: węzły w pierwszych ' + cfg.mw + ' m w linii prostej' : ''}. Cofnij: Ctrl+Z.</div></details>`;
+  const row = (lab, br, P0, pl) => `<div class="small" style="margin-top:3px"><b>${lab}</b> (${br.hw})<br>teraz: ${pzEval(F, br, P0)}<br>po: ${pzEval(F, br, pl.Q)}${pl.mx > 0.3 ? ` · przesunięcie do ${pl.mx.toFixed(1)} m` : ''}${pl.far ? ' · <b style="color:#e58a00">oś za płaska: zjazd odsunięty, sprawdź z ortofoto</b>' : ''}</div>`;
+  bind.push(() => { $('pzTh').onchange = () => { PZ.key = F.node.join(); PZ.th = Math.min(cfg.hi, Math.max(cfg.lo, +$('pzTh').value)); props(); }; $('pzGo').onclick = () => mut(() => { pzApply(F, pzPlan(F, th)); PZ.th = null; }); $('pzX').onclick = () => { S.vsel = -1; ui(); touch(); }; });
+  const tip = `G = GraphHopper, V = Valhalla, O = OSRM (kąt względem wjazdu, + w prawo). Węzeł rozwidlenia zostaje; ${F.type === 'B' ? 'obie gałęzie' : 'zjazd'}: pod zadanym kątem od węzła${cfg.mw ? '; na wprost: węzły w pierwszych ' + cfg.mw + ' m w linii prostej' : ''}. Cofnij: Ctrl+Z / ↶ Cofnij.`;
+  return `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1" title="${tip}">Preset ${cfg.name} ⓘ</b><button id="pzX" style="padding:2px 8px">×</button></div>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
+    + `<div class="row" style="margin-top:4px"><label>${F.type === 'B' ? 'kąt gałęzi' : 'kąt zjazdu'} <input id="pzTh" type="number" min="${cfg.lo}" max="${cfg.hi}" step="1" value="${th}" style="width:56px">°</label><button id="pzGo" class="on">Popraw geometrię</button></div>`;
 }
 const PZ = { th: null, key: '' };
+function pzBar(r, mut) { // plywajacy pasek presetu nad mapa (panel „Wybrana droga” jest ukryty); dziala tez na telefonie
+  const o = document.getElementById('pzbar'); if (o) o.remove(); if (!r || S.tool !== 'sel' || EMBED) return;
+  const bind = [], h = pzSection(r, mut, bind); if (!h) return;
+  const d = document.createElement('div'); d.id = 'pzbar'; d.style.cssText = 'position:fixed;z-index:16;top:64px;right:10px;max-width:min(360px,calc(100vw - 20px));max-height:45vh;overflow:auto;padding:8px 10px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px';
+  d.innerHTML = h; d.onpointerdown = e => e.stopPropagation(); document.body.appendChild(d); bind.forEach(f => f());
+}
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (true || EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
   const d = document.createElement('div'); d.id = 'vbar'; d.style.cssText = 'position:fixed;z-index:15;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
@@ -889,18 +895,17 @@ function showTab(t) { window.__tab = t; document.querySelectorAll('#tabs button'
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 (() => { let t = 'osm'; try { t = localStorage.getItem('edytor-tab-v1') || 'osm'; } catch (e) {} showTab(t === 'osm' || t === 'data' ? t : 'osm'); })();
 function props() {
-  const el = $('props'), r = S.doc.road[S.sel]; window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
+  const el = $('props'), r = S.doc.road[S.sel]; window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); pzBar(null); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
   const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { r[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${r[key] ? 'checked' : ''}> ${label}</label>`; };
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { const N = Math.max(1, Math.round(v)); if (r.osm) { r.tg = r.tg || {}; const b = baseTags(r).lanes || ''; if (String(N) === b) delete r.tg.lanes; else r.tg.lanes = String(N); if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); r.lanes = N; } else r.lanes = N; })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'
     + chk('jednokierunkowa', 'oneway') + chk('pasy (linie)', 'marked') + chk('krawędziowe', 'edge') + chk('krawężnik', 'kerb')
     + `<select id="pc">${['auto', 'p1', 'p2', 'p4', 'brak'].map(m => `<option ${r.centre === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div><div class="small">linia środkowa. Szerokość = pasy × szer. pasa.</div><div class="row">`
     + `<button id="bRev">Odwróć kierunek</button>${r.rp ? '<button id="bRz">Zeruj render</button>' : ''}${S.vsel >= 0 ? '<button id="bDelV">Usuń punkt</button>' : ''}${S.vsel > 0 && S.vsel < r.pts.length - 1 ? '<button id="bSplit">Rozdziel drogę w punkcie</button>' : ''}<button id="bDel" class="warn">Usuń drogę</button></div>`;
-  h += pzSection(r, mut, bind);
   if (r.osm) h += laneEditor(r, mut, bind);
   if (r.osm) { const bt = baseTags(r), et = effTags(r); h += `<details ${r.tg && Object.keys(r.tg).length ? 'open' : ''}><summary>Tagi OSM tej drogi${r.tg && Object.keys(r.tg).length ? ' (zmienione: ' + Object.keys(r.tg).length + ')' : ''}</summary>` + TAGK.map(([k, lab], i) => { const ch = r.tg && k in r.tg; return `<div class="row"><label style="${ch ? 'color:#e58a00;font-weight:600' : ''}">${lab} <input id="tg${i}" data-k="${k}" value="${(et[k] || '').replace(/"/g, '&quot;')}" placeholder="${bt[k] ? '' : 'brak tagu'}" style="width:190px"></label></div>`; }).join('') + `<div class="small">Zmiana przelicza render od razu. Do OSM trafia przez „Wyślij do OSM” (zmieniane są tylko pola oznaczone na pomarańczowo).</div>` + (r.tg && Object.keys(r.tg).length ? '<div class="row"><button id="bTgReset">Cofnij tagi</button></div>' : '') + '</details>';
     bind.push(() => { TAGK.forEach(([k], i) => { const inp = $('tg' + i); if (!inp) return; inp.onchange = () => mut(() => { const v = inp.value.trim(), b = baseTags(r)[k] || ''; r.tg = r.tg || {}; if (v === b) delete r.tg[k]; else r.tg[k] = v === '' ? null : v; if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); }); }); const br = $('bTgReset'); if (br) br.onclick = () => mut(() => { delete r.tg; applyTags(r); }); }); }
-  el.innerHTML = h; bind.forEach(f => f()); setTimeout(vbar, 0);
+  el.innerHTML = h; bind.forEach(f => f()); setTimeout(vbar, 0); pzBar(r, mut);
   $('pc').onchange = () => mut(() => { r.centre = $('pc').value; });
   if ($('bRz')) $('bRz').onclick = () => mut(() => { delete r.rp; });
   $('bRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });

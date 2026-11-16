@@ -294,10 +294,17 @@ function skelLanes(G, C, R) {
   const lay = (k, e) => k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
   let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { const cost = Math.abs(N[0] - Wu[0]); if (!best || cost < best.cost) best = { N, cost }; } } const Nu = best ? best.N : lay(n, 1);
   const toD = I => sf > 0 ? I : [-I[1], -I[0]], [Lm, Rm] = toD(Wu), [Ln, Rn] = toD(Nu); // w ramie wiekszej drogi (os. od wezla, +d = prawo)
-  const set = (e, dLo, dRo, sgn) => { const c = C[e.i], N = c.Q.length; c.d = []; c.w = []; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j, dc = (dLo[jo] + dRo[jo]) / 2; c.d[j] = e.st ? dc : -dc; c.w[j] = dRo[jo] - dLo[jo]; } c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = { sign: (e.st ? 1 : -1) * sgn, lw: w }; };
+  const set = (e, dLo, dRo, sgn) => { const c = C[e.i], N = c.Q.length, Lq = [], Rq = []; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j; Lq[j] = e.st ? dLo[jo] : -dRo[jo]; Rq[j] = e.st ? dRo[jo] : -dLo[jo]; }
+    (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { L: Lq, R: Rq }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = { sign: 1, lw: w }; };
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   set(we, ow.cum.map(s => Ln + (Lm - Ln) * sm(s / T)), ow.cum.map(s => Rn + (Rm - Rn) * sm(s / T)), 1);
   const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), -1);
+}
+
+// laczenie wkladow z obu koncow drogi (kazdy koniec moze miec zmiane liczby pasow): na srodku plynne mieszanie profili
+function finalizeLanes(C, R) {
+  C.forEach((c, i) => { if (!c.contrib) return; const N = c.Q.length, Ln = c.cum[N - 1] || 1, W0 = rw(R[i]), dfl = { L: c.Q.map(() => -W0 / 2), R: c.Q.map(() => W0 / 2) }, A = c.contrib.A || dfl, B = c.contrib.B || dfl;
+    c.d = []; c.w = []; for (let j = 0; j < N; j++) { const wB = sm((c.cum[j] / Ln - 0.35) / 0.3), wA = 1 - wB, L = wA * A.L[j] + wB * B.L[j], Rr = wA * A.R[j] + wB * B.R[j]; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
 }
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
@@ -342,6 +349,7 @@ function layout() {
       }
     }
   }
+  finalizeLanes(C, R);
   // cięcia linii na skrzyżowaniach (węzły niezałatwione jako zlanie/zwężenie)
   const polys = [], lines = [], arrows = preAr.slice();
   forkLinks.forEach(l => lines.push(l));

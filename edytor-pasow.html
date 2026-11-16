@@ -840,30 +840,6 @@ function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
     else { type = 'B'; main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } } // B: main = lewa, exit = prawa
   return { node, X, main, exit, type, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
 }
-const PZ_SET = { A: { name: 'A · zjazd z autostrady/ekspresowej', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, C: { name: 'C · odgałęzienie pasa 3→2+1', lo: 22, hi: 30, mw: 60, ew: 25, fade: 60 }, D: { name: 'D · zjazd na zwykłej drodze', lo: 30, hi: 40, mw: 25, ew: 25, fade: 45 }, B: { name: 'B · rozwidlenie równorzędne', lo: 12, hi: 18, mw: 0, ew: 25, fade: 60 } };
-function pzRay(a, F, th, cfg) { // galaz: od wezla po promieniu pod katem th az do przeciecia z oryginalna osia (min. ew m), dalej oryginal
-  const node = F.node, P = a.P.map(q => q.slice()), c = cumOf(P), v = [Math.cos((F.din + th) * PZ_R), Math.sin((F.din + th) * PZ_R)], crs = q => v[0] * (q[1] - node[1]) - v[1] * (q[0] - node[0]);
-  let D = 0; for (let i = 1; i < P.length; i++) { if (c[i - 1] < cfg.ew) continue; const s0 = crs(P[i - 1]), s1 = crs(P[i]); if (s0 === 0 || s0 * s1 < 0) { const t = s0 / (s0 - s1), q = [P[i - 1][0] + t * (P[i][0] - P[i - 1][0]), P[i - 1][1] + t * (P[i][1] - P[i - 1][1])]; D = dist(q, node); break; } }
-  const far = !D || D > 160; if (far) D = cfg.ew + 6; /* brak przeciecia: promien tylko do ew, dalej wygaszanie przesuniecia */
-  let ins = null; if (!c.some((s, i) => i > 0 && s >= cfg.ew - 8 && s <= cfg.ew + 5) && c[c.length - 1] > cfg.ew + 5) { const k = c.findIndex(s => s > cfg.ew); ins = { k, p: atS(P, c, cfg.ew) }; P.splice(k, 0, ins.p.slice()); c.splice(k, 0, cfg.ew); }
-  const Q = P.map(q => q.slice()); let last = 0;
-  for (let i = 1; i < P.length; i++) { const t = (P[i][0] - node[0]) * v[0] + (P[i][1] - node[1]) * v[1]; if (t > D + 0.01 || c[i] > D + 30) break; Q[i] = [node[0] + v[0] * t, node[1] + v[1] * t]; last = i; }
-  let mx = 0; if (far) { const dl = [Q[last][0] - P[last][0], Q[last][1] - P[last][1]], Lf = Math.max(cfg.fade, 15 * Math.hypot(dl[0], dl[1])); /* przesuniecie konca promienia wygaszane lagodnie (smoothstep) na Lf m */
-    for (let i = last + 1; i < P.length && c[i] < c[last] + Lf; i++) { const t = (c[i] - c[last]) / Lf, f = 1 - t * t * (3 - 2 * t); Q[i] = [P[i][0] + dl[0] * f, P[i][1] + dl[1] * f]; } }
-  Q.forEach((q, i) => { mx = Math.max(mx, dist(q, P[i])); });
-  return { Q, ins, mx, far };
-}
-function pzStraight(a, F, cfg) { // galaz na wprost: wezly w pierwszych mw m rzutowane na cieciwe wezel -> punkt na mw m
-  const node = F.node, P = a.P, c = cumOf(P), e = pzAt(P, cfg.mw), u = [e[0] - node[0], e[1] - node[1]], l = Math.hypot(u[0], u[1]) || 1;
-  const Q = P.map((q, i) => { if (i === 0 || c[i] >= cfg.mw) return q.slice(); const t = ((q[0] - node[0]) * u[0] + (q[1] - node[1]) * u[1]) / l; return [node[0] + u[0] / l * t, node[1] + u[1] / l * t]; });
-  return { Q, ins: null, mx: Math.max(...Q.map((q, i) => dist(q, P[i]))), far: false };
-}
-function pzPlan(F, th) { // th = kat zjazdu (B: polowa rozwarcia)
-  const cfg = PZ_SET[F.type];
-  if (F.type === 'B') return { main: pzRay(F.main, F, -th, cfg), exit: pzRay(F.exit, F, th, cfg) };
-  const sg = F.a0.exit >= F.a0.main ? 1 : -1; return { main: pzStraight(F.main, F, cfg), exit: pzRay(F.exit, F, sg * th, cfg) };
-}
-function pzDefault(F) { const cfg = PZ_SET[F.type], a = F.type === 'B' ? Math.abs(F.a0.exit - F.a0.main) / 2 : Math.abs(F.a0.exit); return Math.round(Math.min(cfg.hi, Math.max(cfg.lo, a))); }
 function pzAng(F, br, P) { return ['G', 'V', 'O'].map(e => { const din = pzB(pzEng(e, F.X.P, F.X.hw, F.X.lanes), F.node), a = pzN(pzB(F.node, pzEng(e, P || br.P, br.hw, br.lanes)) - din); return { e, a, c: PZ_T[e](Math.abs(a)) }; }); }
 function pzEval(F, br, P) { return pzAng(F, br, P).map(x => x.e + ' ' + (x.a >= 0 ? '+' : '') + x.a.toFixed(0) + '° ' + x.c).join(' · '); }
 var PZI = []; // wykryte problemy rozwidlen (autostrady/ekspresowe i drogi z turn:lanes through)
@@ -880,26 +856,6 @@ function pzScan() {
     out.push({ p: p.slice(), lvl, msg: F.type + ': ' + (lvl ? msg.join(', ') : 'OK ' + ag) }); } });
   return out;
 }
-function pzApply(F, plan) {
-  for (const k of ['main', 'exit']) { const a = F[k], { Q, ins } = plan[k];
-    a.refs.forEach((f, i) => { const qi = ins && i >= ins.k ? i + 1 : i, q = Q[qi], o = a.P[i]; if (i > 0 && dist(q, o) > 0.01) { moveNode(S.doc.road[f.ri], f.vi, q[0], q[1]); S.doc.road.forEach(rr => rr.pts.forEach((p, j) => { if (dist(p, o) < 0.05) moveNode(rr, j, q[0], q[1]); })); } }); /* wspolne konce drog bez klucza wezla tez */
-    if (ins) { const f = a.refs[ins.k], r = S.doc.road[f.ri], at = f.dir === 1 ? f.vi : f.vi + 1, q = Q[ins.k]; r.pts.splice(at, 0, q.slice()); r.nk.splice(at, 0, null); if (r.rp) r.rp.splice(at, 0, q.slice()); } }
-}
-function pzForce(F, t) { // recznie wybrany preset: B = lewa/prawa, A/C/D = na wprost (mniejszy kat) + zjazd
-  if (t === F.type) return F; const Y = [F.main, F.exit], a = Y.map(F.ang); let m, e;
-  if (t === 'B') { [m, e] = a[0] < a[1] ? Y : [Y[1], Y[0]]; } else if (F.type === 'B') { [m, e] = Math.abs(a[0]) <= Math.abs(a[1]) ? Y : [Y[1], Y[0]]; } else { m = F.main; e = F.exit; }
-  return { ...F, type: t, main: m, exit: e, a0: { main: F.ang(m), exit: F.ang(e) } };
-}
-function pzSection(r, mut, bind) {
-  if (S.vsel < 0 || !r.pts[S.vsel]) return ''; let F = pzDetect(r.pts[S.vsel]); if (!F) return '';
-  if (PZ.key !== F.node.join()) { PZ.key = F.node.join(); PZ.th = null; PZ.type = null; } if (PZ.type) F = pzForce(F, PZ.type);
-  const cfg = PZ_SET[F.type], th = PZ.th != null ? PZ.th : pzDefault(F), plan = pzPlan(F, th), nm = F.type === 'B' ? ['lewa', 'prawa'] : ['na wprost', 'zjazd'];
-  const row = (lab, br, P0, pl) => `<div class="small" style="margin-top:3px"><b>${lab}</b> (${br.hw})<br>teraz: ${pzEval(F, br, P0)}<br>po: ${pzEval(F, br, pl.Q)}${pl.mx > 0.3 ? ` · przesunięcie do ${pl.mx.toFixed(1)} m` : ''}${pl.far ? ' · <b style="color:#e58a00">oś za płaska: zjazd odsunięty, sprawdź z ortofoto</b>' : ''}</div>`;
-  bind.push(() => { document.querySelectorAll('#pzbar [data-pz]').forEach(b => b.onclick = () => { PZ.type = b.dataset.pz; PZ.th = null; props(); }); $('pzTh').onchange = () => { PZ.th = Math.min(cfg.hi, Math.max(cfg.lo, +$('pzTh').value)); props(); }; $('pzGo').onclick = () => mut(() => { pzApply(F, pzPlan(F, th)); PZ.th = null; }); $('pzX').onclick = () => { S.vsel = -1; ui(); touch(); }; });
-  const tip = `G = GraphHopper, V = Valhalla, O = OSRM (kąt względem wjazdu, + w prawo). Węzeł rozwidlenia zostaje; ${F.type === 'B' ? 'obie gałęzie' : 'zjazd'}: pod zadanym kątem od węzła${cfg.mw ? '; na wprost: węzły w pierwszych ' + cfg.mw + ' m w linii prostej' : ''}. Cofnij: Ctrl+Z / ↶ Cofnij. * = wykryty automatycznie. A zjazd z autostrady/ekspresowej (22–30°), B rozwidlenie równorzędne (±12–18°), C 3→2+1 (22–30°), D zjazd na zwykłej drodze (30–40°).`;
-  return `<div style="display:flex;align-items:center;gap:6px"><b style="flex:1" title="${tip}">Preset ${cfg.name} ⓘ</b><button id="pzX" style="padding:2px 8px">×</button></div><div class="row" style="margin:4px 0;gap:4px">` + ['A', 'B', 'C', 'D'].map(t => `<button data-pz="${t}" class="${t === F.type ? 'on' : ''}" title="${PZ_SET[t].name}" style="padding:3px 10px">${t}${t === F.auto ? '*' : ''}</button>`).join('') + `</div>` + row(nm[0], F.main, F.main.P, plan.main) + row(nm[1], F.exit, F.exit.P, plan.exit)
-    + `<div class="row" style="margin-top:4px"><label>${F.type === 'B' ? 'kąt gałęzi' : 'kąt zjazdu'} <input id="pzTh" type="number" min="${cfg.lo}" max="${cfg.hi}" step="1" value="${th}" style="width:56px">°</label><button id="pzGo" class="on">Popraw geometrię</button></div>`;
-}
 var PZ = { th: null, key: '', type: null, live: null };
 function pzSnap(dr, w) { // przeciaganie wezla galezi przy rozwidleniu: kat na zywo + przyciaganie do katow presetu
   for (const z of PZI) { if (dist(z.p, w) > 120) continue; const F = pzDetect(z.p); if (!F) continue;
@@ -912,12 +868,6 @@ function pzSnap(dr, w) { // przeciaganie wezla galezi przy rozwidleniu: kat na z
       const P = br.P.slice(); P[i] = q; return { w: q, node: F.node, a: ang, snap: best != null, eng: pzEval(F, br, P), lab: k === 'main' ? (F.type === 'B' ? 'lewa' : 'na wprost') : (F.type === 'B' ? 'prawa' : 'zjazd') }; } }
   return null;
 }
-function pzBar(r, mut) { // plywajacy pasek presetu nad mapa (panel „Wybrana droga” jest ukryty); dziala tez na telefonie
-  const o = document.getElementById('pzbar'); if (o) o.remove(); if (!r || S.tool !== 'sel' || EMBED) return;
-  const bind = [], h = pzSection(r, mut, bind); if (!h) return;
-  const d = document.createElement('div'); d.id = 'pzbar'; d.style.cssText = 'position:fixed;z-index:16;top:64px;right:10px;max-width:min(360px,calc(100vw - 20px));max-height:45vh;overflow:auto;padding:8px 10px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:13px';
-  d.innerHTML = h; d.onpointerdown = e => e.stopPropagation(); document.body.appendChild(d); bind.forEach(f => f());
-}
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (true || EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
   const d = document.createElement('div'); d.id = 'vbar'; d.style.cssText = 'position:fixed;z-index:15;bottom:44px;left:50%;transform:translateX(-50%);display:flex;gap:6px;padding:6px;background:var(--pn);color:var(--tx);border:1px solid var(--bd);border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.35)';
@@ -929,7 +879,7 @@ function showTab(t) { window.__tab = t; document.querySelectorAll('#tabs button'
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => showTab(b.dataset.t));
 (() => { let t = 'osm'; try { t = localStorage.getItem('edytor-tab-v1') || 'osm'; } catch (e) {} showTab(t === 'osm' || t === 'data' ? t : 'osm'); })();
 function props() {
-  const el = $('props'), r = S.doc.road[S.sel]; window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); pzBar(null); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
+  const el = $('props'), r = S.doc.road[S.sel]; window.__ls = S.sel; if (!r) { setTimeout(vbar, 0); el.innerHTML = '<div class="small">Kliknij drogę (lub konkretny pas) na mapie, żeby edytować jej pasy, strzałki i tagi.</div>'; return; }
   const mut = f => { push(); f(); save(); ui(); touch(); }, bind = [];
   const chk = (label, key) => { const id = 'c' + key; bind.push(() => { $(id).onchange = () => mut(() => { r[key] = $(id).checked; }); }); return `<label><input type="checkbox" id="${id}" ${r[key] ? 'checked' : ''}> ${label}</label>`; };
   let h = `<h4>Droga ${r.name || ''} ${r.hw ? '(' + r.hw + ')' : ''}</h4><div class="row">` + numRow('pasy', r.lanes, v => mut(() => { const N = Math.max(1, Math.round(v)); if (r.osm) { r.tg = r.tg || {}; const b = baseTags(r).lanes || ''; if (String(N) === b) delete r.tg.lanes; else r.tg.lanes = String(N); if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); r.lanes = N; } else r.lanes = N; })) + numRow('szer. pasa [m]', r.lw, v => mut(() => { r.lw = v; }), 0.25) + '</div><div class="row">'
@@ -939,7 +889,7 @@ function props() {
   if (r.osm) h += laneEditor(r, mut, bind);
   if (r.osm) { const bt = baseTags(r), et = effTags(r); h += `<details ${r.tg && Object.keys(r.tg).length ? 'open' : ''}><summary>Tagi OSM tej drogi${r.tg && Object.keys(r.tg).length ? ' (zmienione: ' + Object.keys(r.tg).length + ')' : ''}</summary>` + TAGK.map(([k, lab], i) => { const ch = r.tg && k in r.tg; return `<div class="row"><label style="${ch ? 'color:#e58a00;font-weight:600' : ''}">${lab} <input id="tg${i}" data-k="${k}" value="${(et[k] || '').replace(/"/g, '&quot;')}" placeholder="${bt[k] ? '' : 'brak tagu'}" style="width:190px"></label></div>`; }).join('') + `<div class="small">Zmiana przelicza render od razu. Do OSM trafia przez „Wyślij do OSM” (zmieniane są tylko pola oznaczone na pomarańczowo).</div>` + (r.tg && Object.keys(r.tg).length ? '<div class="row"><button id="bTgReset">Cofnij tagi</button></div>' : '') + '</details>';
     bind.push(() => { TAGK.forEach(([k], i) => { const inp = $('tg' + i); if (!inp) return; inp.onchange = () => mut(() => { const v = inp.value.trim(), b = baseTags(r)[k] || ''; r.tg = r.tg || {}; if (v === b) delete r.tg[k]; else r.tg[k] = v === '' ? null : v; if (!Object.keys(r.tg).length) delete r.tg; applyTags(r); }); }); const br = $('bTgReset'); if (br) br.onclick = () => mut(() => { delete r.tg; applyTags(r); }); }); }
-  el.innerHTML = h; bind.forEach(f => f()); setTimeout(vbar, 0); pzBar(r, mut);
+  el.innerHTML = h; bind.forEach(f => f()); setTimeout(vbar, 0);
   $('pc').onchange = () => mut(() => { r.centre = $('pc').value; });
   if ($('bRz')) $('bRz').onclick = () => mut(() => { delete r.rp; });
   $('bRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });
@@ -1027,7 +977,6 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
   const p = evp(e), w = s2w(p);
-  if (S.tool === 'sel' && !EMBED && ptrs.size === 1) { const z = PZI.find(z => dist(w2s(z.p), p) < 16); if (z) { for (let i = 0; i < S.doc.road.length; i++) { const r = S.doc.road[i], j = r.pts.findIndex(q => dist(q, z.p) < 0.4); if (j >= 0) { S.sel = i; S.vsel = j; break; } } drag = null; ui(); render(); return; } }
   if (e.button === 1 || e.button === 2 || S.tool === 'pan') { drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; return; }
   if (S.tool === 'rend') {
     const sr = S.doc.road[S.sel];

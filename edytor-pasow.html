@@ -76,7 +76,7 @@ const $ = id => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d'), off = document.createElement('canvas'), octx = off.getContext('2d');
 // Rejestr typow rozjazdow renderowanych specjalnie. Kazdy typ: gdzie stosowany (hw = regex na highway drog w wezle), co rysuje.
 // Pozostale wezly ida po zwyklej osi OSM. Kolejne typy dopisujemy tutaj.
-const FORK_TYPES = { 'rozjazd-n': { on: true, opis: 'n pasow -> a+b (szkielet, offset dla nieparzystych)', hw: /^(motorway|trunk|primary|secondary)/ }, 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk|primary|secondary)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk|primary|secondary)/ } };
+const FORK_TYPES = { 'rozjazd-n': { on: true, opis: 'n pasow -> a+b (szkielet, offset dla nieparzystych)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-3-2+1': { on: true, opis: '3 pasy -> 2+1 (pasy glowne na osi, pas zjazdu bokiem, klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ }, 'rozjazd-2-1+1': { on: true, opis: '2 pasy -> 1+1 (klin z chevronami)', hw: /^(motorway|trunk|primary|secondary|tertiary)/ } };
 const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search), EKEY = (() => { const m = /#map=[\d.]+\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); return m ? 'rozj-' + m[1] + '/' + m[2] : 'rozj-x'; })(); // tryb osadzony (galeria rozjazdow): bez zapisu, bez panelu
 const ROZBIEZNY = false; // true wlacza tryby rozjazdu: wylot odchylony od przedluzenia (diverge) i 'prosty + odchodzacy' (asym); false = pierwotny, symetryczny sposob
 const KEY = 'edytor-pasow-v3', CHEVRONS = true, HINTS = false, TAPER2 = true, FORK_MARKS = false, P9_TAPER = false;
@@ -145,6 +145,7 @@ function makeRoad(o, a, b) {
   const rank = RANK[base] || 1, minor = base === 'service' || base === 'living_street';
   let pts = o.g.slice(a, b + 1).map(p => [p[0], p[1]]), nk = o.nk.slice(a, b + 1);
   let tl = ow ? (t['turn:lanes'] || t['turn:lanes:forward'] || '') : (t['turn:lanes:forward'] || '');
+  { const tn = tl ? tl.split('|').length : 0; if (ow && tn > n) n = tn; } /* brak lanes: liczba pasow z turn:lanes */
   if (t.oneway === '-1') { pts.reverse(); nk.reverse(); }
   const tfc = t['turn:lanes:forward'] ? t['turn:lanes:forward'].split('|').length : 0, tbc = t['turn:lanes:backward'] ? t['turn:lanes:backward'].split('|').length : 0, nf = ow ? n : (f || (bk && bk < n ? n - bk : 0) || (tfc && tfc < n ? tfc : 0) || (tbc && tbc < n ? n - tbc : 0) || Math.round(n / 2)); // liczba pasów forward: z tagów lanes:*, a gdy ich brak – z liczby pasów w turn:lanes:forward/backward
   return { pts, nk, lanes: n, lw: +lw.toFixed(2), oneway: ow, centre: 'auto', marked: t.lane_markings !== 'no' && !minor && n > 1 && (!!t.lanes || rank >= 3), edge: rank >= 3 && t.lane_markings !== 'no', kerb: true, osm: o.id, name: t.name || '', hw, tl, tlb: ow ? '' : (t['turn:lanes:backward'] || ''), nf, ly: layerOf(t), br: !!t.bridge && t.bridge !== 'no' };

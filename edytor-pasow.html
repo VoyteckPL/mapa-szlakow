@@ -44,7 +44,7 @@
     <div class="row" id="drawbar" style="display:none"><button id="bFinish" class="on">Zakończ</button><button id="bCancel" class="warn">Anuluj</button></div>
     <div class="row"><button id="bUndo" title="Cofnij">↶ Cofnij</button><button id="bRedo" title="Ponów">↷ Ponów</button></div>
     <h4>Dane drogowe z OSM</h4>
-    <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button></div>
+    <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     <details open><summary>Wygląd mapy</summary>
       <div class="row"><label><input type="checkbox" id="cTile" checked> podkład</label><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne tło (bez kolorowych dróg)</option><option value="orto" selected>Ortofoto Geoportal (HR)</option><option value="ortolo">Ortofoto Geoportal (low res, szybkie)</option><option value="esri">Satelita Esri (szybki)</option></select></div>
@@ -789,6 +789,29 @@ $('bRst').onclick = () => {
   push(); const n = resetFromOsm(idx); save(); ui(); touch(); say(`Przywrócono z OSM ${n} dróg w widoku (cofnij: ↶).`);
 };
 $('bRstSel').onclick = () => { if (S.sel < 0) { say('Zaznacz najpierw drogę.'); return; } push(); const n = resetFromOsm([S.sel]); save(); ui(); touch(); say(n ? 'Przywrócono zaznaczoną drogę z OSM (cofnij: ↶).' : 'Nie znaleziono tej drogi w danych OSM.'); };
+async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia drogi o zmienionym ukladzie wezlow (bez nowych/recznych wezlow)
+  const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), lo = Math.min(a.lon, b.lon), hi = Math.max(a.lon, b.lon), la0 = Math.min(a.lat, b.lat), la1 = Math.max(a.lat, b.lat);
+  if ((hi - lo) * (la1 - la0) > 0.04) { say('Za duży obszar – przybliż widok i spróbuj ponownie.'); return; }
+  say('Pobieram aktualne dane z OSM…');
+  let j; try { const rr = await fetch(`https://api.openstreetmap.org/api/0.6/map.json?bbox=${lo.toFixed(6)},${la0.toFixed(6)},${hi.toFixed(6)},${la1.toFixed(6)}`); if (!rr.ok) throw new Error('HTTP ' + rr.status); j = await rr.json(); } catch (e) { say('Nie udało się pobrać z OSM: ' + e.message); return; }
+  const nodes = new Map(); for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, [e.lon, e.lat]);
+  const fresh = new Map(); for (const e of j.elements) if (e.type === 'way' && e.tags && e.tags.highway) { const ll = e.nodes.map(id => nodes.get(id)).filter(Boolean); if (ll.length < 2) continue; fresh.set(e.id, { id: e.id, t: e.tags, g: ll.map(c => proj(c[0], c[1])), nk: ll.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); }
+  let del = 0; for (const [id, o] of [...S.osm.ways]) if (!fresh.has(id) && o.g.some((p, i) => { const u = unproj(p); return u.lon >= lo && u.lon <= hi && u.lat >= la0 && u.lat <= la1; })) { S.osm.ways.delete(id); del++; }
+  for (const [id, o] of fresh) S.osm.ways.set(id, o);
+  let rep = 0, keep = 0, gone = 0; const R = S.doc.road;
+  for (let i = 0; i < R.length; i++) {
+    const r = R[i]; if (!r.osm || !fresh.has(r.osm)) { if (r.osm && !S.osm.ways.has(r.osm)) gone++; continue; }
+    const w = fresh.get(r.osm), ks = r.nk.filter(Boolean); if (ks.length !== r.nk.length || ks.length < 2) { keep++; continue; } // ma wlasne nowe wezly - nie ruszamy
+    const ia = w.nk.indexOf(ks[0]), ib = w.nk.indexOf(ks[ks.length - 1]);
+    const slice = ia >= 0 && ib >= 0 ? (ia <= ib ? w.nk.slice(ia, ib + 1) : w.nk.slice(ib, ia + 1).reverse()) : null;
+    if (slice && slice.length === ks.length && slice.every((k, q) => k === ks[q])) continue; // uklad wezlow bez zmian
+    const A = ia >= 0 && ib >= 0 ? Math.min(ia, ib) : 0, B = ia >= 0 && ib >= 0 ? Math.max(ia, ib) : w.g.length - 1;
+    if (ia < 0 && ib < 0) { const m = ks.some(k => w.nk.includes(k)); if (!m) { keep++; continue; } }
+    R[i] = makeRoad(w, ia >= 0 && ib >= 0 ? A : 0, ia >= 0 && ib >= 0 ? B : w.g.length - 1); rep++;
+  }
+  S.undo = []; save(); touch(); ui(); say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
+}
+$('bLive').onclick = () => refreshLive();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];

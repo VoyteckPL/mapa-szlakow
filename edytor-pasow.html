@@ -288,22 +288,26 @@ function skelLanes(G, C, R) {
   const lay = (k, e) => k === 1 ? [-w / 2, w / 2] : k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
   let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { best = { N }; break; } } /* offset nieparzystych zawsze po tej samej stronie (e=1), gdy sie miesci */ const Nu = best ? best.N : lay(n, 1);
   const toD = I => sf > 0 ? I : [-I[1], -I[0]], [Lm, Rm] = toD(Wu), [Ln, Rn] = toD(Nu); // w ramie wiekszej drogi (os. od wezla, +d = prawo)
-  const set = (e, dLo, dRo, lines) => { const c = C[e.i], N = c.Q.length, Lq = [], Rq = [], len = c.cum[N - 1]; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j; Lq[j] = e.st ? dLo[jo] : -dRo[jo]; Rq[j] = e.st ? dRo[jo] : -dLo[jo]; }
-    (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { L: Lq, R: Rq }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = c.lat || { lines: [] };
-    lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, c0: e.st ? l.a : len - l.b, c1: e.st ? l.b : len - l.a })); };
+  // wklad kazdego konca drogi przechowujemy jako funkcje odleglosci od tego konca (nie indeksu), bo skelFork potem przelicza Q (inna liczba punktow)
+  const set = (e, cum, dLo, dRo, lines) => { const c = C[e.i];
+    (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { s: cum.slice(), lo: dLo.slice(), hi: dRo.slice() }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = c.lat || { lines: [] };
+    lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, st: e.st, a: l.a, b: l.b })); };
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
   const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
   SN.forEach(x => { linesW.push({ p: toDp(x), a: 0, b: same(x, SW) ? BIG : T / 2 }); linesN.push({ p: -toDp(x), a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN)) linesW.push({ p: toDp(x), a: T / 2, b: BIG }); });
   const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
   const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * cl(s / (0.6 * T)) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
-  set(we, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
-  const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
+  set(we, ow.cum, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
+  const on = orient(C[ne.i], ne.st); set(ne, on.cum, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
 }
 // laczenie wkladow z obu koncow drogi (kazdy koniec moze miec zmiane liczby pasow): na srodku plynne mieszanie profili
 function finalizeLanes(C, R) {
-  C.forEach((c, i) => { if (!c.contrib) return; const N = c.Q.length, Ln = c.cum[N - 1] || 1, W0 = rw(R[i]), dfl = { L: c.Q.map(() => -W0 / 2), R: c.Q.map(() => W0 / 2) }, A = c.contrib.A || dfl, B = c.contrib.B || dfl;
-    c.d = []; c.w = []; for (let j = 0; j < N; j++) { const wB = sm((c.cum[j] / Ln - 0.35) / 0.3), wA = 1 - wB, L = wA * A.L[j] + wB * B.L[j], Rr = wA * A.R[j] + wB * B.R[j]; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
+  const at = (cum, v, s) => { const n = cum.length; if (s <= cum[0]) return v[0]; if (s >= cum[n - 1]) return v[n - 1]; let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (cum[m] <= s) lo = m; else hi = m; } const t = (s - cum[lo]) / ((cum[hi] - cum[lo]) || 1); return v[lo] + (v[hi] - v[lo]) * t; };
+  C.forEach((c, i) => { if (!c.contrib) return; const N = c.Q.length, Ln = c.cum[N - 1] || 1, W0 = rw(R[i]), pA = c.contrib.A, pB = c.contrib.B;
+    c.d = []; c.w = []; for (let j = 0; j < N; j++) { const wB = sm((c.cum[j] / Ln - 0.35) / 0.3), wA = 1 - wB;
+      const LA = pA ? at(pA.s, pA.lo, c.cum[j]) : -W0 / 2, RA = pA ? at(pA.s, pA.hi, c.cum[j]) : W0 / 2, LB = pB ? -at(pB.s, pB.hi, Ln - c.cum[j]) : -W0 / 2, RB = pB ? -at(pB.s, pB.lo, Ln - c.cum[j]) : W0 / 2;
+      const L = wA * LA + wB * LB, Rr = wA * RA + wB * RB; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
 }
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
@@ -364,7 +368,7 @@ function layout() {
     polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
-    if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); for (const l of c.lat.lines) addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && c.cum[j] >= l.c0 - 1e-6 && c.cum[j] <= l.c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); }
+    if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const clen = c.cum[n - 1]; for (const l of c.lat.lines) { const c0 = l.st ? l.a : clen - l.b, c1 = l.st ? l.b : clen - l.a; addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && c.cum[j] >= c0 - 1e-6 && c.cum[j] <= c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); } }
     if (!c.lat && r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';

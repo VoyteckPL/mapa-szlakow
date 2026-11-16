@@ -49,6 +49,7 @@
   #lcP { border-top:3px solid #1e88e5; } #lcP label:hover { background:#eef4fc; border-radius:4px; }
   #lcB { color:#3949ab; } #lcB:hover { background:#eef4fc !important; }
   .eb { display:flex; gap:6px; margin:4px 0 2px; } #lcP .eb button { width:34px; height:30px; padding:0; border:1px solid #ccc; border-radius:5px; background:#fff; display:grid; place-items:center; } #lcP .eb button:hover { background:#eef4fc !important; }
+  @keyframes blk { 0%,100% { background:#fff; box-shadow:none; } 50% { background:#c8f7c5; box-shadow:0 0 0 3px #43a04788; } } #lcP .eb button.blink { animation:blk .5s ease-in-out 3; }
 </style>
 </head>
 <body>
@@ -825,7 +826,7 @@ $('bRst').onclick = () => {
   push(); const n = resetFromOsm(idx); save(); ui(); touch(); say(`Przywrócono z OSM ${n} dróg w widoku (cofnij: ↶).`);
 };
 $('bRstSel').onclick = () => { if (S.sel < 0) { say('Zaznacz najpierw drogę.'); return; } push(); const n = resetFromOsm([S.sel]); save(); ui(); touch(); say(n ? 'Przywrócono zaznaczoną drogę z OSM (cofnij: ↶).' : 'Nie znaleziono tej drogi w danych OSM.'); };
-function liveLog(m) { console.log('[OSM live]', m); let b = document.getElementById('liveLog'); if (!b) { b = document.createElement('div'); b.id = 'liveLog'; b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99;max-width:min(560px,92vw);background:#111d;color:#cfc;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;max-height:40vh;overflow:auto'; b.innerHTML = '<div style="text-align:right"><button id="llC">kopiuj</button> <button id="llX">×</button></div><pre id="llT" style="margin:0;white-space:pre-wrap;user-select:text"></pre>'; document.body.appendChild(b); b.querySelector('#llX').onclick = () => { b.remove(); }; b.querySelector('#llC').onclick = () => { const t = b.querySelector('#llT').textContent; try { navigator.clipboard.writeText(t); } catch (e) {} }; } b.querySelector('#llT').textContent += new Date().toISOString().slice(11, 19) + ' ' + m + '\n'; }
+function liveLog(m) { console.log('[OSM live]', m); const L = window.__ll = (m.startsWith('start') ? [] : (window.__ll || [])); L.push(new Date().toISOString().slice(11, 19) + ' ' + m); if (!m.startsWith('BLAD')) return; /* okno logu tylko przy bledzie */ let b = document.getElementById('liveLog'); if (!b) { b = document.createElement('div'); b.id = 'liveLog'; b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99;max-width:min(560px,92vw);background:#111d;color:#cfc;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;max-height:40vh;overflow:auto'; b.innerHTML = '<div style="text-align:right"><button id="llC">kopiuj</button> <button id="llX">×</button></div><pre id="llT" style="margin:0;white-space:pre-wrap;user-select:text"></pre>'; document.body.appendChild(b); b.querySelector('#llX').onclick = () => { b.remove(); }; b.querySelector('#llC').onclick = () => { try { navigator.clipboard.writeText(b.querySelector('#llT').textContent); } catch (e) {} }; } b.querySelector('#llT').textContent = L.join('\n'); }
 async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia drogi o zmienionym ukladzie wezlow (bez nowych/recznych wezlow)
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), lo = Math.min(a.lon, b.lon), hi = Math.max(a.lon, b.lon), la0 = Math.min(a.lat, b.lat), la1 = Math.max(a.lat, b.lat);
   if ((hi - lo) * (la1 - la0) > 0.04) { say('Za duży obszar – przybliż widok i spróbuj ponownie.'); return false; }
@@ -855,7 +856,7 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
   } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
 }
 $('bLive').onclick = () => refreshLive();
-async function loadFresh() { if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); }
+async function loadFresh() { if (!(await refreshLive())) return; push(); importView(); save(); ui(); touch(); say('Wczytano aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
 $('lcLoad').onclick = loadFresh; $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;

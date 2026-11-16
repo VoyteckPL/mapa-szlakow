@@ -85,7 +85,7 @@ const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, ter
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
 const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street', 'service', 'busway']);
-const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse']);
+const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse', 'p9a', 'p9b']);
 const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render']];
 const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
 let W = 0, H = 0, DPR = 1, L = null;
@@ -308,9 +308,9 @@ function skelLanes(G, C, R) {
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
   const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
-  SN.forEach(x => { linesW.push({ p: toDp(x), a: 0, b: same(x, SW) ? BIG : T / 2 }); linesN.push({ p: -toDp(x), a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN)) linesW.push({ p: toDp(x), a: T / 2, b: BIG }); });
+  SN.forEach(x => { linesW.push({ p: toDp(x), a: 0, b: same(x, SW) ? BIG : T / 2 }); linesN.push({ p: -toDp(x), a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN)) linesW.push({ p: toDp(x), a: 0, b: BIG }); });
   const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
-  const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * cl(s / (0.6 * T)) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
+  const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * sm5(cl(s / (0.7 * T))) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
   set(we, ow.cum, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
   const on = orient(C[ne.i], ne.st); set(ne, on.cum, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
 }
@@ -418,7 +418,7 @@ function layout() {
           let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - s); if (dd < bd) { bd = dd; jn = j; } }
           const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj; // krawędź lewa wg faktycznej geometrii (offset, poszerzenie)
           parts.forEach((v, k) => {
-            const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-');
+            const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-'); if (set.has('merge_to_left')) key = 'p9a'; else if (set.has('merge_to_right')) key = 'p9b'; /* strzalki zbiegu pasow */
             if (key === 'through-left-right' || ARR.has(key)) { const lat = leftLat + (nb + k + 0.5) * r.lw; arrows.push({ x: p[0] + nx * lat, y: p[1] + ny * lat, rot: ang, type: key }); }
           });
         }
@@ -431,7 +431,7 @@ function layout() {
         let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - sa); if (dd < bd) { bd = dd; jn = j; } }
         const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj;
         parts.forEach((v, k) => {
-          const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-');
+          const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-'); if (set.has('merge_to_left')) key = 'p9a'; else if (set.has('merge_to_right')) key = 'p9b'; /* strzalki zbiegu pasow */
           if (key === 'through-left-right' || ARR.has(key)) { const lat = leftLat + (nbk - 1 - k + 0.5) * r.lw; arrows.push({ x: p[0] + nx * lat, y: p[1] + ny * lat, rot: ang, type: key }); }
         });
       }

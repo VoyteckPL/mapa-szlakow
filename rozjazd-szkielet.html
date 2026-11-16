@@ -104,7 +104,7 @@ function drawGrid(){const g=gridStep(),x0=-OX/K,x1=(W-OX)/K,y0=-OY/K,y1=(H-OY)/K
   for(let x=Math.floor(x0/g)*g;x<=x1;x+=g){const sx=OX+x*K,maj=Math.abs(Math.round(x/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,H);ctx.stroke();if(maj)ctx.fillText(Math.round(x*100)/100+' m',sx+2,H-3);}
   for(let y=Math.floor(y0/g)*g;y<=y1;y+=g){const sy=OY+y*K,maj=Math.abs(Math.round(y/g)%5)===0;ctx.strokeStyle=maj?'rgba(60,70,80,.30)':'rgba(60,70,80,.12)';ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(W,sy);ctx.stroke();if(maj)ctx.fillText(Math.round(y*100)/100+' m',3,sy-2);}
   ctx.restore();}
-function render(){
+function render(){saveState();
   if(!S.P)return;ctx.setTransform(DPR,0,0,DPR,0,0);ctx.clearRect(0,0,W,H);
   if(S.grid)drawGrid();
   if(S.scene==='lanes'){if(S.P.x.length)drawLanes();}else if(ready()){drawRoad();}
@@ -184,7 +184,7 @@ function ui(){if(S.scene==='lanes')return uiLanes();const b=$('bar');b.innerHTML
   const sl=(lab,k,mn,mx,st)=>{const l=document.createElement('label');l.innerHTML=lab+' <input type=range min='+mn+' max='+mx+' step='+st+' value='+S[k]+'> <span>'+S[k]+'</span>';l.querySelector('input').oninput=e=>{S[k]=+e.target.value;l.querySelector('span').textContent=S[k];render();};b.appendChild(l);};
   sl('długość przejścia T [m] (2–3 pasy)','T',10,160,5);sl('T dla 4+ pasów [m]','T2',10,160,5);sl('szerokość pasa [m]','w',2.5,4.2,0.05);sl('promień łuku jezdni [m]','R',0,80,5);
   const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
-  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);const cb=document.createElement('button');cb.textContent='Kopiuj punkty';cb.onclick=()=>{const j=JSON.stringify({nX:S.nX,lA:S.lA,P:S.P});(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>{cb.textContent='Skopiowano';setTimeout(()=>cb.textContent='Kopiuj punkty',1500);},()=>prompt('Skopiuj:',j));};b.appendChild(cb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
+  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>{delete VW[S.scene];fit();};b.appendChild(fb);const cb=document.createElement('button');cb.textContent='Kopiuj punkty';cb.onclick=()=>{const j=JSON.stringify({nX:S.nX,lA:S.lA,P:S.P});(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>{cb.textContent='Skopiowano';setTimeout(()=>cb.textContent='Kopiuj punkty',1500);},()=>prompt('Skopiuj:',j));};b.appendChild(cb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('osie OSM','ax');ck('szkielet pasów (żółty)','sk');ck('niebieskie kontury','blue');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
 
 // ---------- zmiana liczby pasow (przyrost / redukcja) ----------
 // uklad poprzeczny n pasow w ramie drogi (os, kierunek od wezla): parzysta - os w srodku; nieparzysta - rdzen n-1 pasow na osi, dodatkowy pas po stronie +
@@ -207,7 +207,7 @@ function drawLanes(){
   ctx.save();ctx.fillStyle='#1d2733';ctx.font='12px system-ui';const a=w2s(P[Math.min(P.length-1,Math.round(Math.max(0,tp.s0-12)/0.5))]),b=w2s(P[Math.min(P.length-1,Math.round((tp.s0+tp.len+12)/0.5))]);
   ctx.fillText(tp.nA+' pas.',a[0]+20,a[1]);ctx.fillText(tp.nB+' pas.',b[0]+20,b[1]);ctx.restore();
 }
-function setScene(sc){if(sc===S.scene)return;endDraw();S.saved[S.scene]=S.P;S.scene=sc;S.P=S.saved[sc]||(sc==='lanes'?{x:[[0,60],[4,110],[12,170]],a:[],b:[]}:null);if(!S.P)load(S.preset);fit();ui();}
+function setScene(sc){if(sc===S.scene)return;endDraw();VW[S.scene]=[K,OX,OY];S.saved[S.scene]=S.P;S.scene=sc;S.P=S.saved[sc]||(sc==='lanes'?{x:[[0,60],[4,110],[12,170]],a:[],b:[]}:null);if(!S.P)load(S.preset);fit();ui();}
 function uiLanes(){const b=$('bar');b.innerHTML='';
   const sc=(k,lab)=>{const e=document.createElement('button');e.textContent=lab;if(S.scene===k)e.className='on';e.onclick=()=>setScene(k);b.appendChild(e);};sc('fork','Rozjazd');sc('lanes','Zmiana liczby pasów');
   [[1,2],[2,3],[3,4],[4,5],[2,1],[3,2],[4,3],[5,4],[1,3],[2,4],[3,1],[4,2]].forEach(([a,c])=>{const e=document.createElement('button');e.textContent=a+' → '+c;if(S.tp.nA===a&&S.tp.nB===c)e.className='on';e.onclick=()=>{S.tp.nA=a;S.tp.nB=c;render();ui();};b.appendChild(e);});
@@ -216,9 +216,9 @@ function uiLanes(){const b=$('bar');b.innerHTML='';
   sl('początek zmiany [m od węzła]','s0',0,150,5,S.tp);sl('długość zmiany [m]','len',10,160,5,S.tp);sl('szerokość pasa [m]','w',2.5,4.2,0.05,S);sl('promień łuku jezdni [m]','R',0,150,5,S);
   [['move','Przesuwaj'],['add','Dodaj punkt na osi'],['del','Usuń punkt']].forEach(([k,lab])=>{const e=document.createElement('button');e.textContent=lab;if(S.mode===k)e.className='on';e.onclick=()=>{S.mode=k;ui();};b.appendChild(e);});
   const ck=(lab,k)=>{const l=document.createElement('label');l.innerHTML='<input type=checkbox '+(S[k]?'checked':'')+'> '+lab;l.querySelector('input').onchange=e=>{S[k]=e.target.checked;render();};b.appendChild(l);};
-  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>fit();b.appendChild(fb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('oś OSM','ax');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
+  const fb=document.createElement('button');fb.textContent='Dopasuj widok';fb.onclick=()=>{delete VW[S.scene];fit();};b.appendChild(fb);ck('siatka','grid');ck('przyciągaj do siatki','snap');ck('oś OSM','ax');ck('tekstura asfaltu','tex');ck('krawężniki','curb');}
 S.w=3.75;
-function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;if(S.scene==='lanes'){K=Math.max(3,Math.min(10,H/190));OX=W/2-10*K;OY=H*0.04;}else{K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;}render();}
+function fit(){DPR=window.devicePixelRatio||1;const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;if(VW[S.scene]){[K,OX,OY]=VW[S.scene];}else if(S.scene==='lanes'){K=Math.max(3,Math.min(10,H/190));OX=W/2-10*K;OY=H*0.04;}else{K=Math.max(6,Math.min(16,H/62));OX=W/2;OY=H*0.72;}render();}
 let drag=null,pan=null;const ptrs=new Map();let pinch=null;
 function hit(e){const m=mpos(e);let best=null,bd=18;[['a',S.P.a],['b',S.P.b],['x',S.P.x]].forEach(([k,arr])=>arr.forEach((p,i)=>{const q=w2s(p),d=Math.hypot(q[0]-m[0],q[1]-m[1]);if(d<bd){bd=d;best=[k,i];}}));return best;}
 const snapP=p=>{if(!S.snap)return p;const g=gridStep();return[Math.round(p[0]/g)*g,Math.round(p[1]/g)*g];};
@@ -239,6 +239,11 @@ let drawBackup=null;
 function startDraw(k,label){endDraw();drawBackup=S.P[k].map(q=>q.slice());S.draw={k,label,pts:[]};S.P[k]=[];ui();render();}
 function endDraw(){if(!S.draw)return;if(!S.draw.pts.length)S.P[S.draw.k]=drawBackup||[];S.draw=null;drawBackup=null;ui();render();}
 addEventListener('keydown',e=>{if(e.key==='Enter'||e.key==='Escape')endDraw();});
-addEventListener('resize',fit);load(S.preset);fit();
+// zapis stanu (widok, punkty, ustawienia) w przegladarce - po odswiezeniu wraca to, co bylo
+const SKEY='szkielet-stan-v1',SAVE_F=['scene','tp','nX','lA','w','T','T2','R','grid','snap','ax','sk','blue','tex','curb','preset','P','saved'],VW=window.VW=window.VW||{};
+let saveT=0;function saveState(){clearTimeout(saveT);saveT=setTimeout(()=>{try{VW[S.scene]=[K,OX,OY];const o={};SAVE_F.forEach(k=>o[k]=S[k]);localStorage.setItem(SKEY,JSON.stringify({S:o,VW}));}catch(e){}},300);}
+let restored=false;try{const j=JSON.parse(localStorage.getItem(SKEY)||'null');if(j&&j.S&&j.S.P){Object.assign(S,j.S);Object.assign(VW,j.VW||{});restored=true;}}catch(e){}
+addEventListener('resize',fit);addEventListener('pagehide',()=>{try{VW[S.scene]=[K,OX,OY];const o={};SAVE_F.forEach(k=>o[k]=S[k]);localStorage.setItem(SKEY,JSON.stringify({S:o,VW}));}catch(e){}});
+if(restored){ui();fit();}else{load(S.preset);fit();}
 window.SK={S,build,render,load};
 </script></body></html>

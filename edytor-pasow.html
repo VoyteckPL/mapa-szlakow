@@ -264,6 +264,20 @@ function skelFork(X, yl, yr, C, R, gores) {
   const poly = ia.slice(0, nearIdx(ia, hh[0]) + 1).concat([hh[0], lastHits[2], hh[1]], ib.slice(0, nearIdx(ib, hh[1]) + 1).reverse());
   gores.push({ poly, A: [], B: [], clip, nl: true, chev, ly: R[X.i].ly | 0 });
 }
+
+// ---------- zmiana liczby pasow na szkielecie (przyrost / redukcja) ----------
+function skelLanes(G, C, R) {
+  const n0 = R[G[0].i].lanes, n1 = R[G[1].i].lanes, we = n0 > n1 ? G[0] : G[1], ne = n0 > n1 ? G[1] : G[0], m = Math.max(n0, n1), n = Math.min(n0, n1), w = R[we.i].lw || 3.75;
+  const cw = C[we.i], ow = orient(cw, we.st), node = ow.Q[0], u = unitFrom(cw, we.st); let bd = 100, sf = 1; // strona zewnetrzna = od najblizszej innej drogi
+  R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
+  const lay = (k, e) => k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
+  let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { const cost = Math.abs(N[0] - Wu[0]); if (!best || cost < best.cost) best = { N, cost }; } } const Nu = best ? best.N : lay(n, 1);
+  const toD = I => sf > 0 ? I : [-I[1], -I[0]], [Lm, Rm] = toD(Wu), [Ln, Rn] = toD(Nu); // w ramie wiekszej drogi (os. od wezla, +d = prawo)
+  const set = (e, dLo, dRo, sgn) => { const c = C[e.i], N = c.Q.length; c.d = []; c.w = []; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j, dc = (dLo[jo] + dRo[jo]) / 2; c.d[j] = e.st ? dc : -dc; c.w[j] = dRo[jo] - dLo[jo]; } c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = { sign: (e.st ? 1 : -1) * sgn, lw: w }; };
+  const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
+  set(we, ow.cum.map(s => Ln + (Lm - Ln) * sm(s / T)), ow.cum.map(s => Rn + (Rm - Rn) * sm(s / T)), 1);
+  const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), -1);
+}
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
@@ -279,17 +293,7 @@ function layout() {
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
-      if (TAPER2 && Math.abs(ws[0] - ws[1]) > 0.3) { // dodatkowy pas dochodzi bokiem, dwa główne zostają na osi
-        const wi = ws[0] > ws[1] ? 0 : 1, e = G[wi], c = C[e.i], narrow = Math.min(...ws), extra = Math.max(...ws) - narrow, len = c.cum[c.cum.length - 1], T = Math.min(60, len / 2.2);
-        const node = R[e.i].pts[e.st ? 0 : R[e.i].pts.length - 1], u = unitFrom(c, e.st); let bd = 100, sf = 1;
-        R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
-        c.side = e.st ? sf : -sf; c.w.fill(narrow); const n = c.Q.length;
-        for (let i = 0; i < n; i++) { const s0 = e.st ? c.cum[i] : len - c.cum[i]; c.e[i] = c.e[i] ? Math.min(c.e[i], extra * sm(s0 / T)) : extra * sm(s0 / T); } c.tf = c.e.map(v => v / extra); if (narrow < 1.5 * (R[e.i].lw || 3.75)) for (let i = 0; i < n; i++) c.d[i] -= c.side * c.e[i] / 2; // zwezenie 2->1: dwupasowa zostaje symetryczna wzgledem osi
-        if (P9_TAPER && R[e.i].oneway && !e.st && len > T + 24) for (const sa of [T + 8, T + 20]) { // P-9: kończący się pas wskazuje sąsiedni (zmiana pasów 3→2)
-          const v = len - sa, p = atS(c.Q, c.cum, v), p2 = atS(c.Q, c.cum, Math.min(len, v + 1)), off = c.side * (narrow / 2 + extra / 2), q = offsetPts([p, p2], [off, off]), qc = offsetPts([p, p2], [0, 0]), dx = p2[0] - p[0], dy = p2[1] - p[1], cr = dx * (qc[0][1] - q[0][1]) - dy * (qc[0][0] - q[0][0]);
-          preAr.push({ x: q[0][0], y: q[0][1], rot: Math.atan2(dy, dx) * 180 / Math.PI + 90, type: cr > 0 ? 'p9b' : 'p9a', ly: R[e.i].ly | 0 });
-        }
-      }
+      if (TAPER2 && R[G[0].i].lanes !== R[G[1].i].lanes) skelLanes(G, C, R); // zmiana liczby pasow na szkielecie (jak w piaskownicy)
       continue;
     }
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
@@ -332,7 +336,8 @@ function layout() {
     polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
-    if (r.marked && nl > 1) for (let k = 1; k < nl; k++) {
+    if (c.lat && r.marked) { const lw = c.lat.lw, lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); for (let q = -8; q <= 8; q++) { const pp = c.lat.sign * q * lw; if (!lo.some((v, j) => pp > v + 0.05 && pp < hi[j] - 0.05)) continue; addLine(offsetPts(Q, pp), 'p1', keep.map((kk, j) => kk && pp > lo[j] + 0.05 && pp < hi[j] - 0.05)); } }
+    if (!c.lat && r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
       addLine(DL, dst); // linia pasow przed rozjazdem tez przerywana, jak reszta drogi

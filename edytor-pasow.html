@@ -236,9 +236,19 @@ function skelFork(X, yl, yr, C, R, gores) {
     const P0 = add(n0, mul(nE, o.c)), P1 = D[iT], T1 = nrm(sub(D[Math.min(D.length - 1, iT + 1)], D[Math.max(0, iT - 1)])), L = Math.hypot(P1[0] - P0[0], P1[1] - P0[1]) || 1, N = Math.max(4, Math.ceil(L / 0.5)), M0 = mul(e, L), M1 = mul(T1, L), Cd = [];
     for (let k = 0; k <= N; k++) { const u = k / N, h00 = 2 * u ** 3 - 3 * u ** 2 + 1, h10 = u ** 3 - 2 * u ** 2 + u, h01 = -2 * u ** 3 + 3 * u ** 2, h11 = u ** 3 - u ** 2; Cd.push([0, 1].map(q => h00 * P0[q] + h10 * M0[q] + h01 * P1[q] + h11 * M1[q])); }
     for (let k = iT + 1; k < D.length; k++) Cd.push(D[k]);
-    o.Cd = Cd; const c = C[o.ye.i], Q = o.ye.st ? Cd : Cd.slice().reverse();
-    c.Q = Q; c.w = Q.map(() => o.l * w); c.d = Q.map(() => 0); c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q);
+    o.Cd = Cd;
   }
+  // zakaz nakladania: osie jezdni zjazdu nie moga zblizyc sie bardziej niz suma polowek szerokosci + margines; odsuwamy lagodnie (mniejsza odnoga ustepuje)
+  { const A = arms[0], B = arms[1], nA = A.Cd.length, nB = B.Cd.length, hs = (A.l + B.l) * w / 2, CL = 0.9, sh = A.l === B.l ? [0.5, 0.5] : (A.l < B.l ? [1, 0] : [0, 1]);
+    const pA = new Array(nA).fill(0), pB = new Array(nB).fill(0), dirA = new Array(nA), dirB = new Array(nB); let sA2 = 0;
+    for (let i = 0; i < nA; i++) { if (i) sA2 += Math.hypot(A.Cd[i][0] - A.Cd[i - 1][0], A.Cd[i][1] - A.Cd[i - 1][1]); let bj = Math.min(nB - 1, i), bd = 1e9; for (let j = Math.max(0, i - 80); j < Math.min(nB, i + 80); j++) { const d = Math.hypot(A.Cd[i][0] - B.Cd[j][0], A.Cd[i][1] - B.Cd[j][1]); if (d < bd) { bd = d; bj = j; } }
+      const need = hs + CL * sm5(Math.max(0, sA2 - 6) / 20), def = Math.max(0, need - bd); if (def > 0) { const v = nrm(sub(A.Cd[i], B.Cd[bj])); pA[i] = Math.max(pA[i], def * sh[0]); pB[bj] = Math.max(pB[bj], def * sh[1]); dirA[i] = v; dirB[bj] = mul(v, -1); } }
+    const spread = P => { const n = P.length, r = 10; let Q = P.map((v, i) => { let m = 0; for (let k = Math.max(0, i - r); k <= Math.min(n - 1, i + r); k++) m = Math.max(m, P[k]); return m; }); for (let it = 0; it < 4; it++) { const Z = Q.slice(); for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let k = Math.max(0, i - 8); k <= Math.min(n - 1, i + 8); k++) { a += Q[k]; c++; } Z[i] = a / c; } Q = Z; } return Q; };
+    const qA = spread(pA), qB = spread(pB);
+    const apply = (O, q, dirs) => { const n = O.Cd.length, NN = O.Cd.map((_, i) => nOf(nrm(sub(O.Cd[Math.min(n - 1, i + 1)], O.Cd[Math.max(0, i - 1)])))); let bi = -1, bm = 0; for (let i = 0; i < n; i++) if (dirs[i] && q[i] > bm) { bm = q[i]; bi = i; } if (bi < 0) return; const sg = NN[bi][0] * dirs[bi][0] + NN[bi][1] * dirs[bi][1] >= 0 ? 1 : -1; // jedna, stala strona odsuniecia (od drugiej odnogi)
+      for (let i = 0; i < n; i++) if (q[i] > 0.005) O.Cd[i] = [O.Cd[i][0] + NN[i][0] * sg * q[i], O.Cd[i][1] + NN[i][1] * sg * q[i]]; };
+    apply(A, qA, dirA); apply(B, qB, dirB); }
+  for (const o of arms) { const c = C[o.ye.i], Q = o.ye.st ? o.Cd : o.Cd.slice().reverse(); c.Q = Q; c.w = Q.map(() => o.l * w); c.d = Q.map(() => 0); c.e = Q.map(() => 0); c.side = 1; c.tf = undefined; c.cum = cumOf(Q); }
   { const c = C[X.i], dc = (xN - nX * w / 2) * (X.st ? 1 : -1); c.w = c.Q.map(() => nX * w); c.d = c.Q.map(() => dc); c.e = c.Q.map(() => 0); c.tf = undefined; }
   if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem
   // klin z szewronami (wariant 1: ramiona konczace sie rowno z krawedzia), rowne odstepy wzdluz osi klina

@@ -111,7 +111,7 @@ function offsetPts(P, d) { // d > 0 w prawo od kierunku
 }
 function dense(P, step) {
   const out = [P[0]];
-  for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], n = Math.max(1, Math.round(dist(a, b) / step)); for (let j = 1; j <= n; j++) out.push([a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n]); }
+  for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], n = Math.max(1, Math.round(dist(a, b) / step)); for (let j = 1; j <= n; j++) { const q = [a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n], l = out[out.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 0.01) out.push(q); } } /* bez powtorzonych punktow: zerowy odcinek psuje normalna offsetu (kolce) */
   return out;
 }
 function smoothDense(P0, step, tin, tout, force) { // centripetalna krzywa Catmull-Rom przez wierzchołki (węzły zostają na miejscu)

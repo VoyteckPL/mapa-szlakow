@@ -178,7 +178,7 @@ function ui(){if(S.scene==='lanes')return uiLanes();const b=$('bar');b.innerHTML
 
 // ---------- zmiana liczby pasow (przyrost / redukcja) ----------
 // uklad poprzeczny n pasow w ramie drogi (os, kierunek od wezla): parzysta - os w srodku; nieparzysta - rdzen n-1 pasow na osi, dodatkowy pas po stronie +
-function lay(n){const w=S.w;return n%2===0?[-n*w/2,n*w/2]:[-(n-1)*w/2,(n-1)*w/2+w];}
+function lay(n){const w=S.w;if(n===1)return[-w/2,w/2];return n%2===0?[-n*w/2,n*w/2]:[-(n-1)*w/2,(n-1)*w/2+w];}
 function drawLanes(){
   const w=S.w,ROAD='#7c8083',LINE='#f2f2f0',raw=[[0,0],...S.P.x],X=resample(fillet(raw,S.R),0.5),P=X.P,t=tangents(P),sc=X.s,tp=S.tp;
   const[LA,RA]=lay(tp.nA),[LB,RB]=lay(tp.nB),k=v=>sm5((v-tp.s0)/tp.len);
@@ -186,10 +186,11 @@ function drawLanes(){
   if(S.curb){[Lf,Rt].forEach(E=>stroke(E,'#6f716c',0.84));[Lf,Rt].forEach(E=>stroke(E,'#c4c6c0',0.68));}
   const PAT=asphalt()||ROAD;path(Lf.concat(Rt.slice().reverse()),true);ctx.fillStyle=ROAD;ctx.fill();ctx.fillStyle=PAT;ctx.fill();
   // linie pasow: stale polozenia kratki (wielokrotnosci szerokosci pasa), rysowane tam gdzie lezą miedzy krawedziami
-  const lo=Math.min(LA,LB),hi=Math.max(RA,RB);
-  for(let q=Math.ceil(lo/w-1e-6);q*w<=hi+1e-6;q++){const pp=q*w;let run=[],rd=[];
+  const SA=[],SB=[];for(let q=1;q<tp.nA;q++)SA.push(LA+q*w);for(let q=1;q<tp.nB;q++)SB.push(LB+q*w);
+  const same=(x,arr)=>arr.some(y=>Math.abs(x-y)<1e-6),U=[];SA.concat(SB).forEach(x=>{if(!U.some(y=>Math.abs(x-y)<1e-6))U.push(x);});
+  U.forEach(pp=>{const inA=same(pp,SA),inB=same(pp,SB);let run=[],rd=[];
     const flush=()=>{if(run.length>1)stroke(offsetLine(run,rd.map(r=>r.t),rd.map(()=>pp)),LINE,0.12,[3,6]);run=[];rd=[];};
-    for(let i=0;i<P.length;i++){if(pp>dL[i]+0.05&&pp<dR[i]-0.05){run.push(P[i]);rd.push({t:t[i]});}else flush();}flush();}
+    for(let i=0;i<P.length;i++){const sv=sc[i],okS=inA&&inB?true:(inA?sv<=tp.s0+tp.len/2:sv>=tp.s0+tp.len/2);if(okS&&pp>dL[i]+0.05&&pp<dR[i]-0.05){run.push(P[i]);rd.push({t:t[i]});}else flush();}flush();});
   stroke(Lf,LINE,0.2);stroke(Rt,LINE,0.2);
   if(S.ax)stroke(raw,'#e0245e',0.08);
   // opisy

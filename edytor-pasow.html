@@ -281,16 +281,19 @@ function skelLanes(G, C, R) {
   const n0 = R[G[0].i].lanes, n1 = R[G[1].i].lanes, we = n0 > n1 ? G[0] : G[1], ne = n0 > n1 ? G[1] : G[0], m = Math.max(n0, n1), n = Math.min(n0, n1), w = R[we.i].lw || 3.75;
   const cw = C[we.i], ow = orient(cw, we.st), node = ow.Q[0], u = unitFrom(cw, we.st); let bd = 100, sf = 1; // strona zewnetrzna = od najblizszej innej drogi
   R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
-  const lay = (k, e) => k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
-  let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { const cost = Math.abs(N[0] - Wu[0]); if (!best || cost < best.cost) best = { N, cost }; } } const Nu = best ? best.N : lay(n, 1);
+  const lay = (k, e) => k === 1 ? [-w / 2, w / 2] : k % 2 === 0 ? [-k * w / 2, k * w / 2] : (e > 0 ? [-(k - 1) * w / 2, (k - 1) * w / 2 + w] : [-(k - 1) * w / 2 - w, (k - 1) * w / 2]), Wu = lay(m, 1); // rama u: zewnetrzna strona = +
+  let best = null; for (const e of [1, -1]) { const N = lay(n, e); if (N[0] >= Wu[0] - 1e-6 && N[1] <= Wu[1] + 1e-6) { best = { N }; break; } } /* offset nieparzystych zawsze po tej samej stronie (e=1), gdy sie miesci */ const Nu = best ? best.N : lay(n, 1);
   const toD = I => sf > 0 ? I : [-I[1], -I[0]], [Lm, Rm] = toD(Wu), [Ln, Rn] = toD(Nu); // w ramie wiekszej drogi (os. od wezla, +d = prawo)
-  const set = (e, dLo, dRo, sgn) => { const c = C[e.i], N = c.Q.length, Lq = [], Rq = []; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j; Lq[j] = e.st ? dLo[jo] : -dRo[jo]; Rq[j] = e.st ? dRo[jo] : -dLo[jo]; }
-    (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { L: Lq, R: Rq }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = { sign: 1, lw: w }; };
+  const set = (e, dLo, dRo, lines) => { const c = C[e.i], N = c.Q.length, Lq = [], Rq = [], len = c.cum[N - 1]; for (let j = 0; j < N; j++) { const jo = e.st ? j : N - 1 - j; Lq[j] = e.st ? dLo[jo] : -dRo[jo]; Rq[j] = e.st ? dRo[jo] : -dLo[jo]; }
+    (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { L: Lq, R: Rq }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = c.lat || { lines: [] };
+    lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, c0: e.st ? l.a : len - l.b, c1: e.st ? l.b : len - l.a })); };
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
-  set(we, ow.cum.map(s => Ln + (Lm - Ln) * sm(s / T)), ow.cum.map(s => Rn + (Rm - Rn) * sm(s / T)), 1);
-  const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), -1);
+  const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
+  const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
+  SN.forEach(x => { linesW.push({ p: toDp(x), a: 0, b: same(x, SW) ? BIG : T / 2 }); linesN.push({ p: -toDp(x), a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN)) linesW.push({ p: toDp(x), a: T / 2, b: BIG }); });
+  set(we, ow.cum.map(s => Ln + (Lm - Ln) * sm(s / T)), ow.cum.map(s => Rn + (Rm - Rn) * sm(s / T)), linesW);
+  const on = orient(C[ne.i], ne.st); set(ne, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
 }
-
 // laczenie wkladow z obu koncow drogi (kazdy koniec moze miec zmiane liczby pasow): na srodku plynne mieszanie profili
 function finalizeLanes(C, R) {
   C.forEach((c, i) => { if (!c.contrib) return; const N = c.Q.length, Ln = c.cum[N - 1] || 1, W0 = rw(R[i]), dfl = { L: c.Q.map(() => -W0 / 2), R: c.Q.map(() => W0 / 2) }, A = c.contrib.A || dfl, B = c.contrib.B || dfl;
@@ -355,7 +358,7 @@ function layout() {
     polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
-    if (c.lat && r.marked) { const lw = c.lat.lw, lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); for (let q = -8; q <= 8; q++) { const pp = c.lat.sign * q * lw; if (!lo.some((v, j) => pp > v + 0.05 && pp < hi[j] - 0.05)) continue; addLine(offsetPts(Q, pp), 'p1', keep.map((kk, j) => kk && pp > lo[j] + 0.05 && pp < hi[j] - 0.05)); } }
+    if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); for (const l of c.lat.lines) addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && c.cum[j] >= l.c0 - 1e-6 && c.cum[j] <= l.c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); }
     if (!c.lat && r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';

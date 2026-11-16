@@ -819,20 +819,20 @@ async function refreshLive() { // aktualne dane z API OSM dla widoku; podmienia 
   const nodes = new Map(); for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, [e.lon, e.lat]);
   const fresh = new Map(); for (const e of j.elements) if (e.type === 'way' && e.tags && e.tags.highway) { const ll = e.nodes.map(id => nodes.get(id)).filter(Boolean); if (ll.length < 2) continue; fresh.set(e.id, { id: e.id, t: e.tags, g: ll.map(c => proj(c[0], c[1])), nk: ll.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); }
   let del = 0; for (const [id, o] of [...S.osm.ways]) if (!fresh.has(id) && o.g.some((p, i) => { const u = unproj(p); return u.lon >= lo && u.lon <= hi && u.lat >= la0 && u.lat <= la1; })) { S.osm.ways.delete(id); del++; }
-  for (const [id, o] of fresh) S.osm.ways.set(id, o);
-  let rep = 0, keep = 0, gone = 0; const R = S.doc.road;
+  const tagCh = new Set(); for (const [id, o] of fresh) { const old = S.osm.ways.get(id); if (old && JSON.stringify(old.t) !== JSON.stringify(o.t)) tagCh.add(id); S.osm.ways.set(id, o); }
+  let rep = 0, keep = 0, gone = 0, tagN = 0; const R = S.doc.road;
   for (let i = 0; i < R.length; i++) {
     const r = R[i]; if (!r.osm || !fresh.has(r.osm)) { if (r.osm && !S.osm.ways.has(r.osm)) gone++; continue; }
     const w = fresh.get(r.osm), ks = r.nk.filter(Boolean); if (ks.length !== r.nk.length || ks.length < 2) { keep++; continue; } // ma wlasne nowe wezly - nie ruszamy
     const ia = w.nk.indexOf(ks[0]), ib = w.nk.indexOf(ks[ks.length - 1]);
     const slice = ia >= 0 && ib >= 0 ? (ia <= ib ? w.nk.slice(ia, ib + 1) : w.nk.slice(ib, ia + 1).reverse()) : null;
-    if (slice && slice.length === ks.length && slice.every((k, q) => k === ks[q])) continue; // uklad wezlow bez zmian
+    if (slice && slice.length === ks.length && slice.every((k, q) => k === ks[q])) { if (tagCh.has(r.osm)) { applyTags(r); tagN++; liveLog('tagi zmienione: way ' + r.osm + ' lanes=' + (w.t.lanes || '-')); } continue; } // uklad wezlow bez zmian
     const A = ia >= 0 && ib >= 0 ? Math.min(ia, ib) : 0, B = ia >= 0 && ib >= 0 ? Math.max(ia, ib) : w.g.length - 1;
     if (ia < 0 && ib < 0) { const m = ks.some(k => w.nk.includes(k)); if (!m) { keep++; continue; } }
     R[i] = makeRoad(w, ia >= 0 && ib >= 0 ? A : 0, ia >= 0 && ib >= 0 ? B : w.g.length - 1); rep++;
   }
   liveLog(`podmieniono ${rep}, pominieto ${keep}, brak w OSM ${gone}, usunieto z pamieci ${del}`);
-  S.undo = []; save(); touch(); ui(); say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
+  S.undo = []; save(); touch(); ui(); say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, tagi zaktualizowane ${tagN}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
   } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); }
 }
 $('bLive').onclick = () => refreshLive();

@@ -1191,6 +1191,9 @@ if (!EMBED) (() => {
 (() => {
   const HW = ['motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'secondary'], TLV = ['', 'left', 'slight_left', 'through', 'through;right', 'slight_right', 'right'], TLN = { '': '–', left: '←', slight_left: '↖', through: '↑', 'through;right': '↑→', slight_right: '↗', right: '→' };
   const PRE = [['T|T|R', 'through|through|right'], ['T|R|R', 'through|right|right'], ['T|T;R|R', 'through|through;right|right'], ['L|T|T', 'left|through|through'], ['L|T|R', 'left|through|right'], ['T|T|T', 'through|through|through']];
+  const ICP = { '': 'M5 10H11', through: 'M8 17V4M4 8 8 3 12 8', right: 'M5 17V10Q5 6 9 6H12M9 3 13 6 9 9', left: 'M11 17V10Q11 6 7 6H4M7 3 3 6 7 9', slight_right: 'M5 17 11 6M7 5H12V10', slight_left: 'M11 17 5 6M9 5H4V10', 'through;right': 'M6 17V4M2 8 6 3 10 8M6 12Q6 9 9 9H13M10 6 14 9 10 12' };
+  const ico = (v, sz = 16) => `<svg width="${sz}" height="${Math.round(sz * 18 / 16)}" viewBox="0 0 16 18" fill="none" stroke="#222" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="${ICP[v] !== undefined ? ICP[v] : ICP['']}"/></svg>`;
+  const icoRow = tl => tl.split('|').map(v => ico(v.replace(/slight_/, v.indexOf(';') < 0 ? 'slight_' : ''))).join('<span style="display:inline-block;width:0;height:16px;border-left:1px dashed #99a;margin:0 2px;vertical-align:middle"></span>');
   const mk = (hw, lanes, tl, name) => ({ ...newRoad([], []), hw, lanes, tl: tl || '', oneway: true, lw: LW_CLASS[hw.replace('_link', '')] || 3.5, sb: true, name: name || '' });
   const el = document.createElement('div'); el.id = 'sbP'; el.style.cssText = 'position:fixed;left:10px;top:62px;z-index:14;width:262px;max-height:calc(100% - 80px);overflow:auto;background:#fff;color:#222;border:1px solid #ccd;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px;font:12px system-ui,sans-serif;display:none'; document.body.appendChild(el); el.onpointerdown = e => e.stopPropagation(); el.addEventListener('wheel', e => e.stopPropagation());
   const sbSel = () => { const r = S.doc.road[S.sel]; return r && r.sb ? r : null; };
@@ -1216,9 +1219,9 @@ if (!EMBED) (() => {
         + `<span>highway</span><select id="sbHw">${HW.map(x => `<option ${x === r.hw ? 'selected' : ''}>${x}</option>`).join('')}</select>`
         + `<span>lanes</span><input id="sbLn" type="number" min="1" max="6" value="${n}" style="width:60px">`
         + `<span>oneway</span><label><input id="sbOw" type="checkbox" ${r.oneway ? 'checked' : ''}> yes</label></div>`
-        + `<div style="margin-top:6px">turn:lanes (od lewej)</div><div style="display:flex;gap:3px;flex-wrap:wrap">${tk.map((v, i) => `<select class="sbTl" data-i="${i}" title="pas ${i + 1}">${TLV.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${TLN[x]} ${x || 'brak'}</option>`).join('')}</select>`).join('')}</div>`
+        + `<div style="margin-top:6px">turn:lanes (od lewej)</div><div style="display:flex;gap:3px;flex-wrap:wrap">${tk.map((v, i) => `<select class="sbTl" data-i="${i}" title="pas ${i + 1}" style="font-size:16px;width:70px">${TLV.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${TLN[x]}</option>`).join('')}</select>`).join('')}</div>`
         + `<input id="sbTx" value="${(r.tl || '').replace(/"/g, '&quot;')}" placeholder="turn:lanes np. through|through|right" style="width:100%;box-sizing:border-box;margin-top:4px">`
-        + `<div style="margin-top:4px">${PRE.map(([a], i) => tb('sbP' + i, a)).join('')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
+        + `<div style="margin-top:4px">${PRE.map(([a, v], i) => tb('sbP' + i, icoRow(v)).replace('<button ', `<button title="${v}" `)).join('')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
     }
     el.innerHTML = h; const $$ = id => el.querySelector('#' + id);
     $$('sbX').onclick = () => { el.style.display = 'none'; };

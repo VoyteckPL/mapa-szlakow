@@ -100,12 +100,17 @@ function findJunctions(lw, R) {
     if (ni === 1 && no === 1 && lanesOf(e.ins[0].t) === lanesOf(e.outs[0].t)) continue;
     J.push(e);
   }
-  // przycięcie: każda droga traci przy końcu w węźle min(R, 45% długości)
+  // przycięcie: strefa ma promień R, ale przy rozjeździe/łączeniu odnoga jest ucinana dopiero tam,
+  // gdzie jej oś jest dość daleko od osi sąsiedniej odnogi, żeby jezdnie się nie nakładały (max 250 m)
   const cut = new Map(); // id → { s: m od początku, e: m od końca }
+  const set = (w, key, d) => { const c = cut.get(w.i) || {}; c[key] = Math.max(c[key] || 0, d); cut.set(w.i, c); };
   for (const e of J) {
-    for (const w of e.outs) { const c = cut.get(w.i) || {}; c.s = Math.min(R, lenM(w.g) * 0.45); cut.set(w.i, c); }
-    for (const w of e.ins) { const c = cut.get(w.i) || {}; c.e = Math.min(R, lenM(w.g) * 0.45); cut.set(w.i, c); }
+    const multi = e.outs.length > 1 ? e.outs : e.ins.length > 1 ? e.ins : null, fwd = e.outs.length > 1;
+    for (const w of e.outs) set(w, 's', fwd ? sepDist(w, multi, true, lw, R) : R);
+    for (const w of e.ins) set(w, 'e', !fwd && multi ? sepDist(w, multi, false, lw, R) : R);
   }
+  for (const w of WAYS.values()) { const c = cut.get(w.i); if (!c) continue; const L = lenM(w.g), tot = (c.s || 0) + (c.e || 0);
+    if (tot > L * 0.9) { const f = L * 0.9 / tot; if (c.s) c.s *= f; if (c.e) c.e *= f; } }
   return { J, cut };
 }
 // łamana przycięta z obu stron
@@ -115,6 +120,20 @@ function trimmed(w, c) {
   if (c.e && g.length > 1) g = rev(cutFrom(rev(g), c.e).rest);
   return g;
 }
+// odległość od węzła [m], przy której oś w jest dość daleko od osi pozostałych gałęzi tego węzła
+function sepDist(w, group, fromStart, lw, R) {
+  const g = fromStart ? w.g : rev(w.g), L = lenM(g), n = lanesOf(w.t);
+  for (let d = R; d < Math.min(250, L); d += 5) {
+    const p = cutFrom(g, d).p; let ok = true;
+    for (const o of group) { if (o === w) continue; const need = (n + lanesOf(o.t)) * lw / 2 + 1; if (distPoly(p, o.g) < need) { ok = false; break; } }
+    if (ok) return d;
+  }
+  return Math.min(250, L);
+}
+function distPoly(p, g) { let best = 1e18;
+  for (let i = 1; i < g.length; i++) { const a = g[i - 1], b = g[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy || 1;
+    const u = Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / L2)); best = Math.min(best, Math.hypot(a[0] + u * vx - p[0], a[1] + u * vy - p[1])); }
+  return best * K; }
 // końce przy węźle: punkt i kierunek jazdy (dla wjazdu – w stronę węzła)
 function endIn(w, c) { const q = cutFrom(rev(w.g), c.e); return { p: q.p, dir: [-q.dir[0], -q.dir[1]] }; }
 function endOut(w, c) { const q = cutFrom(w.g, c.s); return { p: q.p, dir: q.dir }; }

@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Pasy w iD (Roads and Lanes)
 // @namespace    https://github.com/VoyteckPL/mapa-szlakow
-// @version      2026.11.17.2038
+// @version      2026.11.17.2041
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
 // @match        https://ideditor.com/*
 // @match        https://ideditor.netlify.app/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // @updateURL    https://voyteckpl.github.io/mapa-szlakow/idlanes.user.js
 // @downloadURL  https://voyteckpl.github.io/mapa-szlakow/idlanes.user.js
 // ==/UserScript==
@@ -619,10 +619,15 @@ function drawGroup(g, ly) {
   }
   for (const a of La) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }
+/* przechwyt kontekstu iD: iD tworzy go lokalnie, wiec opakowujemy iD.coreContext zanim zostanie wywolane (skrypt startuje przed iD) */
+(function () {
+  const wrap = o => { try { if (o && typeof o.coreContext === 'function' && !o.coreContext.__idl) { const orig = o.coreContext, f = function () { const c = orig.apply(this, arguments); try { window.__idctx = c; } catch (e) {} return c; }; f.__idl = 1; Object.keys(orig).forEach(k => { try { f[k] = orig[k]; } catch (e) {} }); o.coreContext = f; } } catch (e) {} return o; };
+  try { if (window.iD) wrap(window.iD); else { let v; Object.defineProperty(window, 'iD', { configurable: true, enumerable: true, get() { return v; }, set(x) { v = wrap(x); } }); } } catch (e) {}
+})();
 /* ---- adapter iD: graf iD -> model edytora, rysowanie na nakladce canvas ---- */
 const IDL = { on: true, hide: true, raf: 0 };
-function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
-function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; document.body.appendChild(b); } b.textContent = t; return b; }
+function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.__idctx, window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
+function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; (document.body || document.documentElement).appendChild(b); } b.textContent = t; return b; }
 function idWhen(cb) { idBadge('Pasy w iD: szukam edytora…'); let n = 0; const t = setInterval(() => { const c = idCtx(); const mm = document.querySelector('.main-map'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n > 120) { clearInterval(t); idBadge('Pasy w iD: nie widzę obiektu iD (' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + ')'); } }, 500); }
 idWhen(ctxId => {
   const root = document.querySelector('.main-map');

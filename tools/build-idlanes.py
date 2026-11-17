@@ -23,7 +23,7 @@ header = """// ==UserScript==
 // @match        https://ideditor.com/*
 // @match        https://ideditor.netlify.app/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // @updateURL    https://voyteckpl.github.io/mapa-szlakow/idlanes.user.js
 // @downloadURL  https://voyteckpl.github.io/mapa-szlakow/idlanes.user.js
 // ==/UserScript==

@@ -652,8 +652,10 @@ function glyph(g, key) {
 const TILES = new Map(); let tq = 0; const tw = [];
 const merc = (x, y, n) => { const R = 20037508.342789244; return [x / n * 2 * R - R, R - y / n * 2 * R]; };
 async function fetchTile(kind, z, x, y, im) {
-  while (tq >= 4) await new Promise(r => tw.push(r)); tq++;
+  while (tq >= (kind === 'orto' || kind === 'ortolo' ? 6 : 4)) await new Promise(r => tw.push(r)); tq++;
   try {
+    { /* kafelek, ktory przestal byc widoczny (przesuniecie/zoom w trakcie kolejki), nie jest pobierany: kolejka obsluguje to, co jest na ekranie */ const n = 2 ** z, lo = v => v / n * 360 - 180, la = v => Math.atan(Math.sinh(Math.PI * (1 - 2 * v / n))) * 180 / Math.PI, a = w2s(proj(lo(x), la(y))), b = w2s(proj(lo(x + 1), la(y + 1))), zc = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k);
+      if (b[0] < -300 || b[1] < -300 || a[0] > W + 300 || a[1] > H + 300 || Math.abs(z - Math.round(zc)) > 3) { TILES.delete(kind + z + '/' + x + '/' + y); return; } }
     let url = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
     if (kind === 'quiet') url = `https://a.basemaps.cartocdn.com/light_nolabels/${z}/${x}/${y}.png`;
     if (kind === 'esri') url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
@@ -664,7 +666,7 @@ async function fetchTile(kind, z, x, y, im) {
       const r = await fetch(url); if (r.ok) { try { if (cache) cache.put(url, r.clone()); } catch (e) {} im.src = URL.createObjectURL(await r.blob()); return; }
       if (![429, 500, 502, 503, 504].includes(r.status)) return; await new Promise(q => setTimeout(q, 400 * 2 ** t));
     }
-  } catch (e) {} finally { tq--; const n = tw.shift(); if (n) n(); }
+  } catch (e) {} finally { tq--; const n = tw.pop(); if (n) n(); } /* najnowsze zadania pierwsze (LIFO): po przesunieciu mapy najpierw widoczne kafelki */
 }
 let srT = 0, srLast = 0; function schedRender() { if (srT) return; const wait = 0; srT = setTimeout(() => { srT = 0; srLast = performance.now(); requestAnimationFrame(render); }, wait); } /* zlaczone przerysowania po zaladowaniu kafelkow (w jezdzie max co ~350 ms) */
 function tile(kind, z, x, y) { const k = kind + z + '/' + x + '/' + y; let im = TILES.get(k); if (!im) { im = new Image(); im.onload = schedRender; TILES.set(k, im); fetchTile(kind, z, x, y, im); } return im; }

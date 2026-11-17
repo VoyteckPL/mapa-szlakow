@@ -137,7 +137,7 @@ const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
 const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary']); /* 2026-11-17: na razie tylko autostrady, glowne i secondary (+ lacznice); dawniej + tertiary, unclassified, residential, living_street, service, busway */
 const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse', 'p9a', 'p9b']);
-const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render'], ['split', 'Rozdziel drogę']];
+const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render']];
 const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
 let W = 0, H = 0, DPR = 1, L = null;
 
@@ -773,7 +773,7 @@ function render() {
     S.doc.road.forEach(r => { if (!r.sb) return; [0, r.pts.length - 1].forEach(j => { const q = w2s(r.pts[j]); ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#2a7de1'; ctx.stroke(); }); });
     for (const [pt, col] of [[S.joinHov, '#ffb400'], [S.joinPick && S.doc.road[S.joinPick.i] && S.doc.road[S.joinPick.i].pts[S.joinPick.j], '#2ecc40']]) if (pt) { const q = w2s(pt); ctx.beginPath(); ctx.arc(q[0], q[1], 11, 0, 7); ctx.fillStyle = col + '55'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.stroke(); }
   }
-  if (S.draw) { S.doc.road.forEach(r => r.pts.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#2a7de1'; ctx.stroke(); })); if (S.hov) { const s = w2s(S.hov); ctx.beginPath(); ctx.arc(s[0], s[1], 9, 0, 7); ctx.fillStyle = 'rgba(255,200,0,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#ffb400'; ctx.stroke(); } const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
+  if (S.draw) { S.doc.road.forEach(r => r.pts.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#2a7de1'; ctx.stroke(); })); if (S.hov) { const s = w2s(S.hov); ctx.beginPath(); ctx.arc(s[0], s[1], 9, 0, 7); ctx.fillStyle = 'rgba(255,200,0,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#ffb400'; ctx.stroke(); } const P = S.draw.pts; if (P.length && S.cur) { const a = w2s(P[P.length - 1]), b = w2s(S.hov || S.cur); ctx.save(); ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); } if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
   drawScale();
 }
 function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : k > 0.3 ? 100 : k > 0.08 ? 500 : 2000; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar >= 1000 ? bar / 1000 + ' km' : bar + ' m', 12, H - 22); }
@@ -1150,7 +1150,7 @@ cv.addEventListener('pointerdown', e => {
   }
   drag = { m: 'maybe', p, v: { x: S.view.x, y: S.view.y }, w };
 });
-cv.addEventListener('pointermove', e => { if (S.draw && e.pointerType !== 'touch') { const v = nearVertex(evp(e), 14), h = v ? S.doc.road[v.i].pts[v.vi] : null; if (h !== S.hov) { S.hov = h; render(); } } else if (S.hov) { S.hov = null; render(); } });
+cv.addEventListener('pointermove', e => { if (S.draw && e.pointerType !== 'touch') { S.cur = s2w(evp(e)); const v = nearVertex(evp(e), 14), h = v ? S.doc.road[v.i].pts[v.vi] : null; const ch = h !== S.hov; S.hov = h; if (S.draw.pts.length || ch) render(); } else if (S.hov) { S.hov = null; render(); } });
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, evp(e));
   if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.02, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
@@ -1426,6 +1426,47 @@ if (!EMBED) (() => {
   }
   const oldUi = ui; ui = function () { const r0 = oldUi.apply(this, arguments); try { draw(); } catch (e) {} return r0; };
   draw();
+})();
+
+// ---------- panel Edytor: narzedzia linii (rozdziel / rysuj) i pasy z turn:lanes w ikonach ----------
+(() => {
+  const el = document.createElement('div'); el.id = 'edP'; el.style.cssText = 'position:fixed;left:282px;top:62px;z-index:14;width:250px;max-height:calc(100% - 80px);overflow:auto;background:#fff;color:#222;border:1px solid #ccd;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px 12px;font:13px system-ui,sans-serif;display:none';
+  document.body.appendChild(el);
+  const ICP = { '': 'M5 10H11', through: 'M8 17V4M4 8 8 3 12 8', right: 'M5 17V10Q5 6 9 6H12M9 3 13 6 9 9', left: 'M11 17V10Q11 6 7 6H4M7 3 3 6 7 9', slight_right: 'M5 17 11 6M7 5H12V10', slight_left: 'M11 17 5 6M9 5H4V10', 'through;right': 'M6 17V4M2 8 6 3 10 8M6 12Q6 9 9 9H13M10 6 14 9 10 12', 'through;left': 'M10 17V4M6 8 10 3 14 8M10 12Q10 9 7 9H3M6 6 2 9 6 12', reverse: 'M11 17V7Q11 3 8 3Q5 3 5 7V13M2 10 5 14 8 10' };
+  const NAMES = { '': 'brak strzałki', through: 'prosto', left: 'w lewo', slight_left: 'lekko w lewo', right: 'w prawo', slight_right: 'lekko w prawo', 'through;left': 'prosto i w lewo', 'through;right': 'prosto i w prawo', reverse: 'zawracanie' };
+  const ico = (v, sz = 22) => `<svg width="${sz}" height="${Math.round(sz * 18 / 16)}" viewBox="0 0 16 18" fill="none" stroke="#222" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="${ICP[v] !== undefined ? ICP[v] : ICP['']}"/></svg>`;
+  const svg = (d, c) => `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="${d}"/></svg>`;
+  const TOOLI = { sel: ['M5 3l13 8-6 2-3 6z', '#3949ab', 'Zaznacz / przesuwaj'], split: ['M6 6a2 2 0 100 4 2 2 0 000-4zM6 14a2 2 0 100 4 2 2 0 000-4zM8 9l12 9M8 15l12-9', '#e53935', 'Rozdziel drogę na dwie części'], road: ['M4 20l1-4L16 5l3 3L8 19zM14 7l3 3', '#43a047', 'Rysuj drogę'] };
+  let open = null;
+  const tbn = (id, inner, act, tip, w) => `<button id="${id}" title="${tip}" style="padding:4px 7px;margin:2px;border:1px solid ${act ? '#3949ab' : '#bbc'};border-radius:7px;background:${act ? '#e8eaf6' : '#fff'};cursor:pointer;min-width:${w || 36}px">${inner}</button>`;
+  function draw() {
+    const r = S.doc.road[S.sel], $$ = id => el.querySelector('#' + id);
+    let h = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#3949ab">Edytor</b><button id="edX" style="border:0;background:none;font-size:16px;cursor:pointer">×</button></div>`;
+    h += `<div style="color:#667;margin:4px 0 0;font-weight:600">Linie</div><div>` + Object.entries(TOOLI).map(([k, v]) => tbn('edT_' + k, svg(v[0], v[1]), S.tool === k, v[2])).join('') + `</div>`;
+    if (S.tool === 'road') h += `<div style="color:#667;font-size:12px">Klikaj punkty; Enter kończy. Kliknij istniejący punkt, by połączyć.</div>`;
+    if (S.tool === 'split') h += `<div style="color:#667;font-size:12px">Kliknij drogę w miejscu podziału.</div>`;
+    if (r) {
+      const n = Math.max(1, Math.min(6, r.lanes | 0)), a = (r.tl || '').split('|'); while (a.length < n) a.push(''); a.length = n;
+      h += `<div style="color:#667;margin:8px 0 0;font-weight:600">Pasy i turn:lanes</div><div>${tbn('edLm', '−', 0, 'mniej pasów', 28)}<b style="margin:0 6px">${n}</b>${tbn('edLp', '+', 0, 'więcej pasów', 28)}</div>`;
+      h += `<div style="margin-top:4px;display:flex;gap:2px;flex-wrap:wrap">` + a.map((v, i) => `<button class="edI" data-i="${i}" title="Pas ${i + 1}: ${NAMES[v] || v}. Prawy klik lub przytrzymanie: zmień strzałkę" style="padding:4px 6px;border:1px solid ${open === i ? '#3949ab' : '#bbc'};border-radius:7px;background:${open === i ? '#e8eaf6' : '#fff'};cursor:pointer">${ico(v)}</button>`).join('') + `</div>`;
+      if (open != null && open < n) h += `<div style="margin-top:4px;border:1px solid #ccd;border-radius:8px;padding:3px;display:flex;flex-direction:column">` + Object.keys(ICP).map(k => `<button class="edO" data-k="${k}" style="display:flex;align-items:center;gap:8px;border:0;background:${a[open] === k ? '#e8eaf6' : '#fff'};padding:3px 6px;cursor:pointer;text-align:left">${ico(k, 18)}<span>${NAMES[k]}</span></button>`).join('') + `</div>`;
+      h += `<div style="color:#667;font-size:12px;margin-top:4px">Prawy klik na ikonce pasa otwiera listę strzałek.</div>`;
+    } else h += `<div style="color:#667;margin-top:8px;font-size:12px">Zaznacz drogę, by zmienić liczbę pasów i strzałki.</div>`;
+    el.innerHTML = h;
+    $$('edX').onclick = () => { el.style.display = 'none'; };
+    Object.keys(TOOLI).forEach(k => { $$('edT_' + k).onclick = () => { setTool(k); draw(); }; });
+    if (r) {
+      const mut = fn => { push(); fn(); save(); ui(); touch(); draw(); };
+      const n0 = Math.max(1, Math.min(6, r.lanes | 0));
+      $$('edLm').onclick = () => { if (n0 > 1) mut(() => { r.lanes = n0 - 1; if (r.tl) { const t = r.tl.split('|'); t.length = n0 - 1; r.tl = t.join('|'); r.tlM = true; } open = null; }); };
+      $$('edLp').onclick = () => { if (n0 < 6) mut(() => { r.lanes = n0 + 1; if (r.tl) { r.tl += '|'; r.tlM = true; } open = null; }); };
+      el.querySelectorAll('.edI').forEach(b => { const i = +b.dataset.i, tog = () => { open = open === i ? null : i; draw(); }; b.oncontextmenu = e => { e.preventDefault(); tog(); }; let tm = 0; b.onpointerdown = () => { tm = setTimeout(() => { tm = -1; tog(); }, 500); }; b.onpointerup = b.onpointerleave = () => { if (tm > 0) clearTimeout(tm); }; b.onclick = () => { if (tm === -1) { tm = 0; return; } tog(); }; });
+      el.querySelectorAll('.edO').forEach(b => { b.onclick = () => mut(() => { const t = (r.tl || '').split('|'); while (t.length < n0) t.push(''); t.length = n0; t[open] = b.dataset.k; r.tl = t.every(x => !x) ? '' : t.join('|'); r.tlM = true; open = null; }); });
+    }
+  }
+  const lc = document.getElementById('lcP');
+  if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Edytor'; row.className = 'eb'; row.innerHTML = '<button id="lcEd" title="Linie: rozdziel i rysuj; pasy i turn:lanes w ikonach" style="width:auto;padding:0 8px;font-size:12px">▤ Edytor</button>'; lc.append(hr, b, row); row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
+  const oldUi2 = ui; ui = function () { const r0 = oldUi2.apply(this, arguments); try { if (el.style.display !== 'none' && !el.contains(document.activeElement)) draw(); } catch (e) {} return r0; };
 })();
 </script>
 </body>

@@ -19,9 +19,9 @@
     const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:56px;top:8px;z-index:60;display:flex;gap:4px;font:12px system-ui;pointer-events:auto'; mm.appendChild(bar);
     const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:3px 8px;border:1px solid #889;border-radius:6px;background:#fff;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
     mk('Pasy: wł.', b => { IDL.on = !IDL.on; b.textContent = 'Pasy: ' + (IDL.on ? 'wł.' : 'wył.'); });
-    IDL.hide = false; mk('Linie iD: widoczne', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'ukryte' : 'widoczne'); css(); });
+    IDL.hide = false; mk('Linie iD: wł.', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'wył.' : 'wł.'); css(); });
     const st = document.createElement('style'); document.head.appendChild(st);
-    const css = () => { st.textContent = IDL.hide ? '.layer-osm path.line.tag-highway-motorway,.layer-osm path.line.tag-highway-motorway_link,.layer-osm path.line.tag-highway-trunk,.layer-osm path.line.tag-highway-trunk_link,.layer-osm path.line.tag-highway-primary,.layer-osm path.line.tag-highway-primary_link,.layer-osm path.line.tag-highway-secondary,.layer-osm path.line.tag-highway-secondary_link{opacity:.25}' : ''; }; css();
+    const css = () => { st.textContent = IDL.hide ? '.layer-osm path.line.tag-highway-motorway,.layer-osm path.line.tag-highway-motorway_link,.layer-osm path.line.tag-highway-trunk,.layer-osm path.line.tag-highway-trunk_link,.layer-osm path.line.tag-highway-primary,.layer-osm path.line.tag-highway-primary_link,.layer-osm path.line.tag-highway-secondary,.layer-osm path.line.tag-highway-secondary_link{visibility:hidden}' : ''; }; css();
     const ids = new WeakMap(); let nid = 0, last = '';
     const hashView = () => { const m = /map=([\d.]+)(?:\/|%2F)(-?[\d.]+)(?:\/|%2F)(-?[\d.]+)/i.exec(decodeURIComponent(location.hash || '')); return m ? { z: +m[1], lat: +m[2], lon: +m[3] } : null; };
     function ways() { const m = new Map(); document.querySelectorAll('.layer-osm path.line').forEach(p => { const d = p.__data__; if (d && d.type === 'way' && d.tags && d.tags.highway && !m.has(d.id)) m.set(d.id, d); }); return m; }

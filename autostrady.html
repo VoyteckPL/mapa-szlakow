@@ -115,6 +115,7 @@ const MAP = new maplibregl.Map({ container: 'map', center: [18.4618, 54.4985], z
       { id: 'os', type: 'line', source: 'pasy', filter: kind('os'), paint: { 'line-color': '#ff2d55', 'line-width': 1.2, 'line-dasharray': [3, 3] } } ] } });
 MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
 MAP.on('load', loadView); MAP.on('moveend', loadView);
+setTimeout(() => { if (MAP.getSource('pasy') && !WAYS.size) loadView(); }, 2500); // zapas, gdyby 'load' się spóźnił
 $('bm').onchange = () => MAP.setLayoutProperty('orto', 'visibility', $('bm').value === 'orto' ? 'visible' : 'none');
 $('ax').onchange = () => MAP.setLayoutProperty('os', 'visibility', $('ax').checked ? 'visible' : 'none');
 $('cw').onchange = () => MAP.setLayoutProperty('jezdnia', 'visibility', $('cw').checked ? 'visible' : 'none');

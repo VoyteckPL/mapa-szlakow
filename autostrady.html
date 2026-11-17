@@ -26,7 +26,7 @@
   <label>Szer. pasa [m] <input id="lw" type="number" step="0.05" value="3.5"></label>
   <label>Oś OSM <input id="ax" type="checkbox" checked></label>
   <label>Jezdnia <input id="cw" type="checkbox" checked></label>
-  <label>Strefy węzłów <input id="zn" type="checkbox" checked></label>
+  <label>Strefy węzłów <input id="zn" type="checkbox"></label>
   <label>Promień strefy [m] <input id="zr" type="number" step="5" value="40"></label>
   <small id="st"></small>
 </div>
@@ -73,7 +73,8 @@ function offsetLine(g, d) {
 function nrm(a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); return L ? [-dy / L, dx / L] : null; }
 
 const WAYS = new Map(), TILES = new Set();
-// ---------- strefy węzłów ----------
+// ---------- strefy węzłów (wyłączone: Wojtek 17.11 – zaczynamy od samego 3→2+1) ----------
+const SHOW_RINGS = false;
 // Węzeł = wspólny punkt końcowy jednokierunkowych dróg, gdzie 1 wjazd → kilka wyjazdów (rozjazd), kilka wjazdów → 1 wyjazd (łączenie)
 // albo 1 → 1 ze zmianą liczby pasów. W promieniu strefy osie są ucinane, a pasy łączą się łukami Hermite'a.
 // Poza strefą jezdnia idzie dokładnie po osi OSM.
@@ -234,7 +235,7 @@ function build() {
   for (const e of J) { const c0 = e.ins.length ? e.ins[0].g[e.ins[0].g.length - 1] : e.outs[0].g[0]; let r = 0;
     for (const w of e.ins) r = Math.max(r, Math.hypot(...endIn(w, cut.get(w.i)).p.map((v, i) => v - c0[i])));
     for (const w of e.outs) r = Math.max(r, Math.hypot(...endOut(w, cut.get(w.i)).p.map((v, i) => v - c0[i])));
-    line(Array.from({ length: 65 }, (_, i) => toLL(c0[0] + r * Math.cos(i / 32 * Math.PI), c0[1] + r * Math.sin(i / 32 * Math.PI))), 'strefa'); }
+    if (SHOW_RINGS) line(Array.from({ length: 65 }, (_, i) => toLL(c0[0] + r * Math.cos(i / 32 * Math.PI), c0[1] + r * Math.sin(i / 32 * Math.PI))), 'strefa'); }
   MAP.getSource('pasy').setData({ type: 'FeatureCollection', features: F });
   $('st').textContent = `Dróg: ${WAYS.size}, węzłów: ${J.length}`;
 }

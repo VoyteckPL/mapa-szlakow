@@ -37,22 +37,35 @@
     }
     /* iD moze blokowac <style> (CSP) - dlatego strzalki i etykiety chowamy tez przez styl inline na elementach */
     let hs2 = 0; function hideExtra() { if (Date.now() - hs2 < 150) return; hs2 = Date.now(); document.querySelectorAll('g.onewaygroup, g.sidedgroup, path.oneway, path.sided, text.linelabel, text.linelabel-halo, textpath, .layer-labels text, .layer-labels g, .labels-group').forEach(e => { if (IDL.hide) { if (e.style.display !== 'none') e.style.setProperty('display', 'none', 'important'); e.setAttribute('data-idl-x', '1'); } else if (e.getAttribute('data-idl-x')) { e.style.removeProperty('display'); e.removeAttribute('data-idl-x'); } }); }
-    function tick() { hideLines(); hideExtra();
-      const hv = hashView(), W0 = mm.clientWidth, H0 = mm.clientHeight; if (!hv || !W0 || !H0) return;
-      const wm0 = ways(); let g = null, bs = -1; for (const c of GR.slice().reverse()) { let sc = 0; try { for (const id of wm0.keys()) { const e = c.hasEntity(id); if (e) sc += (e.v || 0) + 1; } } catch (e) { continue; } if (sc > bs) { bs = sc; g = c; } } if (!g) g = GR[GR.length - 1];
-      const wm = new Map(); for (const [id, d] of wm0) { let e = d; try { e = g.hasEntity(id) || d; } catch (er) {} wm.set(id, e); }
-      const kk = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)), cc0 = calib(hv, kk, W0, H0), sig = [hv.z, hv.lat, hv.lon, W0, H0, IDL.on, cc0 ? cc0[0].toFixed(2) + '/' + cc0[1].toFixed(2) : '']; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
-      const key = sig.join(','); if (key === last) return; last = key;
-      DPR = window.devicePixelRatio || 1; W = W0; H = H0; for (const c of [cvs, offc]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
-      cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cvs.width, cvs.height); if (!IDL.on || hv.z < 16 || !wm.size) return;
-      // graf aktualny = taki, ktory zwraca ta sama encje drogi co element SVG
-      
-      S.org = { lat: hv.lat, lon: hv.lon }; S.view.k = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)); { const cc = calib(hv, S.view.k, W0, H0); S.view.x = cc ? cc[0] : 0; S.view.y = cc ? cc[1] : 0; }
-      const wmap = new Map(), roads = [];
-      for (const e of wm.values()) { const hw = (e.tags.highway || '').replace('_link', ''); if (!OKHW.has(hw) || e.tags.area === 'yes' || e.nodes.length < 2) continue; const pts = [], nk = []; let bad = false; for (const n of e.nodes) { const nd = g.hasEntity(n); if (!nd || !nd.loc) { bad = true; break; } pts.push(proj(nd.loc[0], nd.loc[1])); nk.push(n); } if (bad) continue; const num = +String(e.id).slice(1), o = { id: num, t: { ...e.tags }, g: pts, nk }; wmap.set(num, o); try { roads.push(makeRoad(o, 0, pts.length - 1)); } catch (er) { console.warn('idlanes makeRoad', er); } }
-      S.osm.ways = wmap; S.doc.road = roads; S.dirty = true; try { L = layout(); } catch (e) { console.warn('idlanes layout', e); L = null; } S.dirty = false; if (!L) return;
+    let dataKey = '', viewKey = '', org0 = null;
+    const gids = new WeakMap(); let ngid = 0;
+    /* rysowanie (tanie): uklad pasow L jest liczony tylko przy zmianie danych; przy przesuwaniu mapy tylko przerysowanie z aktualnym widokiem */
+    function paint(force) {
+      const hv = hashView(), W0 = mm.clientWidth, H0 = mm.clientHeight; if (!hv || !W0 || !H0 || !org0) return;
+      S.org = org0; const k = Math.pow(2, hv.z) / (156543.03 * Math.cos(org0.lat * Math.PI / 180)); const cc = calib(hv, k, W0, H0), pc = proj(hv.lon, hv.lat), vx = cc ? cc[0] : pc[0], vy = cc ? cc[1] : pc[1];
+      const vk = [vx.toFixed(2), vy.toFixed(2), k.toFixed(6), W0, H0, IDL.on].join(','); if (!force && vk === viewKey) return; viewKey = vk;
+      DPR = window.devicePixelRatio || 1; W = W0; H = H0; if (cvs.width !== Math.round(W * DPR) || cvs.height !== Math.round(H * DPR)) { for (const c of [cvs, offc]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } cvs.style.width = W + 'px'; cvs.style.height = H + 'px'; }
+      cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cvs.width, cvs.height); if (!IDL.on || hv.z < 16 || !L) return;
+      S.view.k = k; S.view.x = vx; S.view.y = vy;
       ocx.setTransform(DPR, 0, 0, DPR, 0, 0); ocx.clearRect(0, 0, W, H); try { drawLayer(ocx); } catch (e) { console.warn('idlanes draw', e); } cx.drawImage(offc, 0, 0);
     }
+    function tick() { hideLines(); hideExtra();
+      const hv = hashView(), W0 = mm.clientWidth, H0 = mm.clientHeight; if (!hv || !W0 || !H0) return;
+      if (!org0 || Math.abs(hv.lat - org0.lat) > 0.03 || Math.abs(hv.lon - org0.lon) > 0.05) org0 = { lat: hv.lat, lon: hv.lon };
+      const wm0 = ways(); let g = null, bs = -1; for (const c of GR.slice().reverse()) { let sc = 0; try { for (const id of wm0.keys()) { const e = c.hasEntity(id); if (e) sc += (e.v || 0) + 1; } } catch (e) { continue; } if (sc > bs) { bs = sc; g = c; } } if (!g) g = GR[GR.length - 1]; if (!g) return;
+      const wm = new Map(); for (const [id, d] of wm0) { let e = d; try { e = g.hasEntity(id) || d; } catch (er) {} wm.set(id, e); }
+      let gi = gids.get(g); if (!gi) gids.set(g, gi = ++ngid);
+      const sig = [org0.lat, org0.lon, hv.z.toFixed(2), gi]; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
+      const dk = sig.join(',');
+      if (dk !== dataKey) {
+        dataKey = dk; S.org = org0; S.view.k = Math.pow(2, hv.z) / (156543.03 * Math.cos(org0.lat * Math.PI / 180));
+        const wmap = new Map(), roads = [];
+        for (const e of wm.values()) { const hw = (e.tags.highway || '').replace('_link', ''); if (!OKHW.has(hw) || e.tags.area === 'yes' || e.nodes.length < 2) continue; const pts = [], nk = []; let bad = false; for (const n of e.nodes) { const nd = g.hasEntity(n); if (!nd || !nd.loc) { bad = true; break; } pts.push(proj(nd.loc[0], nd.loc[1])); nk.push(n); } if (bad) continue; const num = +String(e.id).slice(1), o = { id: num, t: { ...e.tags }, g: pts, nk }; wmap.set(num, o); try { roads.push(makeRoad(o, 0, pts.length - 1)); } catch (er) { console.warn('idlanes makeRoad', er); } }
+        S.osm.ways = wmap; S.doc.road = roads; S.dirty = true; try { L = layout(); } catch (e) { console.warn('idlanes layout', e); L = null; } S.dirty = false;
+        paint(true);
+      } else paint(false);
+    }
+    try { new MutationObserver(() => { try { paint(false); } catch (e) {} }).observe(sup, { attributes: true, attributeFilter: ['style'] }); } catch (e) {}
     let lt = 0; const loop = t => { if (t - lt >= 30) { lt = t; try { tick(); } catch (e) { console.warn('idlanes tick', e); } } requestAnimationFrame(loop); }; requestAnimationFrame(loop);
     window.__idlanes = IDL;
   }

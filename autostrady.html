@@ -26,6 +26,8 @@
   <label>Szer. pasa [m] <input id="lw" type="number" step="0.05" value="3.5"></label>
   <label>Oś OSM <input id="ax" type="checkbox" checked></label>
   <label>Jezdnia <input id="cw" type="checkbox" checked></label>
+  <label>Strefy węzłów <input id="zn" type="checkbox" checked></label>
+  <label>Promień strefy [m] <input id="zr" type="number" step="5" value="40"></label>
   <small id="st"></small>
 </div>
 <script>
@@ -38,7 +40,7 @@ const HW = /^(motorway|trunk)(_link)?$/;
 
 // ---------- pamięć podręczna ortofoto ----------
 const CACHE = 'pasy-orto-v1';
-async function fetchT(url, ms) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms); try { return await fetch(url, { signal: ac.signal }); } finally { clearTimeout(t); } }
+async function fetchT(url, ms, opt) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms); try { return await fetch(url, { ...opt, signal: ac.signal }); } finally { clearTimeout(t); } }
 async function cachedFetch(url, ms) {
   let c = null; try { c = await caches.open(CACHE); const hit = await c.match(url); if (hit) return hit; } catch (e) {}
   const r = await fetchT(url, ms);
@@ -71,27 +73,147 @@ function offsetLine(g, d) {
 function nrm(a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); return L ? [-dy / L, dx / L] : null; }
 
 const WAYS = new Map(), TILES = new Set();
+// ---------- strefy węzłów ----------
+// Węzeł = wspólny punkt końcowy jednokierunkowych dróg, gdzie 1 wjazd → kilka wyjazdów (rozjazd), kilka wjazdów → 1 wyjazd (łączenie)
+// albo 1 → 1 ze zmianą liczby pasów. W promieniu strefy osie są ucinane, a pasy łączą się łukami Hermite'a.
+// Poza strefą jezdnia idzie dokładnie po osi OSM.
+const isOneway = t => ['yes', '-1', 'true'].includes(t.oneway) || /^motorway/.test(t.highway);
+const nk = p => p[0].toFixed(1) + ',' + p[1].toFixed(1);
+const lenM = g => { let L = 0; for (let i = 1; i < g.length; i++) L += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]); return L * K; };
+// punkt i kierunek w odległości d [m] od początku łamanej + reszta łamanej od tego miejsca
+function cutFrom(g, d) {
+  let acc = 0; const s = d / K;
+  for (let i = 1; i < g.length; i++) { const a = g[i - 1], b = g[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (acc + L >= s) { const t = (s - acc) / (L || 1), p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; return { p, dir: [(b[0] - a[0]) / (L || 1), (b[1] - a[1]) / (L || 1)], rest: [p, ...g.slice(i)] }; }
+    acc += L; }
+  const a = g[g.length - 2], b = g[g.length - 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return { p: b, dir: [(b[0] - a[0]) / L, (b[1] - a[1]) / L], rest: [b] };
+}
+const rev = g => g.slice().reverse();
+function findJunctions(lw, R) {
+  const ends = new Map(); // klucz węzła → { ins: [], outs: [] }
+  const at = k => ends.get(k) || (ends.set(k, { ins: [], outs: [] }), ends.get(k));
+  for (const w of WAYS.values()) { if (!isOneway(w.t) || w.g.length < 2) continue; at(nk(w.g[0])).outs.push(w); at(nk(w.g[w.g.length - 1])).ins.push(w); }
+  const J = [];
+  for (const [k, e] of ends) {
+    const ni = e.ins.length, no = e.outs.length; if (!ni || !no || (ni > 1 && no > 1)) continue;
+    if (ni === 1 && no === 1 && lanesOf(e.ins[0].t) === lanesOf(e.outs[0].t)) continue;
+    J.push(e);
+  }
+  // przycięcie: każda droga traci przy końcu w węźle min(R, 45% długości)
+  const cut = new Map(); // id → { s: m od początku, e: m od końca }
+  for (const e of J) {
+    for (const w of e.outs) { const c = cut.get(w.i) || {}; c.s = Math.min(R, lenM(w.g) * 0.45); cut.set(w.i, c); }
+    for (const w of e.ins) { const c = cut.get(w.i) || {}; c.e = Math.min(R, lenM(w.g) * 0.45); cut.set(w.i, c); }
+  }
+  return { J, cut };
+}
+// łamana przycięta z obu stron
+function trimmed(w, c) {
+  let g = w.g; if (!c) return g;
+  if (c.s) g = cutFrom(g, c.s).rest;
+  if (c.e && g.length > 1) g = rev(cutFrom(rev(g), c.e).rest);
+  return g;
+}
+// końce przy węźle: punkt i kierunek jazdy (dla wjazdu – w stronę węzła)
+function endIn(w, c) { const q = cutFrom(rev(w.g), c.e); return { p: q.p, dir: [-q.dir[0], -q.dir[1]] }; }
+function endOut(w, c) { const q = cutFrom(w.g, c.s); return { p: q.p, dir: q.dir }; }
+const crossA = (a, b) => a[0] * b[1] - a[1] * b[0];
+// łuk Hermite'a z A (kierunek da) do B (kierunek db), przesunięty w lewo o oa na początku i ob na końcu
+function laneCurve(A, B, oa, ob, N = 20) {
+  const pa = [A.p[0] - A.dir[1] * oa / K, A.p[1] + A.dir[0] * oa / K], pb = [B.p[0] - B.dir[1] * ob / K, B.p[1] + B.dir[0] * ob / K];
+  const D = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]) * 0.9, out = [];
+  for (let i = 0; i <= N; i++) { const t = i / N, h1 = 2 * t ** 3 - 3 * t ** 2 + 1, h2 = t ** 3 - 2 * t ** 2 + t, h3 = -2 * t ** 3 + 3 * t ** 2, h4 = t ** 3 - t ** 2;
+    out.push(toLL(h1 * pa[0] + h2 * D * A.dir[0] + h3 * pb[0] + h4 * D * B.dir[0], h1 * pa[1] + h2 * D * A.dir[1] + h3 * pb[1] + h4 * D * B.dir[1])); }
+  return out;
+}
+// przyporządkowanie pasów w węźle: lista { a: koniec wjazdu, ia, na, b: koniec wyjazdu, ib, nb }
+function laneLinks(e, cut) {
+  const L = [];
+  const side = (ref, list, endF) => list.map(w => { const E = endF(w, cut.get(w.i)), far = cutFrom(endF === endOut ? w.g : rev(w.g), Math.min(60, lenM(w.g))).p;
+    const v = endF === endOut ? [far[0] - E.p[0], far[1] - E.p[1]] : [E.p[0] - far[0], E.p[1] - far[1]]; return { w, E, n: lanesOf(w.t), k: crossA(ref, v) / (Math.hypot(...v) || 1) }; })
+    .sort((x, y) => y.k - x.k); // od lewej do prawej
+  if (e.ins.length === 1) { // rozjazd albo zmiana liczby pasów
+    const I = e.ins[0], A = endIn(I, cut.get(I.i)), na = lanesOf(I.t), outs = side(A.dir, e.outs, endOut);
+    const tot = outs.reduce((s, o) => s + o.n, 0); let ia = 0;
+    for (const o of outs) for (let ib = 0; ib < o.n; ib++, ia++) L.push({ a: A, ia: Math.min(ia, na - 1), na, b: o.E, ib, nb: o.n, newLane: ia >= na });
+    for (; ia < na; ia++) { const o = outs[outs.length - 1]; L.push({ a: A, ia, na, b: o.E, ib: o.n - 1, nb: o.n, ends: true }); } // pas się kończy: zjeżdża w skrajny prawy
+  } else { // łączenie kilku wjazdów w jeden wyjazd
+    const O = e.outs[0], B = endOut(O, cut.get(O.i)), nb = lanesOf(O.t), ins = side(B.dir, e.ins, endIn); let ib = 0;
+    for (const o of ins) for (let ia = 0; ia < o.n; ia++, ib++) L.push({ a: o.E, ia, na: o.n, b: B, ib: Math.min(ib, nb - 1), nb, ends: ib >= nb });
+  }
+  return L;
+}
+
+// ---------- strzałki ----------
+const ANG = { through: 0, slight_right: 35, right: 80, sharp_right: 120, slight_left: -35, left: -80, sharp_left: -120, merge_to_left: -20, merge_to_right: 20 };
+function arrowImg(v) {
+  const dirs = (v || '').split(';').map(x => x.trim()).filter(x => x in ANG); if (!dirs.length) return null;
+  const id = 'a-' + dirs.sort().join('+'); if (MAP.hasImage(id)) return id;
+  const W = 64, H = 160, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 7; g.lineCap = 'butt';
+  const x0 = W / 2, yb = H - 4, yf = H * 0.55; // trzon od dołu do punktu rozwidlenia
+  const head = (x, y, a) => { g.save(); g.translate(x, y); g.rotate(a * Math.PI / 180); g.beginPath(); g.moveTo(0, -20); g.lineTo(-12, 4); g.lineTo(12, 4); g.closePath(); g.fill(); g.restore(); };
+  g.beginPath(); g.moveTo(x0, yb); g.lineTo(x0, dirs.includes('through') ? 22 : yf); g.stroke();
+  if (dirs.includes('through')) head(x0, 22, 0);
+  for (const d of dirs) { if (d === 'through') continue; const a = ANG[d], r = a * Math.PI / 180, L = Math.abs(a) > 60 ? 22 : 40;
+    const x1 = x0 + Math.sin(r) * L, y1 = yf - Math.cos(r) * L; g.beginPath(); g.moveTo(x0, yf + 6); g.lineTo(x1, y1); g.stroke(); head(x1, y1, a); }
+  MAP.addImage(id, g.getImageData(0, 0, W, H), { pixelRatio: 2 }); return id;
+}
+
 function build() {
-  const lw = +$('lw').value || 3.5, F = [];
+  const lw = +$('lw').value || 3.5, R = +$('zr').value || 40, zones = $('zn').checked, F = [];
+  const { J, cut } = zones ? findJunctions(lw, R) : { J: [], cut: new Map() };
+  const line = (coords, kind, extra) => F.push({ type: 'Feature', properties: { kind, ...extra }, geometry: { type: 'LineString', coordinates: coords } });
   for (const w of WAYS.values()) {
-    const t = w.t, n = lanesOf(t), half = n * lw / 2, two = !['yes', '-1', 'true'].includes(t.oneway) && t.highway === 'trunk'; // dwukierunkowa: środkowa linia ciągła
-    const L = (d, kind, extra) => F.push({ type: 'Feature', properties: { kind, ...extra }, geometry: { type: 'LineString', coordinates: offsetLine(w.g, d) } });
+    const t = w.t, n = lanesOf(t), half = n * lw / 2, two = !isOneway(t) && t.highway === 'trunk'; // dwukierunkowa: środkowa linia ciągła
+    const g = trimmed(w, cut.get(w.i)); if (g.length < 2) continue;
+    const L = (d, kind, extra) => line(offsetLine(g, d), kind, extra);
     L(0, 'jezdnia', { w: n * lw, id: w.i });
-    L(0, 'os', { id: w.i, n });
+    line(offsetLine(w.g, 0), 'os', { id: w.i, n });
     L(half, 'kraw'); L(-half, 'kraw');
     for (let i = 1; i < n; i++) { const d = -half + i * lw; L(d, two && i === n / 2 ? 'srodek' : 'pas'); }
+    // strzałki P-8 z turn:lanes: na każdym pasie 25 m i 70 m przed końcem odcinka (po przycięciu strefą)
+    const tl = isOneway(t) && (t['turn:lanes'] || '').split('|');
+    if (tl && tl.length === n) { const Lg = lenM(g);
+      for (const back of [25, 70]) { if (back > Lg - 5) continue; const q = cutFrom(rev(g), back), dir = [-q.dir[0], -q.dir[1]], brg = Math.atan2(dir[0], dir[1]) * 180 / Math.PI;
+        tl.forEach((v, i) => { const img = arrowImg(v); if (!img) return; const o = half - (i + 0.5) * lw;
+          F.push({ type: 'Feature', properties: { kind: 'strz', img, brg }, geometry: { type: 'Point', coordinates: toLL(q.p[0] - dir[1] * o / K, q.p[1] + dir[0] * o / K) } }); }); } }
+  }
+  // strefy: każdy pas jako wstęga asfaltu + krawędzie (ciągła na zewnątrz grupy, przerywana między pasami tej samej grupy)
+  for (const e of J) for (const k of laneLinks(e, cut)) {
+    const oa = k.na * lw / 2 - (k.ia + 0.5) * lw, ob = k.nb * lw / 2 - (k.ib + 0.5) * lw; // środek pasu, + w lewo
+    line(laneCurve(k.a, k.b, oa, ob), 'jezdnia', { w: lw * 1.04 });
+    const multiOut = e.outs.length > 1, multiIn = e.ins.length > 1;
+    const leftOuter = multiOut ? k.ib === 0 : multiIn ? k.ia === 0 : (k.ia === 0 || k.ib === 0);
+    const rightOuter = multiOut ? k.ib === k.nb - 1 : multiIn ? k.ia === k.na - 1 : (k.ia === k.na - 1 || k.ib === k.nb - 1);
+    line(laneCurve(k.a, k.b, oa + lw / 2, ob + lw / 2), leftOuter ? 'kraw' : 'pas');
+    if (rightOuter) line(laneCurve(k.a, k.b, oa - lw / 2, ob - lw / 2), 'kraw');
   }
   MAP.getSource('pasy').setData({ type: 'FeatureCollection', features: F });
-  $('st').textContent = `Dróg: ${WAYS.size}`;
+  $('st').textContent = `Dróg: ${WAYS.size}, węzłów: ${J.length}`;
+}
+// poza Gdynią (brak gotowego kafla) – te same kafle 0,02°×0,01° wprost z OSM przez Overpass
+const OVP = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+async function overpassTile(x, y) {
+  const bb = [y * 0.01, x * 0.02, (y + 1) * 0.01, (x + 1) * 0.02].map(v => v.toFixed(4)).join(',');
+  const q = `[out:json][timeout:25];way[highway~"^(motorway|trunk)(_link)?$"](${bb});out tags geom;`;
+  for (const u of OVP) { try { $('st').textContent = 'Pobieram z OSM (Overpass)…';
+    const r = await fetchT(u, 30000, { method: 'POST', body: 'data=' + encodeURIComponent(q) }); if (!r.ok) continue;
+    return (await r.json()).elements.filter(e => e.geometry).map(e => ({ i: e.id, t: e.tags || {}, g: e.geometry.map(p => [p.lon, p.lat]) })); } catch (e) {} }
+  return null;
 }
 async function loadView() {
-  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } const b = MAP.getBounds(); let add = false;
+  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } $('st').textContent = `Dróg: ${WAYS.size}`; const b = MAP.getBounds(); let add = false;
   for (let x = Math.floor(b.getWest() / 0.02); x <= Math.floor(b.getEast() / 0.02); x++) for (let y = Math.floor(b.getSouth() / 0.01); y <= Math.floor(b.getNorth() / 0.01); y++) {
     const k = x + '_' + y; if (TILES.has(k)) continue; TILES.add(k);
-    try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000); if (!r.ok) continue;
-      for (const w of await r.json()) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { WAYS.set(w.i, { i: w.i, t: w.t, g: w.g.map(c => toM(c[0], c[1])) }); add = true; } } catch (e) { TILES.delete(k); }
+    try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000);
+      const list = r.ok ? await r.json() : r.status === 404 ? await overpassTile(x, y) : null;
+      if (!list) { TILES.delete(k); continue; }
+      for (const w of list) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { { const g = w.g.map(c => toM(c[0], c[1])); if (w.t.oneway === '-1') g.reverse(); WAYS.set(w.i, { i: w.i, t: w.t, g }); } add = true; }
+      if (add) { build(); add = false; } } catch (e) { TILES.delete(k); }
   }
-  if (add) build();
+  build();
 }
 
 // ---------- mapa ----------
@@ -112,6 +234,8 @@ const MAP = new maplibregl.Map({ container: 'map', center: [18.4618, 54.4985], z
       { id: 'kraw', type: 'line', source: 'pasy', filter: kind('kraw'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'srodek', type: 'line', source: 'pasy', filter: kind('srodek'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'pas', type: 'line', source: 'pasy', filter: kind('pas'), paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1), 'line-dasharray': [4 / LINE, 8 / LINE] } },
+      { id: 'strz', type: 'symbol', source: 'pasy', filter: kind('strz'), minzoom: 16, layout: { 'icon-image': ['get', 'img'], 'icon-rotate': ['get', 'brg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 16, 6 * PXM(16) / 80, 22, 6 * PXM(22) / 80] } },
       { id: 'os', type: 'line', source: 'pasy', filter: kind('os'), paint: { 'line-color': '#ff2d55', 'line-width': 1.2, 'line-dasharray': [3, 3] } } ] } });
 MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
 MAP.on('load', loadView); MAP.on('moveend', loadView);
@@ -119,7 +243,7 @@ setTimeout(() => { if (MAP.getSource('pasy') && !WAYS.size) loadView(); }, 2500)
 $('bm').onchange = () => MAP.setLayoutProperty('orto', 'visibility', $('bm').value === 'orto' ? 'visible' : 'none');
 $('ax').onchange = () => MAP.setLayoutProperty('os', 'visibility', $('ax').checked ? 'visible' : 'none');
 $('cw').onchange = () => MAP.setLayoutProperty('jezdnia', 'visibility', $('cw').checked ? 'visible' : 'none');
-$('lw').onchange = build;
+$('lw').onchange = build; $('zn').onchange = build; $('zr').onchange = build;
 MAP.on('click', 'jezdnia', e => { const p = e.features[0].properties, w = WAYS.get(p.id); if (!w) return;
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${w.t.name || w.t.ref || w.t.highway}</b><br>${w.t.highway}, lanes=${w.t.lanes || '?'}${w.t['turn:lanes'] ? '<br>turn:lanes=' + w.t['turn:lanes'] : ''}<br><a href="https://www.openstreetmap.org/way/${w.i}" target="_blank">way ${w.i}</a>`).addTo(MAP); });
 </script>

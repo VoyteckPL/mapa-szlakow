@@ -11,13 +11,13 @@
   const boot = setInterval(() => {
     if (started) return; const sup = document.querySelector('.supersurface'), mm = document.querySelector('.main-map');
     if (!sup || !mm || !window.iD || !hookGraph() || idCtx()) return; if (!GR.length) return;
-    started = true; clearInterval(boot); try { const b = document.getElementById('idlanes-badge'); if (b) b.remove(); } catch (e) {} run(sup, mm);
+    started = true; window.__idlDom = 1; clearInterval(boot); try { const b = document.getElementById('idlanes-badge'); if (b) b.remove(); } catch (e) {} run(sup, mm);
   }, 500);
   function run(sup, mm) {
     const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none'; { const sf = sup.querySelector('svg.surface') || sup.querySelector('.surface'); if (sf && sf.parentNode === sup) sup.insertBefore(cvs, sf); else sup.appendChild(cvs); } /* pod warstwa SVG iD: linie, wezly i uchwyty zostaja na wierzchu i da sie edytowac */
     const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
-    const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:56px;top:8px;z-index:60;display:flex;gap:4px;font:12px system-ui;pointer-events:auto'; mm.appendChild(bar);
-    const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:3px 8px;border:1px solid #889;border-radius:6px;background:#fff;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
+    const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:64px;bottom:40px;z-index:60;display:flex;flex-direction:column;gap:4px;font:13px system-ui;pointer-events:auto;box-shadow:0 1px 6px #0006;border-radius:8px'; mm.appendChild(bar);
+    const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:6px 12px;border:1px solid #889;border-radius:8px;background:#fff;color:#222;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
     mk('Pasy: wł.', b => { IDL.on = !IDL.on; b.textContent = 'Pasy: ' + (IDL.on ? 'wł.' : 'wył.'); });
     IDL.hide = false; mk('Linie iD: wł.', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'wył.' : 'wł.'); css(); });
     const st = document.createElement('style'); document.head.appendChild(st);

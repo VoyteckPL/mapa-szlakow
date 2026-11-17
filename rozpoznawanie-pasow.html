@@ -149,10 +149,14 @@ async function run() {
   const lines = keep.map(c => { let on = 0, tr = 0, prev = 0; for (let r = 0; r < NR; r++) { let h = 0; for (let e = -2; e <= 2; e++) if (c + e >= 0 && c + e < NC) h |= hit[r * NC + c + e]; on += h; if (r && h !== prev) tr++; prev = h; }
     const f = on / NR; return { d: +dOf(c).toFixed(2), pokrycie: +f.toFixed(2), typ: f > 0.7 ? 'ciągła' : tr >= 4 ? 'przerywana' : 'niepewna', c }; });
   // jezdnia = ciągły obszar „asfaltu” (szary, niskie nasycenie) wokół osi; krawędzie tam, gdzie asfalt się kończy
+  // wzorzec asfaltu = mediana jasności i nasycenia w pasie ±1,5 m od osi (bez farby)
+  const refL = [], refS = [], cA = Math.round((HALF - 1.5) / DD), cB = Math.round((HALF + 1.5) / DD);
+  for (let r = 0; r < NR; r += 2) for (let c = cA; c <= cB; c += 2) { const q = r * NC + c; if (!hit[q]) { refL.push(lum[q]); refS.push(sat[q]); } }
+  const med = a => a.sort((x, y) => x - y)[a.length >> 1] || 0, RL = med(refL), RS = med(refS);
   const asph = new Float32Array(NC);
-  for (let c = 0; c < NC; c++) { let n = 0; for (let r = 0; r < NR; r++) { const q = r * NC + c; n += (sat[q] < 30 && lum[q] > 60 && lum[q] < 200) || hit[q] ? 1 : 0; } asph[c] = n / NR; }
+  for (let c = 0; c < NC; c++) { let n = 0; for (let r = 0; r < NR; r++) { const q = r * NC + c; n += (Math.abs(lum[q] - RL) < 28 && Math.abs(sat[q] - RS) < 9) || hit[q] ? 1 : 0; } asph[c] = n / NR; }
   const sm = Array.from(asph, (_, c) => { let a = 0, n = 0; for (let e = -3; e <= 3; e++) if (asph[c + e] !== undefined) { a += asph[c + e]; n++; } return a / n; });
-  const c0 = Math.round(HALF / DD), GAP = Math.round(0.6 / DD); let cl = c0, cr = c0;
+  const c0 = Math.round(HALF / DD), GAP = Math.round(0.4 / DD); let cl = c0, cr = c0;
   for (let c = c0, miss = 0; c < NC && miss <= GAP; c++) { if (sm[c] >= 0.6) { cl = c; miss = 0; } else miss++; }
   for (let c = c0, miss = 0; c >= 0 && miss <= GAP; c--) { if (sm[c] >= 0.6) { cr = c; miss = 0; } else miss++; }
   const edges = [+dOf(cr).toFixed(2), +dOf(cl).toFixed(2)];

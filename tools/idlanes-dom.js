@@ -28,17 +28,24 @@
     const hashView = () => { const m = /map=([\d.]+)(?:\/|%2F)(-?[\d.]+)(?:\/|%2F)(-?[\d.]+)/i.exec(decodeURIComponent(location.hash || '')); return m ? { z: +m[1], lat: +m[2], lon: +m[3] } : null; };
     function ways() { const m = new Map(); document.querySelectorAll('.layer-osm path.line').forEach(p => { const d = p.__data__; if (d && d.type === 'way' && d.tags && d.tags.highway && !m.has(d.id)) m.set(d.id, d); }); return m; }
     let hs = 0; function hideLines() { if (Date.now() - hs < 120) return; hs = Date.now(); document.querySelectorAll('.layer-osm path, .layer-osm .onewaygroup, .layer-osm .sidedgroup, .layer-osm .oneway, .layer-osm .sided').forEach(p => { let d = p.__data__, q = p; for (let u = 0; u < 4 && !(d && d.type === 'way') && q.parentNode && q.parentNode !== document; u++) { q = q.parentNode; d = q.__data__; } if (!d || d.type !== 'way' || !d.tags || !d.tags.highway) return; const hw = String(d.tags.highway).replace('_link', ''); if (!OKHW.has(hw)) return; if (IDL.hide) { if (p.style.display !== 'none') p.style.setProperty('display', 'none', 'important'); p.setAttribute('data-idl-h', '1'); } else if (p.getAttribute('data-idl-h')) { p.style.removeProperty('display'); p.removeAttribute('data-idl-h'); } }); }
+    /* kalibracja pozycji: wezel z danych iD ma na SVG transform translate(x,y); stad dokladny srodek mapy z ostatniego przerysowania iD (adres #map= opoznia sie podczas przesuwania) */
+    function calib(hv, k, W0, H0) {
+      const xy = e => { const t = e.getAttribute && e.getAttribute('transform'); let m = t && /translate\(\s*(-?[\d.]+)[ ,]+(-?[\d.]+)/.exec(t); if (m) return [+m[1], +m[2]]; if (e.getAttribute && e.getAttribute('cx') != null) return [+e.getAttribute('cx'), +e.getAttribute('cy')]; return null; };
+      let n = 0; const els = document.querySelectorAll('.layer-osm g.vertex, .layer-osm g.point, .layer-osm .node, .layer-points g');
+      for (const e of els) { let d = e.__data__, q = e; if (!(d && d.loc) && e.parentNode) { q = e.parentNode; d = q.__data__; } if (!d || !d.loc) continue; const c = xy(e) || xy(q); if (!c || !isFinite(c[0])) continue; const pv = proj(d.loc[0], d.loc[1]); return [pv[0] - (c[0] - W0 / 2) / k, pv[1] - (c[1] - H0 / 2) / k]; }
+      return null;
+    }
     function tick() { hideLines();
       const hv = hashView(), W0 = mm.clientWidth, H0 = mm.clientHeight; if (!hv || !W0 || !H0) return;
       const wm0 = ways(); let g = null, bs = -1; for (const c of GR.slice().reverse()) { let sc = 0; try { for (const id of wm0.keys()) { const e = c.hasEntity(id); if (e) sc += (e.v || 0) + 1; } } catch (e) { continue; } if (sc > bs) { bs = sc; g = c; } } if (!g) g = GR[GR.length - 1];
       const wm = new Map(); for (const [id, d] of wm0) { let e = d; try { e = g.hasEntity(id) || d; } catch (er) {} wm.set(id, e); }
-      const sig = [hv.z, hv.lat, hv.lon, W0, H0, IDL.on]; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
+      const kk = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)), cc0 = calib(hv, kk, W0, H0), sig = [hv.z, hv.lat, hv.lon, W0, H0, IDL.on, cc0 ? cc0[0].toFixed(2) + '/' + cc0[1].toFixed(2) : '']; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
       const key = sig.join(','); if (key === last) return; last = key;
       DPR = window.devicePixelRatio || 1; W = W0; H = H0; for (const c of [cvs, offc]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
       cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cvs.width, cvs.height); if (!IDL.on || hv.z < 16 || !wm.size) return;
       // graf aktualny = taki, ktory zwraca ta sama encje drogi co element SVG
       
-      S.org = { lat: hv.lat, lon: hv.lon }; S.view.k = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)); S.view.x = 0; S.view.y = 0;
+      S.org = { lat: hv.lat, lon: hv.lon }; S.view.k = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)); { const cc = calib(hv, S.view.k, W0, H0); S.view.x = cc ? cc[0] : 0; S.view.y = cc ? cc[1] : 0; }
       const wmap = new Map(), roads = [];
       for (const e of wm.values()) { const hw = (e.tags.highway || '').replace('_link', ''); if (!OKHW.has(hw) || e.tags.area === 'yes' || e.nodes.length < 2) continue; const pts = [], nk = []; let bad = false; for (const n of e.nodes) { const nd = g.hasEntity(n); if (!nd || !nd.loc) { bad = true; break; } pts.push(proj(nd.loc[0], nd.loc[1])); nk.push(n); } if (bad) continue; const num = +String(e.id).slice(1), o = { id: num, t: { ...e.tags }, g: pts, nk }; wmap.set(num, o); try { roads.push(makeRoad(o, 0, pts.length - 1)); } catch (er) { console.warn('idlanes makeRoad', er); } }
       S.osm.ways = wmap; S.doc.road = roads; S.dirty = true; try { L = layout(); } catch (e) { console.warn('idlanes layout', e); L = null; } S.dirty = false; if (!L) return;

@@ -209,6 +209,11 @@ function build() {
     line(laneCurve(k.a, k.b, oa + lw / 2, ob + lw / 2), leftOuter ? 'kraw' : 'pas');
     if (rightOuter) line(laneCurve(k.a, k.b, oa - lw / 2, ob - lw / 2), 'kraw');
   }
+  // okrąg strefy: środek w węźle, promień do najdalszego miejsca przycięcia
+  for (const e of J) { const c0 = e.ins.length ? e.ins[0].g[e.ins[0].g.length - 1] : e.outs[0].g[0]; let r = 0;
+    for (const w of e.ins) r = Math.max(r, Math.hypot(...endIn(w, cut.get(w.i)).p.map((v, i) => v - c0[i])));
+    for (const w of e.outs) r = Math.max(r, Math.hypot(...endOut(w, cut.get(w.i)).p.map((v, i) => v - c0[i])));
+    line(Array.from({ length: 65 }, (_, i) => toLL(c0[0] + r * Math.cos(i / 32 * Math.PI), c0[1] + r * Math.sin(i / 32 * Math.PI))), 'strefa'); }
   MAP.getSource('pasy').setData({ type: 'FeatureCollection', features: F });
   $('st').textContent = `Dróg: ${WAYS.size}, węzłów: ${J.length}`;
 }
@@ -253,6 +258,7 @@ const MAP = new maplibregl.Map({ container: 'map', center: [18.4618, 54.4985], z
       { id: 'kraw', type: 'line', source: 'pasy', filter: kind('kraw'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'srodek', type: 'line', source: 'pasy', filter: kind('srodek'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'pas', type: 'line', source: 'pasy', filter: kind('pas'), paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1), 'line-dasharray': [4 / LINE, 8 / LINE] } },
+      { id: 'strefa', type: 'line', source: 'pasy', filter: kind('strefa'), paint: { 'line-color': '#ff9f1c', 'line-width': 2, 'line-dasharray': [2, 2] } },
       { id: 'strz', type: 'symbol', source: 'pasy', filter: kind('strz'), minzoom: 16, layout: { 'icon-image': ['get', 'img'], 'icon-rotate': ['get', 'brg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
         'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 16, 6 * PXM(16) / 80, 22, 6 * PXM(22) / 80] } },
       { id: 'os', type: 'line', source: 'pasy', filter: kind('os'), paint: { 'line-color': '#ff2d55', 'line-width': 1.2, 'line-dasharray': [3, 3] } } ] } });

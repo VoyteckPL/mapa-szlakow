@@ -58,6 +58,7 @@
   #oList { margin:5px 0; padding:5px 7px; background:#f4f7fb; border-radius:4px; color:#333; max-height:150px; overflow:auto; } #oList div { margin:1px 0; }
   #oSend { padding:5px 8px; font-size:12px; font-weight:600; color:#fff !important; background:#1e88e5 !important; border:0 !important; border-radius:4px; } #oSend.blink { animation:blk .5s ease-in-out 3; }
   #oSt { margin-top:4px; color:#555; }
+  #panel { display:none !important; } /* lewy panel Narzedzia usuniety: narzedzia w menu Edytor */
   #lcLoad:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
 </style>
 </head>
@@ -1438,7 +1439,7 @@ if (!EMBED) (() => {
   const NAMES = { '': 'brak strzałki', through: 'prosto', left: 'w lewo', slight_left: 'lekko w lewo', right: 'w prawo', slight_right: 'lekko w prawo', 'through;left': 'prosto i w lewo', 'through;right': 'prosto i w prawo', reverse: 'zawracanie', merge_to_left: 'zlewa się w lewo', merge_to_right: 'zlewa się w prawo' };
   const ico = (v, sz = 12) => `<svg width="${sz}" height="${Math.round(sz * 18 / 16)}" viewBox="0 0 16 18" fill="none" stroke="#222" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;flex:none"><path d="${ICP[norm(v)]}"/></svg>`;
   const svg = (d, c) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="${d}"/></svg>`;
-  const TOOLI = { sel: ['M5 3l13 8-6 2-3 6z', '#3949ab', 'Zaznacz / przesuwaj'], split: ['M6 6a2 2 0 100 4 2 2 0 000-4zM6 14a2 2 0 100 4 2 2 0 000-4zM8 9l12 9M8 15l12-9', '#e53935', 'Rozdziel drogę na dwie części'], road: ['M4 20l1-4L16 5l3 3L8 19zM14 7l3 3', '#43a047', 'Rysuj drogę'] };
+  const TOOLI = { sel: ['M5 3l13 8-6 2-3 6z', '#3949ab', 'Zaznacz / przesuwaj'], split: ['M6 6a2 2 0 100 4 2 2 0 000-4zM6 14a2 2 0 100 4 2 2 0 000-4zM8 9l12 9M8 15l12-9', '#e53935', 'Rozdziel drogę na dwie części'], road: ['M4 20l1-4L16 5l3 3L8 19zM14 7l3 3', '#43a047', 'Rysuj drogę'], osm: ['M12 21s-7-6.5-7-11a7 7 0 0114 0c0 4.5-7 11-7 11zM12 7.5v5M9.5 10h5', '#1e88e5', 'Dodaj drogę z OSM (kliknij drogę)'], rend: ['M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20', '#8e24aa', 'Przesuń render (przeciągaj błękitne punkty)'], pan: ['M8 13V5.5a1.5 1.5 0 013 0V12M11 11V4.5a1.5 1.5 0 013 0V12M14 11.5V6.5a1.5 1.5 0 013 0V15a6 6 0 01-6 6h-1a6 6 0 01-5-3L3 14a1.5 1.5 0 012.5-1.5L8 15', '#546e7a', 'Widok: przesuwanie mapy'] };
   let open = null;
   /* droga OSM: zmiany ida przez tagi (r.tg), zeby trafily na liste "Do wyslania"; inne drogi: bezposrednio */
   const tlOf = r => { const n = Math.max(1, Math.min(6, r.lanes | 0)), t = ((r.osm ? effTags(r)['turn:lanes'] : r.tl) || '').split('|'); while (t.length < n) t.push(''); t.length = n; return t; };

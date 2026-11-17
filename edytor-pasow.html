@@ -411,6 +411,12 @@ function layout() {
     if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
     if (best < -1.0 && ln[xi] === 2 && ln.filter((_, a) => a !== xi).every(v => v === 1)) G.forEach((e, a) => { const h = hints[e.i] || (hints[e.i] = {}); h.sm = true; if (a === xi || !HINTS) return; const t = [-U[xi][0], -U[xi][1]]; if (e.st) h.tin = t; else h.tout = [-t[0], -t[1]]; });
   }
+  for (const [k, G] of ends) { /* gladkie polaczenie dwoch drog: wspolna styczna w wezle */
+    if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
+    const uA = unitFrom(C0[G[0].i], G[0].st), uB = unitFrom(C0[G[1].i], G[1].st), sx = uB[0] - uA[0], sy = uB[1] - uA[1], sl = Math.hypot(sx, sy); if (sl < 0.5 || uA[0] * uB[0] + uA[1] * uB[1] > 0.2) continue; /* 'prawie prosto': kat skretu < ~80 st. */
+    const s = [sx / sl, sy / sl];
+    [[G[0], [-s[0], -s[1]]], [G[1], s]].forEach(([e, u]) => { const h = hints[e.i] || (hints[e.i] = {}); h.sm = true; if (e.st) h.tin = u; else h.tout = [-u[0], -u[1]]; });
+  }
   S.hints = hints; const C = R.map((r, i) => comp(r, hints[i])), handled = new Set(), forkDone = new Set(), gores = [], forkLinks = [], cutIn = [], forks = [], forks3 = [], forkX = new Map();
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej

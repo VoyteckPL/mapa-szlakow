@@ -826,6 +826,11 @@ function pzWalk(ri, vi, dir) { // galaz od wezla w dal (do ~130 m), takze przez 
     s += dist(r.pts[j], r.pts[nj]); j = nj; refs.push({ ri, vi: j, dir }); }
   return { refs, P: refs.map(f => S.doc.road[f.ri].pts[f.vi].slice()), hw: r0.hw || '', tl: r0.tl || '', lanes: r0.lanes | 0, into: r0.oneway && refs[0].dir === -1, ow: r0.oneway };
 }
+function pzWhy(node) { // dlaczego to nie jest rozwidlenie 1 wjazd + 2 gałęzie
+  const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
+  if (arms.length < 3) return 'schodzą się tylko ' + arms.length + ' odcinki (trzeba 3)'; if (arms.length > 3) return 'schodzi się ' + arms.length + ' odcinków (trzeba 3) – rozdziel drogę w tym węźle'; if (arms.some(a => a.P.length < 2)) return 'za krótka gałąź';
+  const into = arms.filter(a => a.into).length; if (into > 1) return 'dwie gałęzie jednokierunkowe wjeżdżają w węzeł (kierunek oneway?)'; return 'nie rozpoznano układu 1 wjazd + 2 gałęzie';
+}
 function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
   if (arms.length !== 3 || arms.some(a => a.P.length < 2)) return null;
@@ -1061,7 +1066,7 @@ function endPtr(e) {
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }
-  PZ.live = null; if (d.m === 'vtx' && !d.moved) { PZ.sel = null; } if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'vtx') { const rr = S.doc.road[d.i]; if (rr && rr.pts[d.vi]) { const nn = rr.pts[d.vi]; if (pzDetect(nn)) setTimeout(() => pzFocus(d.i, d.vi), 0); } } if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
+  PZ.live = null; if (d.m === 'vtx' && !d.moved) { PZ.sel = null; } if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'vtx') { const rr = S.doc.road[d.i]; if (rr && rr.pts[d.vi]) { const nn = rr.pts[d.vi]; if (pzDetect(nn)) setTimeout(() => pzFocus(d.i, d.vi), 0); else if (S.doc.road.filter(o => o.pts.some(p2 => dist(p2, nn) < 0.4)).length > 1) say('To nie jest rozwidlenie: ' + pzWhy(nn) + '.'); } } if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
   save(); render();
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);

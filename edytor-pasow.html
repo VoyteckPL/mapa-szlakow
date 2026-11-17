@@ -834,8 +834,9 @@ function pzWhy(node) { // dlaczego to nie jest rozwidlenie 1 wjazd + 2 gałęzie
 function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
   if (arms.length !== 3 || arms.some(a => a.P.length < 2)) return null;
-  let xi = arms.findIndex(a => a.into); if (xi < 0 || arms.filter(a => a.into).length > 1) { const U = arms.map(a => { const q = pzAt(a.P, 20); const l = dist(q, node) || 1; return [(q[0] - node[0]) / l, (q[1] - node[1]) / l]; }); let best = 9; U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } }); }
-  const X = arms[xi], Y = arms.filter((_, a) => a !== xi); if (Y.some(a => a.ow && a.into)) return null;
+  const merge = arms.filter(a => a.into).length === 2 && arms.filter(a => a.ow && !a.into).length === 1; /* wlaczenie: 2 galezie wjezdzaja, 1 wyjezdza (lustro rozwidlenia) */
+  let xi = merge ? arms.findIndex(a => !a.into) : arms.findIndex(a => a.into); if (!merge && (xi < 0 || arms.filter(a => a.into).length > 1)) { const U = arms.map(a => { const q = pzAt(a.P, 20); const l = dist(q, node) || 1; return [(q[0] - node[0]) / l, (q[1] - node[1]) / l]; }); let best = 9; U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } }); }
+  const X = arms[xi], Y = arms.filter((_, a) => a !== xi); if (!merge && Y.some(a => a.ow && a.into)) return null;
   const din = pzB(pzAt(X.P, 40), node), ang = a => pzN(pzB(node, pzAt(a.P, 25)) - din);
   const lk = Y.map(a => /_link/.test(a.hw)), rk = Y.map(a => RANK[(a.hw || '').replace('_link', '')] || 1), base = (X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk';
   let type, main = null, exit = null;
@@ -843,7 +844,7 @@ function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   else { const tk = String(X.tl || '').split('|'), has = re => tk.some(t => t.split(';').some(x => re.test(x))), hT = has(/^through$/), hR = has(/right/), hL = has(/left/), s = ang(Y[0]) < ang(Y[1]);
     if (hT && hR !== hL) { /* turn:lanes np. through|right: galaz po stronie through jedzie prosto, druga to zjazd */ main = hR ? (s ? Y[0] : Y[1]) : (s ? Y[1] : Y[0]); exit = main === Y[0] ? Y[1] : Y[0]; type = top ? (X.lanes >= 3 && main.lanes === X.lanes - 1 ? 'C' : 'A') : 'D'; }
     else { type = 'B'; main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } } // B: main = lewa, exit = prawa
-  return { node, X, main, exit, type, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
+  return { node, X, main, exit, type, merge, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
 }
 function pzAng(F, br, P) { return ['G', 'V', 'O'].map(e => { const din = pzB(pzEng(e, F.X.P, F.X.hw, F.X.lanes), F.node), a = pzN(pzB(F.node, pzEng(e, P || br.P, br.hw, br.lanes)) - din); return { e, a, c: PZ_T[e](Math.abs(a)) }; }); }
 function pzEval(F, br, P) { return pzAng(F, br, P).map(x => x.e + ' ' + (x.a >= 0 ? '+' : '') + x.a.toFixed(0) + '° ' + x.c).join(' · '); }
@@ -901,12 +902,13 @@ async function pzFocus(ri, vi) { // klik w wezel rozwidlenia: aktualne dane OSM 
 function pzOk(F, k, a) { const top = ['motorway', 'trunk'].includes((F.X.hw || '').replace('_link', '')), x = Math.abs(a); return F.type === 'B' ? x >= 6 && x <= 20 : k === 'main' ? x <= 5 : (top ? x >= 15 && x <= 30 : x >= 21 && x <= 40); }
 function pzCmd(F, k) { // komenda kazdego silnika dla gałęzi k (main/exit): { e, a, c, exit }
   const br = F[k], link = /_link/.test(br.hw || ''), base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk';
-  return pzAng(F, br).map(x => ({ ...x, exit: x.e !== 'G' && F.type !== 'B' && k === 'exit' && link && top }));
+  return pzAng(F, br).map(x => ({ ...x, exit: !F.merge && x.e !== 'G' && F.type !== 'B' && k === 'exit' && link && top }));
 }
 function pzIcon(x, y, kind, a, sz, bad) { // ikona komendy: prosto / lekko / skret / ostro / exit; a = kat ze znakiem (prawo +)
   const side = a >= 0 ? 1 : -1, rot = kind === 'prosto' ? 0 : kind === 'lekko' ? 35 : kind === 'skręt' ? 90 : kind === 'exit' ? 30 : 140, h = sz / 2;
   ctx.save(); ctx.translate(x, y); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-h, -h, sz, sz, 6) : ctx.rect(-h, -h, sz, sz); ctx.fillStyle = kind === 'exit' ? '#1a7f37' : 'rgba(255,255,255,.96)'; ctx.fill(); ctx.strokeStyle = bad ? '#e08a00' : (kind === 'exit' ? '#0d5a24' : '#555'); ctx.lineWidth = bad ? 2.5 : 1.5; ctx.stroke();
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-h, -h, sz, sz, 6) : ctx.rect(-h, -h, sz, sz); ctx.fillStyle = kind === 'merge' ? '#1f5fb8' : kind === 'exit' ? '#1a7f37' : 'rgba(255,255,255,.96)'; ctx.fill(); ctx.strokeStyle = bad ? '#e08a00' : (kind === 'merge' ? '#123f80' : kind === 'exit' ? '#0d5a24' : '#555'); ctx.lineWidth = bad ? 2.5 : 1.5; ctx.stroke();
+  if (kind === 'merge') { const L2 = h * 0.62; ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = Math.max(2, sz / 9); ctx.beginPath(); ctx.moveTo(-L2 * 0.8, L2); ctx.lineTo(0, 0); ctx.moveTo(L2 * 0.8, L2); ctx.lineTo(0, 0); ctx.lineTo(0, -L2 * 0.5); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -L2); ctx.lineTo(-L2 * 0.55, -L2 * 0.25); ctx.lineTo(L2 * 0.55, -L2 * 0.25); ctx.closePath(); ctx.fill(); ctx.restore(); return; }
   ctx.rotate(side * rot * Math.PI / 180); const L = h * 0.62; ctx.strokeStyle = kind === 'exit' ? '#fff' : '#222'; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = Math.max(2, sz / 9);
   ctx.beginPath(); ctx.moveTo(0, L); ctx.lineTo(0, -L * 0.55); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, -L); ctx.lineTo(-L * 0.55, -L * 0.25); ctx.lineTo(L * 0.55, -L * 0.25); ctx.closePath(); ctx.fill(); ctx.restore();
 }
@@ -924,7 +926,7 @@ function pzDrawArcs(F, full) { // prosta + galezie + luk z katem (tylko liczby);
   { /* ikony: po jednej na galaz (prosto / zjazd), kat pod kazda, wysrodkowane w jednej linii nad wezlem */
     const isz = full ? 30 : 24, gap = isz + 30, cx = o[0], cy = o[1] - R - (full ? 34 : 26);
     ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 4;
-    items.forEach((q, i) => { const x = cx + (i - (items.length - 1) / 2) * gap, br = q.k || 'main', cm = pzCmd(F, br), ex = cm.some(c => c.exit), kk = cm.map(c => c.c), kind = ex ? 'exit' : (q.a === 0 ? 'prosto' : kk[0] || 'lekko'), tx = Math.abs(q.a).toFixed(0) + '°' + (q.ok ? '✓' : '');
+    items.forEach((q, i) => { const x = cx + (i - (items.length - 1) / 2) * gap, br = q.k || 'main', cm = pzCmd(F, br), ex = cm.some(c => c.exit), kk = cm.map(c => c.c), kind = ex ? 'exit' : (F.merge && q.k === 'exit') ? 'merge' : (q.a === 0 ? 'prosto' : kk[0] || 'lekko'), tx = Math.abs(q.a).toFixed(0) + '°' + (q.ok ? '✓' : '');
       pzIcon(x, cy, kind, q.a, isz, false); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(tx, x, cy + isz / 2 + 14); ctx.fillStyle = q.ok ? '#13703a' : '#a35f00'; ctx.fillText(tx, x, cy + isz / 2 + 14); }); }
   ctx.restore();
 }

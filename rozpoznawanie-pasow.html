@@ -28,8 +28,8 @@
   <div id="panel">
     <h1>Rozpoznawanie pasów z ortofoto</h1>
     <small>Bierze oś drogi z OSM, pobiera ortofoto Geoportalu, prostuje pas wzdłuż osi i szuka białych linii. Wynik to propozycja do porównania z tagiem <code>lanes</code>. Kliknięcie na zdjęcie wybiera inną drogę.</small>
-    <label>Szer. geo. <input id="lat" value="54.5009531"></label>
-    <label>Dł. geo. <input id="lon" value="18.5368382"></label>
+    <label>Szer. geo. <input id="lat" value="54.4693417"></label>
+    <label>Dł. geo. <input id="lon" value="18.5036106"></label>
     <label>Długość odcinka [m] <input id="len" type="number" value="80"></label>
     <label>Skan w bok ± [m] <input id="half" type="number" value="10"></label>
     <label>Próg jasności <input id="thr" type="number" value="26"></label>
@@ -160,7 +160,6 @@ async function run() {
   for (let c = c0, miss = 0; c < NC && miss <= GAP; c++) { if (sm[c] >= 0.6) { cl = c; miss = 0; } else miss++; }
   for (let c = c0, miss = 0; c >= 0 && miss <= GAP; c--) { if (sm[c] >= 0.6) { cr = c; miss = 0; } else miss++; }
   const edges = [+dOf(cr).toFixed(2), +dOf(cl).toFixed(2)];
-  window.DBG = { d: [], sm: [], lum: [], sat: [], sd: [] }; for (let c = 0; c < NC; c += 5) { let a = 0, b = 0, v = 0; for (let r = 0; r < NR; r++) { a += lum[r * NC + c]; b += sat[r * NC + c]; } a /= NR; b /= NR; for (let r = 0; r < NR; r++) v += (lum[r * NC + c] - a) ** 2; DBG.d.push(+dOf(c).toFixed(1)); DBG.sm.push(+sm[c].toFixed(2)); DBG.lum.push(Math.round(a)); DBG.sat.push(Math.round(b)); DBG.sd.push(Math.round(Math.sqrt(v / NR))); }
   // pasy = odstępy między kolejnymi granicami (krawędź, linie wewnątrz jezdni, krawędź); linia przy krawędzi zastępuje krawędź
   const inner = lines.filter(l => l.d > edges[0] - 0.5 && l.d < edges[1] + 0.5);
   const bnd = [edges[0], ...inner.map(l => l.d), edges[1]].sort((a, b) => a - b).filter((d, i, a) => !i || d - a[i - 1] > 0.8);

@@ -570,7 +570,7 @@ function layout() {
       const ci = 3 - a - b, eC = G[ci], eA = G[a], eB = G[b], o = orient(C[eC.i], eC.st).Q[0];
       const uC = U[ci], t0 = [U[a][0] - U[b][0], U[a][1] - U[b][1]], tl = Math.hypot(t0[0], t0[1]) || 1, t = [t0[0] / tl, t0[1] / tl], nt = [-t[1], t[0]];
       const hC = rw(R[eC.i]) / 2, hT = Math.max(rw(R[eA.i]), rw(R[eB.i])) / 2, nC = [-uC[1], uC[0]], dn = uC[0] * nt[0] + uC[1] * nt[1];
-      if (Math.abs(dn) < 0.2) continue;
+      if (Math.abs(dn) < 0.5) continue;
       const sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
       for (const s of [-1, 1]) {
         const lam = (sg * hT - s * hC * (nC[0] * nt[0] + nC[1] * nt[1])) / dn, I = [o[0] + nC[0] * s * hC + uC[0] * lam, o[1] + nC[1] * s * hC + uC[1] * lam];

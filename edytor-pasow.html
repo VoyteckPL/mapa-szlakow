@@ -884,8 +884,13 @@ async function pzFocus(ri, vi) { // klik w wezel rozwidlenia: aktualne dane OSM 
   let node = n0, bd = 6; S.doc.road.forEach(r => r.pts.forEach(p => { const d = dist(p, n0); if (d < bd) { bd = d; node = p.slice(); } }));
   if (!pzDetect(node)) { PZ.sel = null; say('To rozwidlenie nie istnieje już w OSM.'); render(); return; }
   PZ.sel = { node }; let added = 0; push(); for (let g = 0; g < 8; g++) { const F = pzDetect(node); if (!F) break; let did = false; for (const arm of [F.X, F.main, F.exit]) { if (pzIns(arm, PZ_D)) { did = true; added++; break; } } if (!did) break; }
-  if (!added) S.undo.pop(); else { save(); S.dirty = true; }
-  say(live ? (added ? `OSM aktualne, dodano ${added} pkt.` : 'OSM aktualne.') : (added ? `Dodano ${added} pkt (OSM niedostępne).` : '')); touch();
+  let removed = 0; const keep = new Set(); for (let g = 0; g < 24; g++) { const F = pzDetect(node); if (!F) break; let did = false;
+    for (const arm of [F.X, F.main, F.exit]) { if (pzKey(arm) < 2) continue; const f = arm.refs[1], r = S.doc.road[f.ri], q = r.pts[f.vi], kk = q[0].toFixed(2) + ',' + q[1].toFixed(2); if (keep.has(kk)) continue;
+      const shared = f.vi === 0 || f.vi === r.pts.length - 1 || S.doc.road.some((o, oi) => oi !== f.ri && o.pts.some(p2 => dist(p2, q) < 0.4)); /* koniec drogi albo wezel wspolny z inna droga - nie ruszamy */
+      if (shared) { keep.add(kk); continue; } r.pts.splice(f.vi, 1); if (r.nk) r.nk.splice(f.vi, 1); if (r.rp) r.rp.splice(f.vi, 1); removed++; did = true; break; }
+    if (!did) break; }
+  if (!added && !removed) S.undo.pop(); else { save(); S.dirty = true; }
+  say((live ? 'OSM aktualne' : 'OSM niedostępne') + (added || removed ? `, punkty: +${added} −${removed}` : '') + '.'); touch();
 }
 function pzOk(F, k, a) { const top = ['motorway', 'trunk'].includes((F.X.hw || '').replace('_link', '')), x = Math.abs(a); return F.type === 'B' ? x >= 6 && x <= 20 : k === 'main' ? x <= 5 : (top ? x >= 15 && x <= 30 : x >= 21 && x <= 40); }
 function pzDrawArcs(F, full) { // prosta + galezie + luk z katem (tylko liczby); full = wybrany wezel (z kropkami i okregiem)

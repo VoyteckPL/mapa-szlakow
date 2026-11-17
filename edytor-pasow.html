@@ -1504,9 +1504,10 @@ if (!EMBED) (() => {
     el.innerHTML = h;
     Object.keys(TOOLI).forEach(k => { $$('edT_' + k).onclick = () => { setTool(k); draw(); }; });
     $$('edDel').onclick = () => { const d = S.doc.road[S.sel]; if (!d) { say('Najpierw zaznacz drogę, którą chcesz usunąć.'); return; }
-      const ow = d.osm ? osmWay(d.osm) : null, shared = d.osm && S.doc.road.some(x => x !== d && x.osm === d.osm), whole = !!(ow && !d.nw && !shared && d.nk.length === ow.nk.length && d.nk.every(Boolean) && (d.nk.every((k, q) => k === ow.nk[q]) || d.nk.every((k, q) => k === ow.nk[ow.nk.length - 1 - q]))), nm = (d.name ? ' „' + d.name + '”' : d.hw ? ' (' + d.hw + ')' : '');
-      const msg = whole ? 'Usunąć drogę' + nm + '?\n\nZostanie usunięta w OSM (way ' + d.osm + ') po Twoim „Wyślij”; do tego czasu widać ją na liście „Do wysłania”. Węzły używane przez inne drogi zostaną.\nDo czasu wysyłki można cofnąć przyciskiem ↶.' : 'Usunąć' + (d.osm ? ' fragment drogi OSM' : ' drogę') + nm + ' z edytora?' + (d.osm ? '\n\nTo tylko FRAGMENT drogi OSM (lub zmieniona/podzielona), więc w OSM jej nie usunę. Żeby usunąć całą drogę w OSM, zaznacz ją w całości.' : '') + '\nMożna cofnąć przyciskiem ↶.';
-      if (!confirm(msg)) return; push(); if (whole) { S.doc.del = S.doc.del || []; if (!S.doc.del.includes(d.osm)) S.doc.del.push(d.osm); } S.doc.road.splice(S.sel, 1); S.sel = -1; S.vsel = -1; save(); ui(); touch(); say(whole ? 'Droga czeka na usunięcie w OSM (lista „Do wysłania”; cofnij: ↶).' : 'Droga usunięta z edytora (cofnij: ↶).'); };
+      const nm = (d.name ? ' „' + d.name + '”' : d.hw ? ' (' + d.hw + ')' : '');
+      if (d.osm && !d.sb) { const msg = 'Usunąć CAŁĄ drogę' + nm + ' (way ' + d.osm + ') w OSM?\n\nZostanie usunięta w OSM po Twoim „Wyślij” (do tego czasu widać ją na liście „Do wysłania”). Węzły używane przez inne drogi zostaną.\nDo wysłania można cofnąć przyciskiem ↶.';
+        if (!confirm(msg)) return; push(); const id = d.osm; S.doc.del = S.doc.del || []; if (!S.doc.del.includes(id)) S.doc.del.push(id); S.doc.road = S.doc.road.filter(x => x.osm !== id); S.sel = -1; S.vsel = -1; save(); ui(); touch(); say('Droga czeka na usunięcie w OSM (lista „Do wysłania”; cofnij: ↶).'); return; }
+      if (!confirm('Usunąć drogę' + nm + ' z edytora?\nMożna cofnąć przyciskiem ↶.')) return; push(); S.doc.road.splice(S.sel, 1); S.sel = -1; S.vsel = -1; save(); ui(); touch(); say('Droga usunięta z edytora (cofnij: ↶).'); };
     if (r) {
       const mut = fn => { push(); fn(); save(); ui(); touch(); draw(); };
       const n0 = Math.max(1, Math.min(6, r.lanes | 0));

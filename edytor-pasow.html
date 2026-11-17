@@ -137,7 +137,7 @@ const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
 const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary']); /* 2026-11-17: na razie tylko autostrady, glowne i secondary (+ lacznice); dawniej + tertiary, unclassified, residential, living_street, service, busway */
 const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse', 'p9a', 'p9b']);
-const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render']];
+const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render'], ['split', 'Rozdziel drogę']];
 const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
 let W = 0, H = 0, DPR = 1, L = null;
 
@@ -1174,6 +1174,10 @@ function endPtr(e) {
   if (d.m === 'axisIns') { hideLanePal(); S.vsel = -1; ui(); render(); return; }
   if (d.m === 'maybe') {
     if (S.tool === 'sel' || S.tool === 'rend') { const ns = hitRoad(d.w), same = ns >= 0 && ns === S.sel; S.vsel = -1; const onAxis = ns >= 0 && axisDistPx(S.doc.road[ns], d.w) < 9; if (S.tool === 'sel' && same && !onAxis && S.doc.road[ns].osm && !EMBED) { LANE_ON = true; LSEL = laneAt(S.doc.road[ns], d.w, ns); ensureLaneAxis(ns, laneAbs(S.doc.road[ns])); save(); ui(); showLanePal(); } else { S.sel = ns; LANE_ON = false; hideLanePal(); ui(); } }
+    else if (S.tool === 'split') { const ns = hitRoad(d.w); if (ns < 0) { say('Kliknij drogę w miejscu podziału.'); } else { const r = S.doc.road[ns]; let i = -1, bd = 14; r.pts.forEach((q, j) => { if (j > 0 && j < r.pts.length - 1) { const dd = dist(w2s(q), w2s(d.w)); if (dd < bd) { bd = dd; i = j; } } });
+        if (i < 0 && !r.osm) { const pj = axisProj(r, d.w); if (pj.d < 12) { push(); r.pts.splice(pj.i + 1, 0, pj.p); r.nk.splice(pj.i + 1, 0, null); if (r.rp) r.rp.splice(pj.i + 1, 0, pj.p.slice()); i = pj.i + 1; } else { say('Kliknij na osi drogi.'); } }
+        else if (i < 0) say('Rozdzielasz drogę OSM: kliknij istniejący punkt (nie początek ani koniec).');
+        if (i > 0) { if (r.osm || !S.undo.length || true) { if (!r.nk[i]) r.nk[i] = 'n' + Math.random().toString(36).slice(2, 9); } push(); const r2 = JSON.parse(JSON.stringify(r)); r.pts = r.pts.slice(0, i + 1); r.nk = r.nk.slice(0, i + 1); r2.pts = r2.pts.slice(i); r2.nk = r2.nk.slice(i); if (r.rp) { r.rp = r.rp.slice(0, i + 1); r2.rp = r2.rp.slice(i); } if (r.osm) r2.nw = true; S.doc.road.splice(ns + 1, 0, r2); S.sel = ns; S.vsel = -1; touch(); say('Droga rozdzielona na dwie części (cofnij: ↶).'); } } }
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }

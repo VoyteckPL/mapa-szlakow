@@ -205,6 +205,8 @@ function makeRoad(o, a, b) {
 const specOff = r => !!r._edge || (/^(primary|secondary)/.test(r.hw || '') && r._osg === -1); /* offset nieparzystych jezdni tylko w szczegolnych ukladach (turn:lanes z rozjazdem); inaczej os OSM jest na srodku */
 const rightRule = r => { const nl = r.lanes | 0; if (!(nl >= 3 && nl <= 4) || !r.oneway || !r.tl) return false; const t = r.tl.split('|'); return t.length === nl && t[nl - 1] === 'right' && t.slice(0, nl - 1).every(x => x === '' || x === 'through' || x === 'none'); }; /* skrajny prawy pas tylko w prawo, reszta prosto: os na srodku pasow na wprost */
 const offBase = r => { const nl = r.lanes | 0; if (!r.oneway || !/^(motorway|trunk|primary|secondary)/.test(r.hw || '')) return 0; if (rightRule(r)) return 0.5; return specOff(r) && nl >= 3 && nl % 2 === 1 ? (r._osg || 1) / 2 : 0; }; /* offset jezdni wzgledem osi w pasach */
+const hasOff = r => (r.off != null && r.off !== '') || r.offS != null || r.offE != null;
+const offAt = (r, e) => { const v = e ? r.offE : r.offS; return v != null && v !== '' ? +v : (r.off != null && r.off !== '' ? +r.off : offBase(r)); };
 const noOff = r => { const t = (r.tl || '').split('|'); return (r.lanes | 0) === 3 && t.length === 3 && (t[0] === 'through' || t[0] === '') && t[1] === 'through' && /right/.test(t[2]); }; /* through|through|right: offset po lewej (dodatkowy pas z lewej) */
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });
 
@@ -276,7 +278,7 @@ function filletPts(pts, r, minR) {
   out.push(pts[pts.length - 1].slice()); return out;
 }
 function comp(r, h) {
-  const Q = (/^(motorway|trunk|primary|secondary)/.test(r.hw || '') && false) ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80), Math.max(rw(r) / 2 + 0.5, Math.min(+($('fR') ? $('fR').value : 80), 25))), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, d0 = r.off != null && r.off !== '' ? r.off * (r.lw || 3.75) : offBase(r) * (r.lw || 3.75), cq0 = cumOf(Q), Lq0 = cq0[cq0.length - 1], free = j => { const k = r.nk[j]; return !k || !S.doc.road.some(x => x.nk !== r.nk && x.nk.includes(k)); }, fs = d0 && (r.off == null || r.off === '') && free(0), fe = d0 && (r.off == null || r.off === '') && free(r.nk.length - 1), Tf = Math.max(1, Math.min(30, Lq0 / 2)), sstep = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, d = Q.map((_, j) => d0 * Math.min(fs ? sstep(cq0[j] / Tf) : 1, fe ? sstep((Lq0 - cq0[j]) / Tf) : 1)); /* wolny koniec (nic sie nie laczy): os OSM na srodku jezdni, offset narasta plynnie w glab drogi; standardowy offset 3-pasmowki (dodatkowy pas po prawej) na calej dlugosci; konfiguracja turn:lanes prosto|w prawo|w prawo ma ponadto rozjazd liczony od tego offsetu (_edge) */ return { Q, w, d, d0, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
+  const Q = (/^(motorway|trunk|primary|secondary)/.test(r.hw || '') && false) ? dense(filletPts(gp(r), +($('fR') ? $('fR').value : 80), Math.max(rw(r) / 2 + 0.5, Math.min(+($('fR') ? $('fR').value : 80), 25))), 2) : smoothDense(gp(r), 2, h && h.tin, h && h.tout, h && h.sm), w = Q.map(() => rw(r)), nl = r.lanes | 0, dS = offAt(r, 0) * (r.lw || 3.75), dE = offAt(r, 1) * (r.lw || 3.75), d0 = dS, cq0 = cumOf(Q), Lq0 = cq0[cq0.length - 1], free = j => { const k = r.nk[j]; return !k || !S.doc.road.some(x => x.nk !== r.nk && x.nk.includes(k)); }, fs = d0 && !hasOff(r) && free(0), fe = d0 && !hasOff(r) && free(r.nk.length - 1), Tf = Math.max(1, Math.min(30, Lq0 / 2)), sstep = x => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, d = Q.map((_, j) => (dS + (dE - dS) * sstep(cq0[j] / Math.max(1, Lq0))) * Math.min(fs ? sstep(cq0[j] / Tf) : 1, fe ? sstep((Lq0 - cq0[j]) / Tf) : 1)); /* wolny koniec (nic sie nie laczy): os OSM na srodku jezdni, offset narasta plynnie w glab drogi; standardowy offset 3-pasmowki (dodatkowy pas po prawej) na calej dlugosci; konfiguracja turn:lanes prosto|w prawo|w prawo ma ponadto rozjazd liczony od tego offsetu (_edge) */ return { Q, w, d, d0, dS, dE, e: Q.map(() => 0), side: 1, cum: cumOf(Q) };
 }
 const orient = (c, st) => st ? c : { Q: c.Q.slice().reverse(), d: c.d.map(v => -v).reverse(), w: c.w.slice().reverse(), cum: c.cum.map(v => c.cum[c.cum.length - 1] - v).reverse() };
 const edgeOf = (o, sg, ins = 0) => offsetPts(o.Q, o.d.map((v, i) => v + sg * (o.w[i] / 2 - ins)));
@@ -299,7 +301,7 @@ function skelFork(X, yl, yr, C, R, gores) {
   arms[0].sg = sA; arms[1].sg = sB;
   const neg = arms.find(o => o.sg < 0) || arms[0], pos = arms.find(o => o !== neg);
   let xN = nX * w / 2; if (nX % 2 === 1) { const extraNeg = neg.l < pos.l; xN = extraNeg ? w + (nX - 1) * w / 2 : (nX - 1) * w / 2; }
-  if ((nX % 2 === 1 && R[X.i]._edge) || (R[X.i].off != null && R[X.i].off !== '') || rightRule(R[X.i])) xN = (X.st ? 1 : -1) * (C[X.i].d0 || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
+  if ((nX % 2 === 1 && R[X.i]._edge) || hasOff(R[X.i]) || rightRule(R[X.i])) xN = (X.st ? 1 : -1) * ((X.st ? C[X.i].dS : C[X.i].dE) || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
   neg.c = -xN + neg.l * w / 2; pos.c = -xN + neg.l * w + pos.l * w / 2;
   if (neg.l + pos.l === nX + 1) { xN = nX * w / 2; neg.c = -xN + neg.l * w / 2; pos.c = xN - pos.l * w / 2; } /* 3->2+2: wspolny pas srodkowy - odnogi startuja nakladajac sie o jeden pas */
   { const tkn = String(R[X.i].tl || '').split('|').filter(Boolean), nt = (!X.st && tkn.length === nX) ? tkn.filter(v => v.split(';').some(x => x === 'through')).length : 0; for (const o of arms) o.straight = nt > 0 && nt < nX && o.l === nt && arms.every(z => z === o || z.l !== nt); } /* turn:lanes: odnoga z pasami 'prosto' biegnie prosto, nie wg osi OSM */
@@ -338,7 +340,7 @@ function skelFork(X, yl, yr, C, R, gores) {
       c.skipIn = { sg, m }; });
   }
   { const c = C[X.i], dc = (xN - nX * w / 2), Ln = c.cum[c.cum.length - 1], T0 = Math.min(T, Ln / 2), Lf = Math.max(1, Math.min(150, Ln - T0)); // krotka droga: offset gasnie do konca drogi, nie zostaje schodka na styku // offset nieparzystej jezdni tylko przy rozjezdzie, potem plynnie wraca do osi (bez schodka na styku z dalsza czescia drogi)
-    c.w = c.Q.map(() => nX * w); c.d = c.Q.map((_, j) => { const sj = X.st ? c.cum[j] : Ln - c.cum[j]; const g = (X.st ? 1 : -1) * dc, d0 = c.d0 || 0; return d0 + (g - d0) * (1 - sm5((sj - T0) / Lf)); }); c.e = c.Q.map(() => 0); c.tf = undefined; }
+    c.w = c.Q.map(() => nX * w); c.d = c.Q.map((_, j) => { const sj = X.st ? c.cum[j] : Ln - c.cum[j]; const g = (X.st ? 1 : -1) * dc, d0 = (X.st ? c.dE : c.dS) || 0; return d0 + (g - d0) * (1 - sm5((sj - T0) / Lf)); }); c.e = c.Q.map(() => 0); c.tf = undefined; }
   if (!SHOW_CHEV) return; // szewrony (klin) wylaczone na razie calkiem
   // klin z szewronami (wariant 1: ramiona konczace sie rowno z krawedzia), rowne odstepy wzdluz osi klina
   const A = arms[0], B = arms[1], edge = (o, sg) => offsetPts(o.Cd, sg * o.l * w / 2), ia = edge(A, A.sg > 0 ? -1 : 1), ib = edge(B, B.sg > 0 ? -1 : 1);
@@ -1407,11 +1409,14 @@ if (!EMBED) (() => {
     bar.style.display = 'block';
     const cur = curOf(r), txt = 'OFFSET-DO-REGULY\n' + info(r);
     bar.innerHTML = `<div style="font-weight:600;color:#3949ab">Offset: ${(r.name || r.hw || 'droga')} · ${r.lanes} pasy</div>`
-      + `<div>${bt('obL', '◀', 'o pół pasa w lewo')} <b>${cur > 0 ? '+' : ''}${cur} pasa${r.off == null ? ' (auto)' : ''}</b> ${bt('obR', '▶', 'o pół pasa w prawo')}${r.off != null ? bt('obA', 'auto') : ''}</div>`
+      + `<div>${bt('obL', '◀', 'o pół pasa w lewo')} <b>${cur > 0 ? '+' : ''}${cur} pasa${r.off == null ? ' (auto)' : ''}</b> ${bt('obR', '▶', 'o pół pasa w prawo')}${hasOff(r) ? bt('obA', 'auto') : ''}</div>`
+      + `<div>początek ${bt('obSL', '◀')} <b>${offAt(r, 0)}</b> ${bt('obSR', '▶')} koniec ${bt('obEL', '◀')} <b>${offAt(r, 1)}</b> ${bt('obER', '▶')}</div>`
       + `<div>${bt('obC', 'Kopiuj dane dla Claude')}<span id="obM" style="color:#2a8a2a"></span></div><textarea id="offTa" readonly style="width:100%;height:0;opacity:0;position:absolute"></textarea>`;
-    const step = dv => { push(); r.off = curOf(r) + dv; save(); touch(); draw(); };
+    const step = dv => { push(); r.off = curOf(r) + dv; delete r.offS; delete r.offE; save(); touch(); draw(); };
+    const stepE = (k, dv) => { push(); r[k] = (r[k] != null ? +r[k] : curOf(r)) + dv; save(); touch(); draw(); };
+    document.getElementById('obSL').onclick = () => stepE('offS', -0.5); document.getElementById('obSR').onclick = () => stepE('offS', 0.5); document.getElementById('obEL').onclick = () => stepE('offE', -0.5); document.getElementById('obER').onclick = () => stepE('offE', 0.5);
     document.getElementById('obL').onclick = () => step(-0.5); document.getElementById('obR').onclick = () => step(0.5);
-    if (document.getElementById('obA')) document.getElementById('obA').onclick = () => { push(); delete r.off; save(); touch(); draw(); };
+    if (document.getElementById('obA')) document.getElementById('obA').onclick = () => { push(); delete r.off; delete r.offS; delete r.offE; save(); touch(); draw(); };
     document.getElementById('obC').onclick = () => { const ta = document.getElementById('offTa'); ta.value = 'OFFSET-DO-REGULY\n' + info(r); const ok = copy(ta.value); document.getElementById('obM').textContent = ok ? ' skopiowano ✓' : ' zaznacz i skopiuj ręcznie'; if (!ok) { ta.style.cssText = 'width:100%;height:120px;position:static;opacity:1'; ta.select(); } };
   }
   const oldUi = ui; ui = function () { const r0 = oldUi.apply(this, arguments); try { draw(); } catch (e) {} return r0; };

@@ -1,9 +1,10 @@
 /* ---- adapter iD: graf iD -> model edytora, rysowanie na nakladce canvas ---- */
 const IDL = { on: true, hide: true, raf: 0 };
-function idCtx() { return window.id || window.context || (window.iD && window.iD.context) || null; }
-function idWhen(cb) { let n = 0; const t = setInterval(() => { const c = idCtx(); if (c && c.map && c.graph && c.container && c.container().select('.main-map').node()) { clearInterval(t); cb(c); } else if (++n > 600) clearInterval(t); }, 500); }
+function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
+function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; document.body.appendChild(b); } b.textContent = t; return b; }
+function idWhen(cb) { idBadge('Pasy w iD: szukam edytora…'); let n = 0; const t = setInterval(() => { const c = idCtx(); const mm = document.querySelector('.main-map'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n > 120) { clearInterval(t); idBadge('Pasy w iD: nie widzę obiektu iD (' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + ')'); } }, 500); }
 idWhen(ctxId => {
-  const root = ctxId.container().select('.main-map').node();
+  const root = document.querySelector('.main-map');
   const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5';
   root.appendChild(cvs); const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
   // przelaczniki

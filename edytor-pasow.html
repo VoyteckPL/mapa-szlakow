@@ -1076,7 +1076,21 @@ async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmieni
   if ((hi - lo) * (la1 - la0) > 0.04) { say('Za duży obszar – przybliż widok i spróbuj ponownie.'); return false; }
   say('Pobieram aktualne dane z OSM…');
   const url = `https://api.openstreetmap.org/api/0.6/map.json?bbox=${lo.toFixed(6)},${la0.toFixed(6)},${hi.toFixed(6)},${la1.toFixed(6)}`; liveLog('start, bbox=' + [lo, la0, hi, la1].map(v => v.toFixed(5)).join(',') + ' pole=' + ((hi - lo) * (la1 - la0)).toFixed(5)); liveLog('GET ' + url);
-  let j; try { const rr = await fetch(url); const tx = await rr.text(); liveLog('HTTP ' + rr.status + ' ' + rr.statusText + ', ' + tx.length + ' znakow, typ ' + rr.headers.get('content-type')); if (!rr.ok) throw new Error('HTTP ' + rr.status + ': ' + tx.slice(0, 300)); j = JSON.parse(tx); } catch (e) { liveLog('BLAD: ' + (e && e.stack || e)); say('Nie udało się pobrać z OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
+  /* pobieranie z ponawianiem (429/5xx/timeout) i dzieleniem obszaru na 4 czesci, gdy API odmawia: "too many nodes" (limit 50000 wezlow) */
+  const getMap = async (x0, y0, x1, y1, depth) => {
+    const u = `https://api.openstreetmap.org/api/0.6/map.json?bbox=${x0.toFixed(6)},${y0.toFixed(6)},${x1.toFixed(6)},${y1.toFixed(6)}`; let last = null;
+    for (let t = 0; t < 4; t++) {
+      const ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000);
+      try { const rr = await fetch(u, { signal: ac.signal }); const tx = await rr.text(); clearTimeout(to); liveLog('HTTP ' + rr.status + ' ' + tx.length + ' znakow (' + x0.toFixed(4) + ',' + y0.toFixed(4) + ') proba ' + (t + 1));
+        if (rr.ok) return JSON.parse(tx).elements;
+        if (rr.status === 400 && /too many nodes|50000|too large/i.test(tx) && depth < 3) { const mx = (x0 + x1) / 2, my = (y0 + y1) / 2, out = []; for (const [a0, b0, a1, b1] of [[x0, y0, mx, my], [mx, y0, x1, my], [x0, my, mx, y1], [mx, my, x1, y1]]) out.push(...await getMap(a0, b0, a1, b1, depth + 1)); return out; }
+        last = new Error('HTTP ' + rr.status + ': ' + tx.slice(0, 200)); if (![429, 500, 502, 503, 504, 509].includes(rr.status)) throw last;
+      } catch (e) { clearTimeout(to); last = e.name === 'AbortError' ? new Error('przekroczono czas odpowiedzi (30 s)') : e; if (/^HTTP 4(?!29)/.test(last.message)) throw last; }
+      say('OSM zajęte (' + (last && last.message.slice(0, 40)) + ') – ponawiam ' + (t + 1) + '/3…'); await new Promise(r => setTimeout(r, 1500 * (t + 1)));
+    }
+    throw last || new Error('nieznany błąd');
+  };
+  let j; try { const els = await getMap(lo, la0, hi, la1, 0), seen = new Set(), uniq = els.filter(e => { const k = e.type + e.id; if (seen.has(k)) return false; seen.add(k); return true; }); j = { elements: uniq }; liveLog('razem elementow: ' + uniq.length); } catch (e) { liveLog('BLAD: ' + (e && e.stack || e)); say('Nie udało się pobrać z OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
   liveLog('elementy: ' + j.elements.length + ' (wezly ' + j.elements.filter(e => e.type === 'node').length + ', drogi ' + j.elements.filter(e => e.type === 'way' && e.tags && e.tags.highway).length + ')');
   try {
   const nodes = new Map(); for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, [e.lon, e.lat]);

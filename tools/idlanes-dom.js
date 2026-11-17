@@ -29,12 +29,14 @@
     let hs = 0; function hideLines() { if (Date.now() - hs < 120) return; hs = Date.now(); document.querySelectorAll('.layer-osm path, .layer-osm .onewaygroup, .layer-osm .sidedgroup, .layer-osm .oneway, .layer-osm .sided').forEach(p => { let d = p.__data__, q = p; for (let u = 0; u < 4 && !(d && d.type === 'way') && q.parentNode && q.parentNode !== document; u++) { q = q.parentNode; d = q.__data__; } if (!d || d.type !== 'way' || !d.tags || !d.tags.highway) return; const hw = String(d.tags.highway).replace('_link', ''); if (!OKHW.has(hw)) return; if (IDL.hide) { if (p.style.display !== 'none') p.style.setProperty('display', 'none', 'important'); p.setAttribute('data-idl-h', '1'); } else if (p.getAttribute('data-idl-h')) { p.style.removeProperty('display'); p.removeAttribute('data-idl-h'); } }); }
     function tick() { hideLines();
       const hv = hashView(), W0 = mm.clientWidth, H0 = mm.clientHeight; if (!hv || !W0 || !H0) return;
-      const wm = ways(), sig = [hv.z, hv.lat, hv.lon, W0, H0, IDL.on]; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
+      const wm0 = ways(); let g = null, bs = -1; for (const c of GR.slice().reverse()) { let sc = 0; try { for (const id of wm0.keys()) { const e = c.hasEntity(id); if (e) sc += (e.v || 0) + 1; } } catch (e) { continue; } if (sc > bs) { bs = sc; g = c; } } if (!g) g = GR[GR.length - 1];
+      const wm = new Map(); for (const [id, d] of wm0) { let e = d; try { e = g.hasEntity(id) || d; } catch (er) {} wm.set(id, e); }
+      const sig = [hv.z, hv.lat, hv.lon, W0, H0, IDL.on]; for (const w of wm.values()) { let i = ids.get(w); if (!i) ids.set(w, i = ++nid); sig.push(i); }
       const key = sig.join(','); if (key === last) return; last = key;
       DPR = window.devicePixelRatio || 1; W = W0; H = H0; for (const c of [cvs, offc]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } cvs.style.width = W + 'px'; cvs.style.height = H + 'px';
       cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cvs.width, cvs.height); if (!IDL.on || hv.z < 16 || !wm.size) return;
       // graf aktualny = taki, ktory zwraca ta sama encje drogi co element SVG
-      const first = wm.values().next().value; let g = null; for (const c of GR.slice().reverse()) { try { if (c.hasEntity(first.id) === first) { g = c; break; } } catch (e) {} } if (!g) g = GR[GR.length - 1];
+      
       S.org = { lat: hv.lat, lon: hv.lon }; S.view.k = Math.pow(2, hv.z) / (156543.03 * Math.cos(hv.lat * Math.PI / 180)); S.view.x = 0; S.view.y = 0;
       const wmap = new Map(), roads = [];
       for (const e of wm.values()) { const hw = (e.tags.highway || '').replace('_link', ''); if (!OKHW.has(hw) || e.tags.area === 'yes' || e.nodes.length < 2) continue; const pts = [], nk = []; let bad = false; for (const n of e.nodes) { const nd = g.hasEntity(n); if (!nd || !nd.loc) { bad = true; break; } pts.push(proj(nd.loc[0], nd.loc[1])); nk.push(n); } if (bad) continue; const num = +String(e.id).slice(1), o = { id: num, t: { ...e.tags }, g: pts, nk }; wmap.set(num, o); try { roads.push(makeRoad(o, 0, pts.length - 1)); } catch (er) { console.warn('idlanes makeRoad', er); } }

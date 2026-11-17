@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pasy w iD (Roads and Lanes)
 // @namespace    https://github.com/VoyteckPL/mapa-szlakow
-// @version      2026.11.17.2041
+// @version      2026.11.17.2045
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
@@ -628,9 +628,9 @@ function drawGroup(g, ly) {
 const IDL = { on: true, hide: true, raf: 0 };
 function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.__idctx, window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
 function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; (document.body || document.documentElement).appendChild(b); } b.textContent = t; return b; }
-function idWhen(cb) { idBadge('Pasy w iD: szukam edytora…'); let n = 0; const t = setInterval(() => { const c = idCtx(); const mm = document.querySelector('.main-map'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n > 120) { clearInterval(t); idBadge('Pasy w iD: nie widzę obiektu iD (' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + ')'); } }, 500); }
+function idWhen(cb) { idBadge('Pasy w iD: szukam edytora…'); let n = 0; const t = setInterval(() => { const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n > 120) { clearInterval(t); idBadge('Pasy w iD: nie widzę obiektu iD (' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', id-container=' + !!document.querySelector('#id-container') + ', iframe=' + document.querySelectorAll('iframe').length + ')'); } }, 500); }
 idWhen(ctxId => {
-  const root = document.querySelector('.main-map');
+  const root = document.querySelector('.main-map') || document.querySelector('.supersurface') || document.querySelector('#id-container .main-content');
   const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5';
   root.appendChild(cvs); const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
   // przelaczniki

@@ -1268,6 +1268,10 @@ if (!EMBED) (() => {
     const c = s2w([W / 2, H / 2 + 40]), u0 = s2w([0, -1]), o0 = s2w([0, 0]); let ux = u0[0] - o0[0], uy = u0[1] - o0[1]; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
     const R = [uy, -ux], P = (a, b) => [c[0] + ux * a + R[0] * b, c[1] + uy * a + R[1] * b], key = 'sbn' + Math.random().toString(36).slice(2, 8);
     const set = (r, pts, nkIdx) => { r.pts = pts; r.nk = pts.map((_, i) => nkIdx.includes(i) ? key : null); return r; }, dir = (deg, d) => P(d * Math.cos(deg * Math.PI / 180), d * Math.sin(deg * Math.PI / 180)), rs = [];
+    const mt = /^([fcm]):(\d):(\d)(?::(\d))?$/.exec(kind || '');
+    if (mt && mt[1] === 'f') { const A = +mt[2], B = +mt[3], Cn = +mt[4], sh = B + Cn === A + 1; kind = 'f' + A + B + Cn; const tlA = Array.from({ length: A }, (_, i) => i < B - (sh ? 1 : 0) ? 'through' : (i === B - 1 && sh ? 'through;right' : 'right')).join('|'); rs.push(set(mk('motorway', A, tlA, 'wjazd'), [P(-90, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway', B, '', 'główna'), [P(0, 0), P(40, 0), P(100, 0)], [0])); rs.push(set(mk('motorway_link', Cn, '', 'zjazd'), [P(0, 0), dir(22, 10), dir(22, 60)], [0])); }
+    if (mt && mt[1] === 'c') { const A = +mt[2], B = +mt[3]; rs.push(set(mk('motorway', A, '', 'a'), [P(-90, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway', B, '', 'b'), [P(0, 0), P(40, 0), P(100, 0)], [0])); }
+    if (mt && mt[1] === 'm') { const A = +mt[2], B = +mt[3]; rs.push(set(mk('motorway', A, '', 'główna'), [P(-100, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway_link', B, '', 'dojazd'), [dir(-158, 60), dir(-158, 10), P(0, 0)], [2])); rs.push(set(mk('motorway', Math.min(6, A + B), '', 'wylot'), [P(0, 0), P(60, 0), P(120, 0)], [0])); }
     const def = { f21: ['through|through|right', 3, 2, 1], f12: ['through|right|right', 3, 1, 2], f22: ['through|through;right|right', 3, 2, 2] }[kind];
     if (def) { const [tl, ln, lm, le] = def; rs.push(set(mk('motorway', ln, tl, 'wjazd'), [P(-90, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway', lm, '', 'główna'), [P(0, 0), P(40, 0), P(100, 0)], [0])); rs.push(set(mk('motorway_link', le, '', 'zjazd'), [P(0, 0), dir(22, 10), dir(22, 60)], [0])); }
     if (kind === 'merge') { rs.push(set(mk('motorway', 2, '', 'główna'), [P(-100, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway_link', 1, '', 'dojazd'), [dir(-158, 60), dir(-158, 10), P(0, 0)], [2])); rs.push(set(mk('motorway', 3, '', 'wylot'), [P(0, 0), P(60, 0), P(120, 0)], [0])); }
@@ -1277,7 +1281,16 @@ if (!EMBED) (() => {
     const r = sbSel(), tb = (id, t) => `<button id="${id}" style="padding:3px 7px;margin:2px;border:1px solid #bbc;border-radius:6px;background:#fff;cursor:pointer">${t}</button>`;
     let h = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#3949ab">Sandbox</b><button id="sbX" style="border:0;background:none;font-size:16px;cursor:pointer">×</button></div><div style="color:#667;margin:2px 0 6px">Drogi testowe, nie trafiają do OSM. Najlepiej na tle „Jasne tło".</div>`;
     h += tb('sbDraw', S.tool === 'road' ? 'Rysuję… (Enter = koniec)' : '✎ Rysuj drogę') + tb('sbSel', 'Zaznacz') + tb('sbClr', 'Wyczyść sandbox');
-    h += `<div style="margin-top:6px"><b>Gotowe układy</b><br>` + tb('sbT1', '3→2+1') + tb('sbT2', '3→1+2') + tb('sbT3', '3→2+2') + tb('sbT4', 'Włączenie') + '</div>';
+    { const W0 = 1.6, ic = (A, B, C, kind) => { const x0 = 14, y = (n) => n * W0; let g = '';
+        if (kind === 'c') { g = `<path d="M${x0 - A * W0 / 2} 30 L${x0 - A * W0 / 2} 17 L${x0 - B * W0 / 2} 8 L${x0 - B * W0 / 2} 0 L${x0 + B * W0 / 2} 0 L${x0 + B * W0 / 2} 8 L${x0 + A * W0 / 2} 17 L${x0 + A * W0 / 2} 30Z" fill="#667"/>`; }
+        else if (kind === 'f') { g = `<path d="M${x0 - A * W0 / 2} 30 L${x0 - A * W0 / 2} 14 L${x0 - B * W0 / 2 - 2} 0 L${x0 + B * W0 / 2 - 2} 0 L${x0 + A * W0 / 2} 14 L${x0 + A * W0 / 2} 30Z" fill="#667"/><path d="M${x0 + A * W0 / 2 - 2} 16 L${x0 + A * W0 / 2 + 8} 0 L${x0 + A * W0 / 2 + 8 + C * W0} 0 L${x0 + A * W0 / 2 + 2 + C * W0} 20Z" fill="#889"/>`; }
+        else { g = `<path d="M${x0 - 4 - A * W0 / 2} 0 L${x0 - 4 + A * W0 / 2} 0 L${x0 - 4 + A * W0 / 2} 14 L${x0 + (A + B) * W0 / 2 - 4} 22 L${x0 + (A + B) * W0 / 2 - 4} 30 L${x0 - 4 - (A + B) * W0 / 2} 30 L${x0 - 4 - A * W0 / 2} 14Z" fill="#667"/><path d="M${x0 + 8 + B * W0} 0 L${x0 + 8} 0 L${x0 - 2} 22 L${x0 + 2 + B * W0} 18Z" fill="#889"/>`; }
+        return `<svg width="34" height="30" viewBox="0 0 34 30" style="display:block">${g}</svg>`; },
+        tbi = (k, A, B, C, kind, title) => `<button class="sbTpl" data-k="${k}" title="${title}" style="padding:1px 3px;margin:1px;border:1px solid #bbc;border-radius:5px;background:#fff;cursor:pointer">${ic(A, B, C, kind)}<span style="font-size:9px;color:#556">${title}</span></button>`, forks = [], chg = [], mrg = [];
+      for (let A = 2; A <= 6; A++) for (let B = 1; B <= A; B++) for (let C = 1; C <= A; C++) if (B + C === A || B + C === A + 1) forks.push(tbi(`f:${A}:${B}:${C}`, A, B, C, 'f', `${A}→${B}+${C}`));
+      for (let A = 1; A <= 6; A++) for (let B = 1; B <= 6; B++) if (A !== B) chg.push(tbi(`c:${A}:${B}`, A, B, 0, 'c', `${A}→${B}`));
+      for (let A = 1; A <= 5; A++) for (let B = 1; A + B <= 6; B++) mrg.push(tbi(`m:${A}:${B}`, A, B, 0, 'm', `${A}+${B}→${A + B}`));
+      h += `<div style="margin-top:6px"><b>Gotowe układy</b>` + tb('sbT1', '3→2+1') + tb('sbT2', '3→1+2') + tb('sbT3', '3→2+2') + tb('sbT4', 'Włączenie') + `<details><summary>Rozjazdy (do 6 pasów)</summary>${forks.join('')}</details><details><summary>Zmiana liczby pasów</summary>${chg.join('')}</details><details><summary>Włączenia</summary>${mrg.join('')}</details></div>`; }
     if (!r) h += `<div style="margin-top:8px;color:#667">Narysuj drogę (kliknięcia, Enter) albo zaznacz drogę sandboxu, by edytować tagi. Koniec drogi na istniejącym węźle łączy drogi.</div>`;
     else {
       const n = r.lanes | 0, tk = (r.tl || '').split('|'); while (tk.length < n) tk.push(''); tk.length = n;
@@ -1293,7 +1306,7 @@ if (!EMBED) (() => {
     $$('sbX').onclick = () => { el.style.display = 'none'; };
     $$('sbDraw').onclick = () => { setTool('road'); draw(); }; $$('sbSel').onclick = () => { setTool('sel'); draw(); };
     $$('sbClr').onclick = () => { if (!S.doc.road.some(x => x.sb)) return; push(); S.doc.road = S.doc.road.filter(x => !x.sb); S.sel = -1; save(); ui(); touch(); draw(); };
-    ['f21', 'f12', 'f22', 'merge'].forEach((k, i) => { $$('sbT' + (i + 1)).onclick = () => tpl(k); });
+    ['f21', 'f12', 'f22', 'merge'].forEach((k, i) => { $$('sbT' + (i + 1)).onclick = () => tpl(k); }); el.querySelectorAll('.sbTpl').forEach(b => { b.onclick = () => tpl(b.dataset.k); });
     if (r) {
       $$('sbHw').onchange = () => mut(() => { r.hw = $$('sbHw').value; r.lw = LW_CLASS[r.hw.replace('_link', '')] || 3.5; });
       $$('sbLn').onchange = () => mut(() => { r.lanes = Math.max(1, Math.min(6, parseInt($$('sbLn').value) || 1)); r.tl = ''; });

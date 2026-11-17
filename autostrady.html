@@ -145,6 +145,22 @@ function laneLinks(e, cut) {
   return L;
 }
 
+// ---------- strzałki ----------
+const ANG = { through: 0, slight_right: 35, right: 80, sharp_right: 120, slight_left: -35, left: -80, sharp_left: -120, merge_to_left: -20, merge_to_right: 20 };
+function arrowImg(v) {
+  const dirs = (v || '').split(';').map(x => x.trim()).filter(x => x in ANG); if (!dirs.length) return null;
+  const id = 'a-' + dirs.sort().join('+'); if (MAP.hasImage(id)) return id;
+  const W = 64, H = 160, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 7; g.lineCap = 'butt';
+  const x0 = W / 2, yb = H - 4, yf = H * 0.55; // trzon od dołu do punktu rozwidlenia
+  const head = (x, y, a) => { g.save(); g.translate(x, y); g.rotate(a * Math.PI / 180); g.beginPath(); g.moveTo(0, -20); g.lineTo(-12, 4); g.lineTo(12, 4); g.closePath(); g.fill(); g.restore(); };
+  g.beginPath(); g.moveTo(x0, yb); g.lineTo(x0, dirs.includes('through') ? 22 : yf); g.stroke();
+  if (dirs.includes('through')) head(x0, 22, 0);
+  for (const d of dirs) { if (d === 'through') continue; const a = ANG[d], r = a * Math.PI / 180, L = Math.abs(a) > 60 ? 22 : 40;
+    const x1 = x0 + Math.sin(r) * L, y1 = yf - Math.cos(r) * L; g.beginPath(); g.moveTo(x0, yf + 6); g.lineTo(x1, y1); g.stroke(); head(x1, y1, a); }
+  MAP.addImage(id, g.getImageData(0, 0, W, H), { pixelRatio: 2 }); return id;
+}
+
 function build() {
   const lw = +$('lw').value || 3.5, R = +$('zr').value || 40, zones = $('zn').checked, F = [];
   const { J, cut } = zones ? findJunctions(lw, R) : { J: [], cut: new Map() };
@@ -157,6 +173,12 @@ function build() {
     line(offsetLine(w.g, 0), 'os', { id: w.i, n });
     L(half, 'kraw'); L(-half, 'kraw');
     for (let i = 1; i < n; i++) { const d = -half + i * lw; L(d, two && i === n / 2 ? 'srodek' : 'pas'); }
+    // strzałki P-8 z turn:lanes: na każdym pasie 25 m i 70 m przed końcem odcinka (po przycięciu strefą)
+    const tl = isOneway(t) && (t['turn:lanes'] || '').split('|');
+    if (tl && tl.length === n) { const Lg = lenM(g);
+      for (const back of [25, 70]) { if (back > Lg - 5) continue; const q = cutFrom(rev(g), back), dir = [-q.dir[0], -q.dir[1]], brg = Math.atan2(dir[0], dir[1]) * 180 / Math.PI;
+        tl.forEach((v, i) => { const img = arrowImg(v); if (!img) return; const o = half - (i + 0.5) * lw;
+          F.push({ type: 'Feature', properties: { kind: 'strz', img, brg }, geometry: { type: 'Point', coordinates: toLL(q.p[0] - dir[1] * o / K, q.p[1] + dir[0] * o / K) } }); }); } }
   }
   // strefy: każdy pas jako wstęga asfaltu + krawędzie (ciągła na zewnątrz grupy, przerywana między pasami tej samej grupy)
   for (const e of J) for (const k of laneLinks(e, cut)) {
@@ -212,6 +234,8 @@ const MAP = new maplibregl.Map({ container: 'map', center: [18.4618, 54.4985], z
       { id: 'kraw', type: 'line', source: 'pasy', filter: kind('kraw'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'srodek', type: 'line', source: 'pasy', filter: kind('srodek'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
       { id: 'pas', type: 'line', source: 'pasy', filter: kind('pas'), paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1), 'line-dasharray': [4 / LINE, 8 / LINE] } },
+      { id: 'strz', type: 'symbol', source: 'pasy', filter: kind('strz'), minzoom: 16, layout: { 'icon-image': ['get', 'img'], 'icon-rotate': ['get', 'brg'], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-size': ['interpolate', ['exponential', 2], ['zoom'], 16, 6 * PXM(16) / 80, 22, 6 * PXM(22) / 80] } },
       { id: 'os', type: 'line', source: 'pasy', filter: kind('os'), paint: { 'line-color': '#ff2d55', 'line-width': 1.2, 'line-dasharray': [3, 3] } } ] } });
 MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
 MAP.on('load', loadView); MAP.on('moveend', loadView);

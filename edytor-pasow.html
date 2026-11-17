@@ -860,18 +860,22 @@ var PZ = { th: null, key: '', type: null, live: null };
 function pzSnap(dr, w) { // przeciaganie PIERWSZEGO wezla galezi (wjazd, na wprost, zjazd) przy rozwidleniu: kat na zywo + przyciaganie
   const cand = PZI.map(z => z.p); if (PZ.sel) cand.unshift(PZ.sel.node);
   for (const node of cand) { if (dist(node, w) > 80) continue; const F = pzDetect(node); if (!F) continue;
-    for (const [k, br] of [['x', F.X], ['main', F.main], ['exit', F.exit]]) { if (!br.refs[1] || br.refs[1].ri !== dr.i || br.refs[1].vi !== dr.vi) continue;
+    for (const [k, br] of [['x', F.X], ['main', F.main], ['exit', F.exit]]) { const kj = pzKey(br), kr = br.refs[kj]; if (!kr || kr.ri !== dr.i || kr.vi !== dr.vi) continue;
       const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', d = dist(F.node, w), tol = Math.max(2.5, Math.atan(12 / S.view.k / Math.max(d, 1)) / PZ_R);
       let a, best = null, T;
-      if (k === 'x') { const tabs = pzB(F.node, F.main.P[1]) + 180; a = pzN(pzB(F.node, w) - tabs); T = [0]; if (Math.abs(a) <= tol) best = 0; const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((tabs + ang) * PZ_R), F.node[1] + d * Math.sin((tabs + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; }
+      if (k === 'x') { const tabs = pzB(F.node, F.main.P[pzKey(F.main)]) + 180; a = pzN(pzB(F.node, w) - tabs); T = [0]; if (Math.abs(a) <= tol) best = 0; const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((tabs + ang) * PZ_R), F.node[1] + d * Math.sin((tabs + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; }
       const side = Math.sign(F.a0.exit - F.a0.main) || 1; T = k === 'main' && F.type !== 'B' ? [0] : F.type === 'B' ? [12, 15, 18].map(t => t * (k === 'main' ? -1 : 1)) : (top ? [22, 25, 30] : [30, 35, 40]).map(t => t * side);
       a = pzN(pzB(F.node, w) - F.din); for (const t of T) if (Math.abs(a - t) <= tol && (best == null || Math.abs(a - t) < Math.abs(a - best))) best = t;
       const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; } }
   return null;
 }
-function pzIns(arm, dd) { // wstaw wezel na pierwszym odcinku galezi w odleglosci dd od rozwidlenia (geometria bez zmian)
-  const f = arm.refs[1], r = S.doc.road[f.ri], vb = f.vi, va = vb - f.dir, idx = Math.max(va, vb), A = arm.P[0], B = arm.P[1], l = dist(A, B) || 1, q = [A[0] + (B[0] - A[0]) * dd / l, A[1] + (B[1] - A[1]) * dd / l];
-  r.pts.splice(idx, 0, q); if (r.nk) r.nk.splice(idx, 0, null); if (r.rp) r.rp.splice(idx, 0, q.slice());
+const PZ_D = 10; // wspolna odleglosc kluczowych punktow gałęzi od węzła rozwidlenia [m]
+function pzKey(arm) { const c = cumOf(arm.P); for (let j = 1; j < c.length; j++) if (c[j] >= PZ_D - 0.6) return j; return Math.max(1, c.length - 1); }
+function pzIns(arm, dd) { // wstaw wezel w odleglosci dd (po lamanej) od rozwidlenia; false gdy juz jest (+-0,6 m) albo galezi brak
+  const c = cumOf(arm.P); if (c[c.length - 1] < dd + 1) return false; let j = 0; while (j + 1 < c.length - 1 && c[j + 1] <= dd) j++;
+  if (Math.abs(c[j] - dd) < 0.6 || Math.abs(c[j + 1] - dd) < 0.6) return false;
+  const f = arm.refs[j + 1], r = S.doc.road[f.ri], vb = f.vi, va = vb - f.dir, idx = Math.max(va, vb), A = arm.P[j], B = arm.P[j + 1], l = dist(A, B) || 1, t = (dd - c[j]) / l, q = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
+  r.pts.splice(idx, 0, q); if (r.nk) r.nk.splice(idx, 0, null); if (r.rp) r.rp.splice(idx, 0, q.slice()); return true;
 }
 async function pzFocus(ri, vi) { // klik w wezel rozwidlenia: aktualne dane OSM + dodatkowe punkty ~10 m od wezla + podglad katow
   const n0 = S.doc.road[ri].pts[vi].slice(); if (!pzDetect(n0)) { PZ.sel = null; render(); return; }
@@ -879,15 +883,17 @@ async function pzFocus(ri, vi) { // klik w wezel rozwidlenia: aktualne dane OSM 
   const c = unproj(n0), dl = 160 / 111320, dn = dl / Math.cos(c.lat * Math.PI / 180); let live = false; try { live = await refreshLive([c.lon - dn, c.lat - dl, c.lon + dn, c.lat + dl]); } catch (e) {}
   let node = n0, bd = 6; S.doc.road.forEach(r => r.pts.forEach(p => { const d = dist(p, n0); if (d < bd) { bd = d; node = p.slice(); } }));
   if (!pzDetect(node)) { PZ.sel = null; say('To rozwidlenie nie istnieje już w OSM.'); render(); return; }
-  PZ.sel = { node }; let added = 0; push(); for (let g = 0; g < 4; g++) { const F = pzDetect(node); if (!F) break; const arm = [F.X, F.main, F.exit].find(a => a.refs[1] && dist(a.P[0], a.P[1]) > 15); if (!arm) break; pzIns(arm, 10); added++; }
+  PZ.sel = { node }; let added = 0; push(); for (let g = 0; g < 8; g++) { const F = pzDetect(node); if (!F) break; let did = false; for (const arm of [F.X, F.main, F.exit]) { if (pzIns(arm, PZ_D)) { did = true; added++; break; } } if (!did) break; }
   if (!added) S.undo.pop(); else { save(); S.dirty = true; }
   say(live ? (added ? `OSM aktualne, dodano ${added} pkt.` : 'OSM aktualne.') : (added ? `Dodano ${added} pkt (OSM niedostępne).` : '')); touch();
 }
 function pzOk(F, k, a) { const top = ['motorway', 'trunk'].includes((F.X.hw || '').replace('_link', '')), x = Math.abs(a); return F.type === 'B' ? x >= 6 && x <= 20 : k === 'main' ? x <= 5 : (top ? x >= 15 && x <= 30 : x >= 21 && x <= 40); }
 function pzDrawArcs() { // prosta + galezie + luk z katem (tylko liczby)
   if (!PZ.sel || S.tool !== 'sel') return; const F = pzDetect(PZ.sel.node); if (!F) return; const o = w2s(F.node), din = F.din * PZ_R, R = 100, rr = 46;
-  ctx.save(); ctx.lineCap = 'round'; ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(40,40,40,.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(din), o[1] + R * Math.sin(din)); ctx.stroke(); ctx.setLineDash([]);
-  for (const k of ['main', 'exit']) { const br = F[k], a = pzN(pzB(F.node, br.P[1]) - F.din); if (k === 'main' && F.type !== 'B' && Math.abs(a) < 0.5) continue; const ok = pzOk(F, k, a), col = ok ? '#1f9a4c' : '#e08a00', e = (F.din + a) * PZ_R;
+  ctx.save(); ctx.lineCap = 'round'; ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(40,40,40,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(o[0], o[1], PZ_D * S.view.k, 0, 7); ctx.stroke(); /* okrag: wspolna odleglosc punktow od wezla */
+  for (const br of [F.X, F.main, F.exit]) { const q = w2s(br.P[pzKey(br)]); ctx.setLineDash([]); ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#1f6fd0'; ctx.lineWidth = 2.5; ctx.stroke(); }
+  ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(40,40,40,.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(din), o[1] + R * Math.sin(din)); ctx.stroke(); ctx.setLineDash([]);
+  for (const k of ['main', 'exit']) { const br = F[k], kp = br.P[pzKey(br)], a = pzN(pzB(F.node, kp) - F.din); if (k === 'main' && F.type !== 'B' && Math.abs(a) < 0.5) continue; const ok = pzOk(F, k, a), col = ok ? '#1f9a4c' : '#e08a00', e = (F.din + a) * PZ_R;
     ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(e), o[1] + R * Math.sin(e)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.closePath(); ctx.fillStyle = ok ? 'rgba(31,154,76,.20)' : 'rgba(224,138,0,.22)'; ctx.fill();
     ctx.beginPath(); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.lineWidth = 2; ctx.stroke();

@@ -97,7 +97,9 @@ function resample(g, ds) {
   return pts;
 }
 
+let RUNID = 0, PENDING = null;
 async function run() {
+  const my = ++RUNID;
   const lat = +$('lat').value, lon = +$('lon').value, LEN = +$('len').value, HALF = +$('half').value, THR = +$('thr').value;
   const k = Math.cos(lat * Math.PI / 180); // m terenu = merc * k
   log('Wczytuję drogi OSM…');
@@ -124,6 +126,7 @@ async function run() {
     for (let a = 0; a < 3 && !bmp; a++) { try { const r = await fetchT(url, 40000); if (r.ok && (r.headers.get('content-type') || '').includes('image')) bmp = await createImageBitmap(await r.blob()); else await new Promise(q => setTimeout(q, 800 * (a + 1))); } catch (e) { log($('msg').textContent + `\n${srv}: ${e.name}`); } }
     if (bmp) { if (srv !== 'HighResolution') log($('msg').textContent + '\nUżyto StandardResolution (gorsza rozdzielczość).'); break; }
   }
+  if (my !== RUNID) return; // nowsze kliknięcie wygrywa
   if (!bmp) { log($('msg').textContent + '\nGeoportal nie odpowiedział. Spróbuj ponownie.'); return; }
   const oc = new OffscreenCanvas(IW, IH), ox = oc.getContext('2d'); ox.drawImage(bmp, 0, 0); const img = ox.getImageData(0, 0, IW, IH).data;
   const px = (X, Y) => { // dwuliniowo, zwraca [r,g,b]
@@ -185,7 +188,7 @@ function draw(bmp, G, S) {
   const off = d => G.pts.map(p => { const ll = toLL(p[0] - p.ty * d / G.k, p[1] + p.tx * d / G.k); return ll; });
   const F = (d, kind) => ({ type: 'Feature', properties: { kind }, geometry: { type: 'LineString', coordinates: off(d) } });
   const fc = { type: 'FeatureCollection', features: [F(0, 'os'), ...G.edges.map(d => F(d, 'kraw')), ...G.lines.map(l => F(l.d, l.typ))] };
-  if (MAP && MAP.getSource('det')) MAP.getSource('det').setData(fc);
+  PENDING = fc; if (MAP && MAP.isStyleLoaded() && MAP.getSource('det')) MAP.getSource('det').setData(fc);
   // wyprostowany pas: wiersze = stacja, kolumny = odsunięcie d (+ w lewo)
   const DD = 0.1, NC = Math.round(2 * HALF / DD) + 1, NR = pts.length, dOf = c => -HALF + c * DD;
   const strip = new Uint8ClampedArray(NR * NC * 4), lum = new Float32Array(NR * NC), sat = new Float32Array(NR * NC);
@@ -279,7 +282,8 @@ try {
           'line-color': ['match', ['get', 'kind'], 'ciągła', '#ffd400', 'przerywana', '#ff8a00', '#ff3b6b'] } } ] } });
   MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
   MAP.on('click', e => { $('lat').value = e.lngLat.lat.toFixed(7); $('lon').value = e.lngLat.lng.toFixed(7); run().catch(er => log('Błąd: ' + er.message)); });
-  MAP.on('load', () => run().catch(e => log('Błąd: ' + e.message)));
+  MAP.on('load', () => { if (PENDING) MAP.getSource('det').setData(PENDING); });
+  run().catch(e => log('Błąd: ' + e.message));
 } catch (e) { log('Mapa się nie wczytała: ' + e.message); run().catch(er => log('Błąd: ' + er.message)); }
 </script>
 </body>

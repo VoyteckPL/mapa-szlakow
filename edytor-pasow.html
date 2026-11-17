@@ -1354,7 +1354,7 @@ if (!EMBED) (() => {
         + `<span>oneway</span><label><input id="sbOw" type="checkbox" ${r.oneway ? 'checked' : ''}> yes</label></div>`
         + `<div style="margin-top:6px">turn:lanes (od lewej)</div><div style="display:flex;gap:3px;flex-wrap:wrap">${tk.map((v, i) => `<select class="sbTl" data-i="${i}" title="pas ${i + 1}" style="font-size:16px;width:70px">${TLV.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${TLN[x]}</option>`).join('')}</select>`).join('')}</div>`
         + `<input id="sbTx" value="${(r.tl || '').replace(/"/g, '&quot;')}" placeholder="turn:lanes np. through|through|right" style="width:100%;box-sizing:border-box;margin-top:4px">`
-        + `<div style="margin-top:4px">${(PRE[n] || []).map((v, i) => tb('sbP' + i, icoRow(v)).replace('<button ', `<button title="${v}" `)).join('')}</div>${r.grp ? `<div style="margin-top:6px"><b>Układ</b> ${tb('sbMl', '←')}${tb('sbMu', '↑')}${tb('sbMd', '↓')}${tb('sbMr', '→')} ${tb('sbRl', '⟲')}${tb('sbRr', '⟳')} <span style="color:#667">5 m / 15°</span> ${tb('sbDg', 'Usuń cały układ')}</div>` : ''}<div style="margin-top:6px">szer. pasa: ${tb('sbWL', '◀')} <b>${(+(r.lw || 3.5)).toFixed(2)} m</b> ${tb('sbWR', '▶')}${r.grp ? tb('sbWG', 'cały układ') : ''}</div><div style="margin-top:6px">offset: ${tb('sbOL', '◀')} <b>${(() => { const nl = r.lanes | 0, base = offBase(r), cur = r.off != null ? +r.off : base; return (cur > 0 ? '+' : '') + cur + ' pasa' + (r.off == null ? ' (auto)' : ''); })()}</b> ${tb('sbOR', '▶')}${r.off != null ? tb('sbOA', 'auto') : ''}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
+        + `<div style="margin-top:4px">${(PRE[n] || []).map((v, i) => tb('sbP' + i, icoRow(v)).replace('<button ', `<button title="${v}" `)).join('')}</div>${r.grp ? `<div style="margin-top:6px"><b>Układ</b> ${tb('sbMl', '←')}${tb('sbMu', '↑')}${tb('sbMd', '↓')}${tb('sbMr', '→')} ${tb('sbRl', '⟲')}${tb('sbRr', '⟳')} <span style="color:#667">5 m / 15°</span> ${tb('sbDg', 'Usuń cały układ')}</div>` : ''}<div style="margin-top:6px">szer. pasa: ${tb('sbWL', '◀')} <b>${(+(r.lw || 3.5)).toFixed(2)} m</b> ${tb('sbWR', '▶')}${r.grp ? tb('sbWG', 'cały układ') : ''}</div><div style="margin-top:6px">offset: ${tb('sbOL', '◀')} <b>${(() => { const nl = r.lanes | 0, base = offBase(r), cur = r.off != null ? +r.off : base; return (cur > 0 ? '+' : '') + cur + ' pasa' + (r.off == null ? ' (auto)' : ''); })()}</b> ${tb('sbOR', '▶')}${r.off != null ? tb('sbOA', 'auto') : ''}${tb('sbOC', 'Kopiuj dane')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
     }
     el.innerHTML = h; const $$ = id => el.querySelector('#' + id);
     $$('sbX').onclick = () => { el.style.display = 'none'; };
@@ -1372,6 +1372,7 @@ if (!EMBED) (() => {
         $$('sbMl').onclick = () => mv(-step, 0); $$('sbMr').onclick = () => mv(step, 0); $$('sbMu').onclick = () => mv(0, -step); $$('sbMd').onclick = () => mv(0, step); $$('sbDg').onclick = () => mut(() => { const g = r.grp; S.doc.road = S.doc.road.filter(x => x.grp !== g); S.sel = -1; }); $$('sbRl').onclick = () => rot(-15); $$('sbRr').onclick = () => rot(15); }
       { const setW = (v, all) => mut(() => { v = Math.max(2.5, Math.min(5, Math.round(v * 100) / 100)); (all && r.grp ? S.doc.road.filter(x => x.grp === r.grp) : [r]).forEach(x => { x.lw = v; }); });
         $$('sbWL').onclick = () => setW((r.lw || 3.5) - 0.25, false); $$('sbWR').onclick = () => setW((r.lw || 3.5) + 0.25, false); if ($$('sbWG')) $$('sbWG').onclick = () => setW(r.lw || 3.5, true); }
+      $$('sbOC').onclick = () => { const t = 'OFFSET-DO-REGULY\n' + window.offsetReport(r); try { navigator.clipboard.writeText(t); $$('sbOC').textContent = 'Skopiowano ✓'; } catch (e) { $$('sbOC').textContent = 'Nie udało się'; } };
       { const cur0 = () => { const nl = r.lanes | 0, base = offBase(r); return r.off != null ? +r.off : base; }; $$('sbOL').onclick = () => mut(() => { r.off = cur0() - 0.5; }); $$('sbOR').onclick = () => mut(() => { r.off = cur0() + 0.5; }); if ($$('sbOA')) $$('sbOA').onclick = () => mut(() => { delete r.off; }); }
       $$('sbRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });
       $$('sbDel').onclick = () => mut(() => { S.doc.road.splice(S.sel, 1); S.sel = -1; });
@@ -1381,6 +1382,39 @@ if (!EMBED) (() => {
   if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Sandbox'; row.className = 'eb'; row.innerHTML = '<button id="lcSb" title="Sandbox: rysuj testowe drogi i zmieniaj turn:lanes" style="width:auto;padding:0 8px;font-size:12px">✎ Sandbox</button>'; lc.append(hr, b, row); row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
   const oldFinish = finishDraw; finishDraw = function () { const n0 = S.doc.road.length; oldFinish(); for (let i = n0; i < S.doc.road.length; i++) { const r = S.doc.road[i]; if (!r.osm) { r.sb = true; r.oneway = true; r.hw = 'motorway'; r.lw = 3.75; r.lanes = 3; } } save(); draw(); };
   document.addEventListener('pointerup', e => { if (el.contains(e.target)) return; /* klik w panelu nie przerysowuje go (zamykalby otwarta liste) */ setTimeout(() => { if (el.style.display !== 'none' && !el.contains(document.activeElement)) draw(); }, 50); });
+})();
+
+// ---------- pasek offsetu dla zaznaczonej drogi: strzalki + kopiowanie danych do reguly ----------
+(() => {
+  const bar = document.createElement('div'); bar.id = 'offBar';
+  bar.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:14;max-width:330px;background:#fff;border:1px solid #bbc;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.2);padding:8px 10px;font:13px system-ui,sans-serif;display:none';
+  document.body.appendChild(bar);
+  const bt = (id, t, tip) => `<button id="${id}" title="${tip || ''}" style="padding:3px 8px;margin:2px;border:1px solid #bbc;border-radius:6px;background:#fff;cursor:pointer;font-size:14px">${t}</button>`;
+  const baseOf = r => offBase(r), curOf = r => (r.off != null && r.off !== '' ? +r.off : baseOf(r));
+  const info = r => {
+    const R = S.doc.road, ends = [[0, 'poczatek'], [r.pts.length - 1, 'koniec']].map(([j, nm]) => { const k = r.nk[j], o = k ? R.filter(x => x !== r && x.nk.includes(k)) : [];
+      return nm + ': ' + (o.length ? o.map(x => `${x.hw || '?'} ${x.lanes} pasy${x.oneway ? ' jednokier.' : ''}${x.tl ? ' tl=' + x.tl : ''}`).join(' + ') : 'WOLNY (nic sie nie laczy)'); });
+    return [`droga: ${r.hw || '?'}, ${r.lanes} pasy, ${r.oneway ? 'jednokierunkowa' : 'dwukierunkowa'}, szer. pasa ${r.lw} m`,
+      `turn:lanes: ${r.tl || '(brak)'}${r.tlb ? ' | backward: ' + r.tlb : ''}`,
+      `offset automatyczny: ${baseOf(r)} pasa; offset ustawiony: ${curOf(r)} pasa${r.off != null && r.off !== '' ? ' (reczny)' : ' (auto)'}`,
+      ...ends, `sandbox: ${r.sb ? 'tak' : 'nie'}`].join('\n');
+  };
+  const copy = txt => { let ok = false; try { navigator.clipboard.writeText(txt); ok = true; } catch (e) {} if (!ok) { const ta = document.getElementById('offTa'); if (ta) { ta.select(); try { ok = document.execCommand('copy'); } catch (e) {} } } return ok; };
+  window.offsetReport = info;
+  function draw() {
+    const r = S.doc.road[S.sel]; if (!r || r.sb) { bar.style.display = 'none'; return; }
+    bar.style.display = 'block';
+    const cur = curOf(r), txt = 'OFFSET-DO-REGULY\n' + info(r);
+    bar.innerHTML = `<div style="font-weight:600;color:#3949ab">Offset: ${(r.name || r.hw || 'droga')} · ${r.lanes} pasy</div>`
+      + `<div>${bt('obL', '◀', 'o pół pasa w lewo')} <b>${cur > 0 ? '+' : ''}${cur} pasa${r.off == null ? ' (auto)' : ''}</b> ${bt('obR', '▶', 'o pół pasa w prawo')}${r.off != null ? bt('obA', 'auto') : ''}</div>`
+      + `<div>${bt('obC', 'Kopiuj dane dla Claude')}<span id="obM" style="color:#2a8a2a"></span></div><textarea id="offTa" readonly style="width:100%;height:0;opacity:0;position:absolute"></textarea>`;
+    const step = dv => { push(); r.off = curOf(r) + dv; save(); touch(); draw(); };
+    document.getElementById('obL').onclick = () => step(-0.5); document.getElementById('obR').onclick = () => step(0.5);
+    if (document.getElementById('obA')) document.getElementById('obA').onclick = () => { push(); delete r.off; save(); touch(); draw(); };
+    document.getElementById('obC').onclick = () => { const ta = document.getElementById('offTa'); ta.value = 'OFFSET-DO-REGULY\n' + info(r); const ok = copy(ta.value); document.getElementById('obM').textContent = ok ? ' skopiowano ✓' : ' zaznacz i skopiuj ręcznie'; if (!ok) { ta.style.cssText = 'width:100%;height:120px;position:static;opacity:1'; ta.select(); } };
+  }
+  const oldUi = ui; ui = function () { const r0 = oldUi.apply(this, arguments); try { draw(); } catch (e) {} return r0; };
+  draw();
 })();
 </script>
 </body>

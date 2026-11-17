@@ -613,7 +613,8 @@ function layout() {
     if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
     const nd = orient(C[G[0].i], G[0].st).Q[0], E = [];
     lines.forEach(l => { if (l.st !== 'p2' || l.P.length < 2) return; [0, l.P.length - 1].forEach(j => { if (dist(l.P[j], nd) < 5) E.push({ l, j, p: l.P[j] }); }); });
-    const pairs = []; for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) if (E[x].l !== E[y].l && (E[x].l.ly | 0) === (E[y].l.ly | 0)) { const d = dist(E[x].p, E[y].p); if (d > 0.02 && d < 4.5) pairs.push([d, x, y]); } /* mosty/wiadukty (inna warstwa) nie lacza sie krawedziami ze zwykla droga: tam sa barierki */
+    const roadOfLine = l => { const j = lines.indexOf(l); for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) return i; return -1; }; /* nie lacz dwoch krawedzi tej samej drogi (waski most: krawedzie leza blizej niz 4,5 m) */
+    const pairs = []; for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) if (E[x].l !== E[y].l && (E[x].l.ly | 0) === (E[y].l.ly | 0) && roadOfLine(E[x].l) !== roadOfLine(E[y].l)) { const d = dist(E[x].p, E[y].p); if (d > 0.02 && d < 4.5) pairs.push([d, x, y]); } /* mosty/wiadukty (inna warstwa) nie lacza sie krawedziami ze zwykla droga: tam sa barierki */
     pairs.sort((u, v) => u[0] - v[0]); const used = new Set();
     const isect = (A, B, C2, D2) => { const r = [B[0] - A[0], B[1] - A[1]], q = [D2[0] - C2[0], D2[1] - C2[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return null; const t = ((C2[0] - A[0]) * q[1] - (C2[1] - A[1]) * q[0]) / den; return [A[0] + r[0] * t, A[1] + r[1] * t]; };
     for (const [, x, y] of pairs) { if (used.has(x) || used.has(y)) continue; used.add(x); used.add(y);

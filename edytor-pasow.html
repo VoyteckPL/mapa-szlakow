@@ -1242,7 +1242,7 @@ if (!EMBED) (() => {
   const lc = document.getElementById('lcP');
   if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Sandbox'; row.className = 'eb'; row.innerHTML = '<button id="lcSb" title="Sandbox: rysuj testowe drogi i zmieniaj turn:lanes" style="width:auto;padding:0 8px;font-size:12px">✎ Sandbox</button>'; lc.append(hr, b, row); row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
   const oldFinish = finishDraw; finishDraw = function () { const n0 = S.doc.road.length; oldFinish(); for (let i = n0; i < S.doc.road.length; i++) { const r = S.doc.road[i]; if (!r.osm) { r.sb = true; r.oneway = true; r.hw = 'motorway'; r.lw = 3.75; r.lanes = 3; } } save(); draw(); };
-  document.addEventListener('pointerup', () => setTimeout(() => { if (el.style.display !== 'none') draw(); }, 50));
+  document.addEventListener('pointerup', e => { if (el.contains(e.target)) return; /* klik w panelu nie przerysowuje go (zamykalby otwarta liste) */ setTimeout(() => { if (el.style.display !== 'none' && !el.contains(document.activeElement)) draw(); }, 50); });
 })();
 </script>
 </body>

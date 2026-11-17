@@ -1035,7 +1035,7 @@ cv.addEventListener('pointerdown', e => {
     const sr = S.doc.road[S.sel];
     if (sr && !nearVertex(p, 14)) for (let i = 0; i < sr.pts.length - 1; i++) { const a = sr.pts[i], b = sr.pts[i + 1]; if (dist(w2s([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]), p) < 12) { push(); sr.pts.splice(i + 1, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]); sr.nk.splice(i + 1, 0, null); if (sr.rp) sr.rp.splice(i + 1, 0, [(sr.rp[i][0] + sr.rp[i + 1][0]) / 2, (sr.rp[i][1] + sr.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: S.sel, vi: i + 1, moved: true }; ui(); touch(); return; } }
     const v = nearVertex(p, 14);
-    if (v) { push(); S.sel = v.i; S.vsel = v.vi; drag = { m: 'vtx', i: v.i, vi: v.vi, moved: false }; ui(); render(); return; }
+    if (v) { push(); S.sel = v.i; S.vsel = v.vi; drag = { m: 'vtx', i: v.i, vi: v.vi, moved: false, p0: p }; ui(); render(); return; }
     if (sr && S.sel >= 0) { const w0 = s2w(p), pj = axisProj(sr, w0); if (pj.d < 8) { drag = { m: 'axisIns', i: S.sel, seg: pj.i, p, moved: false }; return; } }
   }
   drag = { m: 'maybe', p, v: { x: S.view.x, y: S.view.y }, w };
@@ -1055,7 +1055,7 @@ cv.addEventListener('pointermove', e => {
     drag.moved = true; touch();
   }
   else if (drag.m === 'lax') { const w = s2w(p), rr = S.doc.road[drag.i]; if (rr && rr.la && rr.la[drag.g]) { rr.la[drag.g][drag.vi] = w; drag.moved = true; render(); } }
-  else if (drag.m === 'vtx') { let w = s2w(p); const sn = pzSnap(drag, w); if (sn) w = sn.w; PZ.live = sn; moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
+  else if (drag.m === 'vtx') { if (!drag.moved && drag.p0 && dist(p, drag.p0) < 5) return; /* prog 5 px: stuknięcie nie przesuwa węzła */ let w = s2w(p); const sn = pzSnap(drag, w); if (sn) w = sn.w; PZ.live = sn; moveNode(S.doc.road[drag.i], drag.vi, w[0], w[1]); drag.moved = true; touch(); }
 });
 function endPtr(e) {
   ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null; if (!drag) return; const d = drag; drag = null;

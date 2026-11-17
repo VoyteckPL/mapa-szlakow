@@ -378,11 +378,13 @@ function skelLanes(G, C, R) {
   // wklad kazdego konca drogi przechowujemy jako funkcje odleglosci od tego konca (nie indeksu), bo skelFork potem przelicza Q (inna liczba punktow)
   const set = (e, cum, dLo, dRo, lines) => { const c = C[e.i];
     (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { s: cum.slice(), lo: dLo.slice(), hi: dRo.slice() }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = c.lat || { lines: [] };
-    lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, st: e.st, a: l.a, b: l.b })); };
+    lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, p0: l.p0 == null ? null : e.st ? l.p0 : -l.p0, T: l.T, st: e.st, a: l.a, b: l.b })); };
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
   const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
-  SN.forEach(x => { linesW.push({ p: toDp(x) + sn, a: 0, b: same(x, SW) && Math.abs(sn - sw) < 1e-6 ? BIG : T / 2 }); linesN.push({ p: -toDp(x) - sn, a: 0, b: BIG }); }); SW.forEach(x => { if (!same(x, SN) || Math.abs(sn - sw) >= 1e-6) linesW.push({ p: toDp(x) + sw, a: 0, b: BIG }); });
+  { const wl = SW.map(x => toDp(x) + sw), used = new Set(); /* linie pasow szerszej drogi: kazda linia wezszej przechodzi plynnie w najblizsza linie szerszej, nadmiarowe linie szerszej wyrastaja dalej */
+    SN.forEach(x => { const q = toDp(x) + sn; let k = -1, bk = 1e9; wl.forEach((y, kk) => { if (!used.has(kk) && Math.abs(y - q) < bk) { bk = Math.abs(y - q); k = kk; } }); if (k >= 0) { used.add(k); linesW.push({ p: wl[k], p0: q, T, a: 0, b: BIG }); } linesN.push({ p: -toDp(x) - sn, a: 0, b: BIG }); });
+    wl.forEach((y, kk) => { if (!used.has(kk)) linesW.push({ p: y, a: T * 0.6, b: BIG }); }); }
   const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
   const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * sm5(cl(s / (0.7 * T))) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
   set(we, ow.cum, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
@@ -517,7 +519,7 @@ function layout() {
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const lwr = r.lw || 3.75, mm = c.w.map(v => v / lwr), full = mm.map(m => Math.abs(m - Math.round(m)) < 0.04), mx = Math.round(Math.max(...mm));
       for (let k = 1; k < mx; k++) addLine(offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * lwr)), 'p1', keep.map((kk, j) => kk && full[j] && k < Math.round(mm[j]))); // pelne pasy: dzielniki ida za osia i szerokoscia drogi (plynny offset)
-      const clen = c.cum[n - 1]; for (const l of c.lat.lines) { const c0 = l.st ? l.a : clen - l.b, c1 = l.st ? l.b : clen - l.a; addLine(offsetPts(Q, l.p), 'p1', keep.map((kk, j) => kk && !full[j] && c.cum[j] >= c0 - 1e-6 && c.cum[j] <= c1 + 1e-6 && l.p > lo[j] + 0.05 && l.p < hi[j] - 0.05)); } }
+      const clen = c.cum[n - 1]; for (const l of c.lat.lines) { const c0 = l.st ? l.a : clen - l.b, c1 = l.st ? l.b : clen - l.a; const pj = Q.map((_, j) => l.p0 == null ? l.p : l.p + (l.p0 - l.p) * (1 - sm5(Math.max(0, Math.min(1, (l.st ? c.cum[j] : clen - c.cum[j]) / l.T))))); addLine(offsetPts(Q, pj), 'p1', keep.map((kk, j) => kk && !full[j] && c.cum[j] >= c0 - 1e-6 && c.cum[j] <= c1 + 1e-6 && pj[j] > lo[j] + 0.05 && pj[j] < hi[j] - 0.05)); } }
     if (!c.lat && r.marked && nl > 1) for (let k = 1; k < nl; k++) {
       const centre = !r.oneway && k * 2 === nl; if (centre && r.centre === 'brak') continue;
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';

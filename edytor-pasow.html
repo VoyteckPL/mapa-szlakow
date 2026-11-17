@@ -392,6 +392,10 @@ function finalizeLanes(C, R) {
 }
 function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
+  { /* koncowki dwoch drog w tym samym miejscu bez wspolnego wezla: polacz (tylko gdy koniec nie ma klucza) */
+    const E = []; R.forEach((r, i) => [0, r.pts.length - 1].forEach(j => E.push({ r, j, p: r.pts[j] })));
+    for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) { const A = E[x], B = E[y]; if (A.r === B.r || dist(A.p, B.p) > 0.4 || (A.r.nk[A.j] && B.r.nk[B.j])) continue; const k = A.r.nk[A.j] || B.r.nk[B.j] || 'n' + Math.random().toString(36).slice(2, 9); A.r.nk[A.j] = k; B.r.nk[B.j] = k; }
+  }
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
   { // strona dodatkowego pasa nieparzystej jezdni jednokierunkowej: z turn:lanes (skrajny pas skreca w lewo/prawo), dalej wzdluz lancucha jezdni; domyslnie po prawej
     const sg0 = R.map(r => { if (!r.oneway || !/^(motorway|trunk)/.test(r.hw || '') || !r.tl || !((r.lanes | 0) >= 3 && (r.lanes | 0) % 2 === 1)) return 0; const t = r.tl.split('|').map(x => /left/.test(x) ? 'L' : /right/.test(x) ? 'R' : 'T'), n = t.length; if (n < 3) return 0; const restL = t.slice(1).every(x => x === t[1]), restR = t.slice(0, -1).every(x => x === t[0]); return n === 3 && t[0] === 'T' && t[1] === 'R' && t[2] === 'R' ? 1 : 0; /* tylko ta konfiguracja: prosto|w prawo|w prawo */ /* pojedynczy pas innego rodzaju na skraju (np. 1 prosto + 2 w prawo): os na granicy tego pasa i reszty */ });

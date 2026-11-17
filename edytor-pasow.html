@@ -558,7 +558,8 @@ function layout() {
     const ep = e => { const E = edgeOf[e.i], j = e.st ? 0 : E.Lf.length - 1; return [E.Lf[j], E.Rt[j]]; }, [a1, a2] = ep(G[0]), [b1, b2] = ep(G[1]);
     if (!a1 || !a2 || !b1 || !b2) continue;
     const P = dist(a1, b1) + dist(a2, b2) <= dist(a1, b2) + dist(a2, b1) ? [a1, a2, b2, b1] : [a1, a2, b1, b2];
-    polys.push({ P, L: [], R: [], kerb: false, ly: Math.max(R[G[0].i].ly | 0, R[G[1].i].ly | 0), br: false });
+    const [qa, qb] = P === undefined ? [[], []] : (dist(a1, b1) + dist(a2, b2) <= dist(a1, b2) + dist(a2, b1) ? [[a1, b1], [a2, b2]] : [[a1, b2], [a2, b1]]);
+    polys.push({ P, L: qa, R: qb, kerb: true, ly: Math.max(R[G[0].i].ly | 0, R[G[1].i].ly | 0), br: false });
   }
   { // skrzyzowanie T: droga boczna dojezdza do przelotowej pod dowolnym katem - luki (fillety) krawedzi na zlaczu
     const FR = 5; /* promien luku [m] */
@@ -597,6 +598,18 @@ function layout() {
         polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: true, ly, br: false });
       }
     }
+  }
+  for (const [k, G] of ends) { /* zlacze dwoch drog: krawedziowe linie ciagle laczymy odcinkami (bez luk i uskokow na zakretach) */
+    if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
+    const nd = orient(C[G[0].i], G[0].st).Q[0], E = [];
+    lines.forEach(l => { if (l.st !== 'p2' || l.P.length < 2) return; [0, l.P.length - 1].forEach(j => { if (dist(l.P[j], nd) < 5) E.push({ l, j, p: l.P[j] }); }); });
+    const pairs = []; for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) if (E[x].l !== E[y].l) { const d = dist(E[x].p, E[y].p); if (d > 0.02 && d < 4.5) pairs.push([d, x, y]); }
+    pairs.sort((u, v) => u[0] - v[0]); const used = new Set();
+    const isect = (A, B, C2, D2) => { const r = [B[0] - A[0], B[1] - A[1]], q = [D2[0] - C2[0], D2[1] - C2[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return null; const t = ((C2[0] - A[0]) * q[1] - (C2[1] - A[1]) * q[0]) / den; return [A[0] + r[0] * t, A[1] + r[1] * t]; };
+    for (const [, x, y] of pairs) { if (used.has(x) || used.has(y)) continue; used.add(x); used.add(y);
+      const ex = E[x], ey = E[y], px = ex.l.P, py = ey.l.P, ax = ex.j === 0 ? px[1] : px[px.length - 2], ay = ey.j === 0 ? py[1] : py[py.length - 2], X = isect(ax, ex.p, ay, ey.p);
+      if (X && dist(X, ex.p) < 4.5 && dist(X, ey.p) < 4.5) { px[ex.j] = X; py[ey.j] = X; } /* zakret: przeciecie krawedzi (wew. zakret obcina nachodzace konce, zew. przedluza) */
+      else lines.push({ P: [ex.p, ey.p], st: 'p2', ly: ex.l.ly }); }
   }
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
     const sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), tol = 0.7; let ch = true;

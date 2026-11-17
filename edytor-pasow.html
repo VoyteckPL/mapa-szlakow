@@ -1186,6 +1186,61 @@ if (!EMBED) (() => {
   };
 })();
 
+
+// ---------- Sandbox: rysowanie testowych drog z podstawowymi tagami (nigdy nie trafia do OSM: osm = 0) ----------
+(() => {
+  const HW = ['motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'secondary'], TLV = ['', 'left', 'slight_left', 'through', 'through;right', 'slight_right', 'right'], TLN = { '': '–', left: '←', slight_left: '↖', through: '↑', 'through;right': '↑→', slight_right: '↗', right: '→' };
+  const PRE = [['T|T|R', 'through|through|right'], ['T|R|R', 'through|right|right'], ['T|T;R|R', 'through|through;right|right'], ['L|T|T', 'left|through|through'], ['L|T|R', 'left|through|right'], ['T|T|T', 'through|through|through']];
+  const mk = (hw, lanes, tl, name) => ({ ...newRoad([], []), hw, lanes, tl: tl || '', oneway: true, lw: LW_CLASS[hw.replace('_link', '')] || 3.5, sb: true, name: name || '' });
+  const el = document.createElement('div'); el.id = 'sbP'; el.style.cssText = 'position:fixed;left:10px;top:62px;z-index:14;width:262px;max-height:calc(100% - 80px);overflow:auto;background:#fff;color:#222;border:1px solid #ccd;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);padding:10px;font:12px system-ui,sans-serif;display:none'; document.body.appendChild(el); el.onpointerdown = e => e.stopPropagation(); el.addEventListener('wheel', e => e.stopPropagation());
+  const sbSel = () => { const r = S.doc.road[S.sel]; return r && r.sb ? r : null; };
+  const mut = f => { push(); f(); save(); ui(); touch(); draw(); };
+  function tpl(kind) { // gotowe uklady testowe w srodku widoku
+    const c = s2w([W / 2, H / 2 + 40]), u0 = s2w([0, -1]), o0 = s2w([0, 0]); let ux = u0[0] - o0[0], uy = u0[1] - o0[1]; const L = Math.hypot(ux, uy) || 1; ux /= L; uy /= L;
+    const R = [uy, -ux], P = (a, b) => [c[0] + ux * a + R[0] * b, c[1] + uy * a + R[1] * b], key = 'sbn' + Math.random().toString(36).slice(2, 8);
+    const set = (r, pts, nkIdx) => { r.pts = pts; r.nk = pts.map((_, i) => nkIdx.includes(i) ? key : null); return r; }, dir = (deg, d) => P(d * Math.cos(deg * Math.PI / 180), d * Math.sin(deg * Math.PI / 180)), rs = [];
+    const def = { f21: ['through|through|right', 3, 2, 1], f12: ['through|right|right', 3, 1, 2], f22: ['through|through;right|right', 3, 2, 2] }[kind];
+    if (def) { const [tl, ln, lm, le] = def; rs.push(set(mk('motorway', ln, tl, 'wjazd'), [P(-90, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway', lm, '', 'główna'), [P(0, 0), P(40, 0), P(100, 0)], [0])); rs.push(set(mk('motorway_link', le, '', 'zjazd'), [P(0, 0), dir(22, 10), dir(22, 60)], [0])); }
+    if (kind === 'merge') { rs.push(set(mk('motorway', 2, '', 'główna'), [P(-100, 0), P(-40, 0), P(0, 0)], [2])); rs.push(set(mk('motorway_link', 1, '', 'dojazd'), [dir(-158, 60), dir(-158, 10), P(0, 0)], [2])); rs.push(set(mk('motorway', 3, '', 'wylot'), [P(0, 0), P(60, 0), P(120, 0)], [0])); }
+    push(); for (const r of rs) S.doc.road.push(r); S.sel = S.doc.road.length - rs.length; save(); ui(); touch(); draw();
+  }
+  function draw() {
+    const r = sbSel(), tb = (id, t) => `<button id="${id}" style="padding:3px 7px;margin:2px;border:1px solid #bbc;border-radius:6px;background:#fff;cursor:pointer">${t}</button>`;
+    let h = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#3949ab">Sandbox</b><button id="sbX" style="border:0;background:none;font-size:16px;cursor:pointer">×</button></div><div style="color:#667;margin:2px 0 6px">Drogi testowe, nie trafiają do OSM. Najlepiej na tle „Jasne tło".</div>`;
+    h += tb('sbDraw', S.tool === 'road' ? 'Rysuję… (Enter = koniec)' : '✎ Rysuj drogę') + tb('sbSel', 'Zaznacz') + tb('sbClr', 'Wyczyść sandbox');
+    h += `<div style="margin-top:6px"><b>Gotowe układy</b><br>` + tb('sbT1', '3→2+1') + tb('sbT2', '3→1+2') + tb('sbT3', '3→2+2') + tb('sbT4', 'Włączenie') + '</div>';
+    if (!r) h += `<div style="margin-top:8px;color:#667">Narysuj drogę (kliknięcia, Enter) albo zaznacz drogę sandboxu, by edytować tagi. Koniec drogi na istniejącym węźle łączy drogi.</div>`;
+    else {
+      const n = r.lanes | 0, tk = (r.tl || '').split('|'); while (tk.length < n) tk.push(''); tk.length = n;
+      h += `<div style="margin-top:8px"><b>Tagi zaznaczonej drogi</b><div style="display:grid;grid-template-columns:auto 1fr;gap:4px 8px;align-items:center;margin-top:4px">`
+        + `<span>highway</span><select id="sbHw">${HW.map(x => `<option ${x === r.hw ? 'selected' : ''}>${x}</option>`).join('')}</select>`
+        + `<span>lanes</span><input id="sbLn" type="number" min="1" max="6" value="${n}" style="width:60px">`
+        + `<span>oneway</span><label><input id="sbOw" type="checkbox" ${r.oneway ? 'checked' : ''}> yes</label></div>`
+        + `<div style="margin-top:6px">turn:lanes (od lewej)</div><div style="display:flex;gap:3px;flex-wrap:wrap">${tk.map((v, i) => `<select class="sbTl" data-i="${i}" title="pas ${i + 1}">${TLV.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${TLN[x]} ${x || 'brak'}</option>`).join('')}</select>`).join('')}</div>`
+        + `<input id="sbTx" value="${(r.tl || '').replace(/"/g, '&quot;')}" placeholder="turn:lanes np. through|through|right" style="width:100%;box-sizing:border-box;margin-top:4px">`
+        + `<div style="margin-top:4px">${PRE.map(([a], i) => tb('sbP' + i, a)).join('')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
+    }
+    el.innerHTML = h; const $$ = id => el.querySelector('#' + id);
+    $$('sbX').onclick = () => { el.style.display = 'none'; };
+    $$('sbDraw').onclick = () => { setTool('road'); draw(); }; $$('sbSel').onclick = () => { setTool('sel'); draw(); };
+    $$('sbClr').onclick = () => { if (!S.doc.road.some(x => x.sb)) return; push(); S.doc.road = S.doc.road.filter(x => !x.sb); S.sel = -1; save(); ui(); touch(); draw(); };
+    ['f21', 'f12', 'f22', 'merge'].forEach((k, i) => { $$('sbT' + (i + 1)).onclick = () => tpl(k); });
+    if (r) {
+      $$('sbHw').onchange = () => mut(() => { r.hw = $$('sbHw').value; r.lw = LW_CLASS[r.hw.replace('_link', '')] || 3.5; });
+      $$('sbLn').onchange = () => mut(() => { r.lanes = Math.max(1, Math.min(6, parseInt($$('sbLn').value) || 1)); r.tl = ''; });
+      $$('sbOw').onchange = () => mut(() => { r.oneway = $$('sbOw').checked; });
+      el.querySelectorAll('.sbTl').forEach(sel => { sel.onchange = () => mut(() => { const a = (r.tl || '').split('|'); while (a.length < (r.lanes | 0)) a.push(''); a.length = r.lanes | 0; a[+sel.dataset.i] = sel.value; r.tl = a.every(x => !x) ? '' : a.join('|'); }); });
+      $$('sbTx').onchange = () => mut(() => { r.tl = $$('sbTx').value.trim(); const n = r.tl ? r.tl.split('|').length : 0; if (n >= 1 && n <= 6) r.lanes = n; });
+      PRE.forEach(([, v], i) => { $$('sbP' + i).onclick = () => mut(() => { r.tl = v; r.lanes = v.split('|').length; }); });
+      $$('sbRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });
+      $$('sbDel').onclick = () => mut(() => { S.doc.road.splice(S.sel, 1); S.sel = -1; });
+    }
+  }
+  const lc = document.getElementById('lcP');
+  if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Sandbox'; row.className = 'eb'; row.innerHTML = '<button id="lcSb" title="Sandbox: rysuj testowe drogi i zmieniaj turn:lanes" style="width:auto;padding:0 8px;font-size:12px">✎ Sandbox</button>'; lc.append(hr, b, row); row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
+  const oldFinish = finishDraw; finishDraw = function () { const n0 = S.doc.road.length; oldFinish(); for (let i = n0; i < S.doc.road.length; i++) { const r = S.doc.road[i]; if (!r.osm) { r.sb = true; r.oneway = true; r.hw = 'motorway'; r.lw = 3.75; r.lanes = 3; } } save(); draw(); };
+  document.addEventListener('pointerup', () => setTimeout(() => { if (el.style.display !== 'none') draw(); }, 50));
+})();
 </script>
 </body>
 </html>

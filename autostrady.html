@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pasy autostrad</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  :root { --pn:#fff; --tx:#1d2330; --mu:#667085; --bd:#d8dce3; }
+  @media (prefers-color-scheme: dark) { :root { --pn:#1b212b; --tx:#e6e9ef; --mu:#97a1b3; --bd:#2f3745; } }
+  html, body { margin:0; height:100%; background:#222; font:13px/1.35 system-ui, sans-serif; }
+  #map { position:absolute; inset:0; }
+  #pn { position:absolute; left:8px; top:8px; z-index:2; background:var(--pn); color:var(--tx); border:1px solid var(--bd); border-radius:9px; padding:8px 10px; width:220px; }
+  #pn h1 { font-size:14px; margin:0 0 4px; } #pn small { color:var(--mu); }
+  #pn label { display:flex; justify-content:space-between; align-items:center; gap:6px; margin:4px 0; }
+  #pn input[type=number], #pn select { width:90px; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="pn">
+  <h1>Pasy autostrad i dróg ekspresowych</h1>
+  <small>motorway, trunk i łącznice. Pasy symetrycznie wokół osi OSM, bez offsetów i bez połączeń.</small>
+  <label>Podkład <select id="bm"><option value="orto">Ortofoto</option><option value="osm">OSM</option></select></label>
+  <label>Szer. pasa [m] <input id="lw" type="number" step="0.05" value="3.5"></label>
+  <label>Oś OSM <input id="ax" type="checkbox" checked></label>
+  <label>Jezdnia <input id="cw" type="checkbox" checked></label>
+  <small id="st"></small>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const R = 20037508.342789244, LAT0 = 54.5, K = Math.cos(LAT0 * Math.PI / 180);
+const toM = (lon, lat) => [lon / 180 * R, Math.log(Math.tan((90 + lat) * Math.PI / 360)) * R / Math.PI];
+const toLL = (x, y) => [x / R * 180, Math.atan(Math.exp(y / R * Math.PI)) * 360 / Math.PI - 90];
+const HW = /^(motorway|trunk)(_link)?$/;
+
+// ---------- pamięć podręczna ortofoto ----------
+const CACHE = 'pasy-orto-v1';
+async function fetchT(url, ms) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms); try { return await fetch(url, { signal: ac.signal }); } finally { clearTimeout(t); } }
+async function cachedFetch(url, ms) {
+  let c = null; try { c = await caches.open(CACHE); const hit = await c.match(url); if (hit) return hit; } catch (e) {}
+  const r = await fetchT(url, ms);
+  if (r.ok && c && (r.headers.get('content-type') || '').includes('image')) try { await c.put(url, r.clone()); } catch (e) {}
+  return r;
+}
+maplibregl.addProtocol('cached', async (params) => {
+  const url = 'https://' + params.url.slice(9);
+  for (let a = 0; a < 4; a++) { try { const r = await cachedFetch(url, 60000); if (r.ok) return { data: await r.arrayBuffer() }; if (![429, 500, 502, 503, 504].includes(r.status)) break; } catch (e) {} await new Promise(q => setTimeout(q, 500 * 2 ** a)); }
+  throw new Error('kafel ortofoto niedostępny');
+});
+const WMS = 'mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/HighResolution?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Raster&STYLES=&FORMAT=image/jpeg&TRANSPARENT=FALSE&CRS=EPSG:3857&WIDTH=512&HEIGHT=512&BBOX={bbox-epsg-3857}';
+
+// ---------- geometria ----------
+// liczba pasów: tag lanes (dla dwukierunkowych suma), domyślnie 2 na głównej, 1 na łącznicy
+function lanesOf(t) { const n = parseInt(t.lanes); if (n > 0) return n; return /_link$/.test(t.highway) ? 1 : 2; }
+// przesunięcie łamanej (w metrach terenu) w lewo o d; wierzchołki jako miter, ograniczony do 2×d
+function offsetLine(g, d) {
+  if (!d) return g.map(p => toLL(p[0], p[1]));
+  const s = d / K, out = [];
+  for (let i = 0; i < g.length; i++) {
+    const a = g[Math.max(0, i - 1)], b = g[i], c = g[Math.min(g.length - 1, i + 1)];
+    const n1 = nrm(a, b) || nrm(b, c), n2 = nrm(b, c) || n1;
+    let nx = n1[0] + n2[0], ny = n1[1] + n2[1]; const L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
+    const m = Math.min(2, 1 / Math.max(0.5, nx * n1[0] + ny * n1[1]));
+    out.push(toLL(b[0] + nx * s * m, b[1] + ny * s * m));
+  }
+  return out;
+}
+function nrm(a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy); return L ? [-dy / L, dx / L] : null; }
+
+const WAYS = new Map(), TILES = new Set();
+function build() {
+  const lw = +$('lw').value || 3.5, F = [];
+  for (const w of WAYS.values()) {
+    const t = w.t, n = lanesOf(t), half = n * lw / 2, two = !['yes', '-1', 'true'].includes(t.oneway) && t.highway === 'trunk'; // dwukierunkowa: środkowa linia ciągła
+    const L = (d, kind, extra) => F.push({ type: 'Feature', properties: { kind, ...extra }, geometry: { type: 'LineString', coordinates: offsetLine(w.g, d) } });
+    L(0, 'jezdnia', { w: n * lw, id: w.i });
+    L(0, 'os', { id: w.i, n });
+    L(half, 'kraw'); L(-half, 'kraw');
+    for (let i = 1; i < n; i++) { const d = -half + i * lw; L(d, two && i === n / 2 ? 'srodek' : 'pas'); }
+  }
+  MAP.getSource('pasy').setData({ type: 'FeatureCollection', features: F });
+  $('st').textContent = `Dróg: ${WAYS.size}`;
+}
+async function loadView() {
+  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } const b = MAP.getBounds(); let add = false;
+  for (let x = Math.floor(b.getWest() / 0.02); x <= Math.floor(b.getEast() / 0.02); x++) for (let y = Math.floor(b.getSouth() / 0.01); y <= Math.floor(b.getNorth() / 0.01); y++) {
+    const k = x + '_' + y; if (TILES.has(k)) continue; TILES.add(k);
+    try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000); if (!r.ok) continue;
+      for (const w of await r.json()) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { WAYS.set(w.i, { i: w.i, t: w.t, g: w.g.map(c => toM(c[0], c[1])) }); add = true; } } catch (e) { TILES.delete(k); }
+  }
+  if (add) build();
+}
+
+// ---------- mapa ----------
+// szerokość w metrach → piksele (kafle 512 px): px/m = 2^z / (78271.517 · cos φ)
+const PXM = z => 2 ** z / (78271.517 * K);
+const mW = (m, min = 0) => ['interpolate', ['exponential', 2], ['zoom'], 12, ['max', min, ['*', m, PXM(12)]], 22, ['max', min, ['*', m, PXM(22)]]];
+const kind = k => ['==', ['get', 'kind'], k];
+const LINE = 0.25; // szerokość linii na jezdni [m]
+const MAP = new maplibregl.Map({ container: 'map', center: [18.4618, 54.4985], zoom: 17, maxZoom: 21, attributionControl: { compact: true },
+  style: { version: 8, sources: {
+    osm: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, maxzoom: 19, attribution: '© OpenStreetMap' },
+    orto: { type: 'raster', tiles: ['cached://' + WMS], tileSize: 512, minzoom: 12, maxzoom: 21, attribution: 'Ortofoto © GUGiK' },
+    pasy: { type: 'geojson', data: { type: 'FeatureCollection', features: [] } } },
+    layers: [
+      { id: 'osm', type: 'raster', source: 'osm' },
+      { id: 'orto', type: 'raster', source: 'orto', minzoom: 12 },
+      { id: 'jezdnia', type: 'line', source: 'pasy', filter: kind('jezdnia'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#4a4f57', 'line-opacity': 0.92, 'line-width': mW(['get', 'w'], 2) } },
+      { id: 'kraw', type: 'line', source: 'pasy', filter: kind('kraw'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
+      { id: 'srodek', type: 'line', source: 'pasy', filter: kind('srodek'), layout: { 'line-join': 'round' }, paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1) } },
+      { id: 'pas', type: 'line', source: 'pasy', filter: kind('pas'), paint: { 'line-color': '#f4f4f4', 'line-width': mW(LINE, 1), 'line-dasharray': [4 / LINE, 8 / LINE] } },
+      { id: 'os', type: 'line', source: 'pasy', filter: kind('os'), paint: { 'line-color': '#ff2d55', 'line-width': 1.2, 'line-dasharray': [3, 3] } } ] } });
+MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
+MAP.on('load', loadView); MAP.on('moveend', loadView);
+setTimeout(() => { if (MAP.getSource('pasy') && !WAYS.size) loadView(); }, 2500); // zapas, gdyby 'load' się spóźnił
+$('bm').onchange = () => MAP.setLayoutProperty('orto', 'visibility', $('bm').value === 'orto' ? 'visible' : 'none');
+$('ax').onchange = () => MAP.setLayoutProperty('os', 'visibility', $('ax').checked ? 'visible' : 'none');
+$('cw').onchange = () => MAP.setLayoutProperty('jezdnia', 'visibility', $('cw').checked ? 'visible' : 'none');
+$('lw').onchange = build;
+MAP.on('click', 'jezdnia', e => { const p = e.features[0].properties, w = WAYS.get(p.id); if (!w) return;
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${w.t.name || w.t.ref || w.t.highway}</b><br>${w.t.highway}, lanes=${w.t.lanes || '?'}${w.t['turn:lanes'] ? '<br>turn:lanes=' + w.t['turn:lanes'] : ''}<br><a href="https://www.openstreetmap.org/way/${w.i}" target="_blank">way ${w.i}</a>`).addTo(MAP); });
+</script>
+</body>
+</html>

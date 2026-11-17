@@ -137,6 +137,26 @@ function distPoly(p, g) { let best = 1e18;
 // końce przy węźle: punkt i kierunek jazdy (dla wjazdu – w stronę węzła)
 function endIn(w, c) { const q = cutFrom(rev(w.g), c.e); return { p: q.p, dir: [-q.dir[0], -q.dir[1]] }; }
 function endOut(w, c) { const q = cutFrom(w.g, c.s); return { p: q.p, dir: q.dir }; }
+// droga przez strefę po osiach OSM: od miejsca cięcia wjazdu do węzła, dalej do miejsca cięcia wyjazdu;
+// zagęszczona co 2 m i wygładzona (Chaikin), żeby załamanie w węźle nie dawało ostrego kąta
+function prefix(g, d) { const q = cutFrom(g, d), out = []; let acc = 0; const s = d / K; out.push(g[0]);
+  for (let i = 1; i < g.length; i++) { acc += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]); if (acc >= s) break; out.push(g[i]); }
+  out.push(q.p); return out; }
+function zonePath(wa, wb, cut) {
+  const a = rev(prefix(rev(wa.g), cut.get(wa.i).e)), b = prefix(wb.g, cut.get(wb.i).s);
+  let P = [...a, ...b.slice(1)], D = [];
+  for (let i = 1; i < P.length; i++) { const p = P[i - 1], q = P[i], n = Math.max(1, Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) * K / 2)); for (let j = 0; j < n; j++) D.push([p[0] + (q[0] - p[0]) * j / n, p[1] + (q[1] - p[1]) * j / n]); }
+  D.push(P[P.length - 1]); P = D;
+  for (let it = 0; it < 3; it++) { const Q = [P[0]]; for (let i = 0; i + 1 < P.length; i++) { const p = P[i], q = P[i + 1]; Q.push([p[0] * .75 + q[0] * .25, p[1] * .75 + q[1] * .25], [p[0] * .25 + q[0] * .75, p[1] * .25 + q[1] * .75]); } Q.push(P[P.length - 1]); P = Q; }
+  return P;
+}
+// przesunięcie w lewo zmieniające się płynnie (smoothstep po długości) od oa do ob
+function offsetVar(g, oa, ob) {
+  const cum = [0]; for (let i = 1; i < g.length; i++) cum.push(cum[i - 1] + Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]));
+  const T = cum[cum.length - 1] || 1;
+  return g.map((b, i) => { const a = g[Math.max(0, i - 1)], c = g[Math.min(g.length - 1, i + 1)], dx = c[0] - a[0], dy = c[1] - a[1], L = Math.hypot(dx, dy) || 1;
+    const t = cum[i] / T, d = (oa + (ob - oa) * t * t * (3 - 2 * t)) / K; return toLL(b[0] - dy / L * d, b[1] + dx / L * d); });
+}
 const crossA = (a, b) => a[0] * b[1] - a[1] * b[0];
 // łuk Hermite'a z A (kierunek da) do B (kierunek db), przesunięty w lewo o oa na początku i ob na końcu
 function laneCurve(A, B, oa, ob, N = 20) {
@@ -155,11 +175,11 @@ function laneLinks(e, cut) {
   if (e.ins.length === 1) { // rozjazd albo zmiana liczby pasów
     const I = e.ins[0], A = endIn(I, cut.get(I.i)), na = lanesOf(I.t), outs = side(A.dir, e.outs, endOut);
     const tot = outs.reduce((s, o) => s + o.n, 0); let ia = 0;
-    for (const o of outs) for (let ib = 0; ib < o.n; ib++, ia++) L.push({ a: A, ia: Math.min(ia, na - 1), na, b: o.E, ib, nb: o.n, newLane: ia >= na });
-    for (; ia < na; ia++) { const o = outs[outs.length - 1]; L.push({ a: A, ia, na, b: o.E, ib: o.n - 1, nb: o.n, ends: true }); } // pas się kończy: zjeżdża w skrajny prawy
+    for (const o of outs) for (let ib = 0; ib < o.n; ib++, ia++) L.push({ wa: I, wb: o.w, a: A, ia: Math.min(ia, na - 1), na, b: o.E, ib, nb: o.n, newLane: ia >= na });
+    for (; ia < na; ia++) { const o = outs[outs.length - 1]; L.push({ wa: I, wb: o.w, a: A, ia, na, b: o.E, ib: o.n - 1, nb: o.n, ends: true }); } // pas się kończy: zjeżdża w skrajny prawy
   } else { // łączenie kilku wjazdów w jeden wyjazd
     const O = e.outs[0], B = endOut(O, cut.get(O.i)), nb = lanesOf(O.t), ins = side(B.dir, e.ins, endIn); let ib = 0;
-    for (const o of ins) for (let ia = 0; ia < o.n; ia++, ib++) L.push({ a: o.E, ia, na: o.n, b: B, ib: Math.min(ib, nb - 1), nb, ends: ib >= nb });
+    for (const o of ins) for (let ia = 0; ia < o.n; ia++, ib++) L.push({ wa: o.w, wb: O, a: o.E, ia, na: o.n, b: B, ib: Math.min(ib, nb - 1), nb, ends: ib >= nb });
   }
   return L;
 }
@@ -202,12 +222,13 @@ function build() {
   // strefy: każdy pas jako wstęga asfaltu + krawędzie (ciągła na zewnątrz grupy, przerywana między pasami tej samej grupy)
   for (const e of J) for (const k of laneLinks(e, cut)) {
     const oa = k.na * lw / 2 - (k.ia + 0.5) * lw, ob = k.nb * lw / 2 - (k.ib + 0.5) * lw; // środek pasu, + w lewo
-    line(laneCurve(k.a, k.b, oa, ob), 'jezdnia', { w: lw * 1.04 });
+    const P = zonePath(k.wa, k.wb, cut);
+    line(offsetVar(P, oa, ob), 'jezdnia', { w: lw * 1.04 });
     const multiOut = e.outs.length > 1, multiIn = e.ins.length > 1;
     const leftOuter = multiOut ? k.ib === 0 : multiIn ? k.ia === 0 : (k.ia === 0 || k.ib === 0);
     const rightOuter = multiOut ? k.ib === k.nb - 1 : multiIn ? k.ia === k.na - 1 : (k.ia === k.na - 1 || k.ib === k.nb - 1);
-    line(laneCurve(k.a, k.b, oa + lw / 2, ob + lw / 2), leftOuter ? 'kraw' : 'pas');
-    if (rightOuter) line(laneCurve(k.a, k.b, oa - lw / 2, ob - lw / 2), 'kraw');
+    line(offsetVar(P, oa + lw / 2, ob + lw / 2), leftOuter ? 'kraw' : 'pas');
+    if (rightOuter) line(offsetVar(P, oa - lw / 2, ob - lw / 2), 'kraw');
   }
   // okrąg strefy: środek w węźle, promień do najdalszego miejsca przycięcia
   for (const e of J) { const c0 = e.ins.length ? e.ins[0].g[e.ins[0].g.length - 1] : e.outs[0].g[0]; let r = 0;

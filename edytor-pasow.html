@@ -1136,6 +1136,11 @@ function endPtr(e) {
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('contextmenu', e => e.preventDefault());
 let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.02, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
+cv.addEventListener('dblclick', e => { // podwojny klik na wezle usuwa go (cofnij: ↶)
+  if (S.tool !== 'sel' || EMBED) return; const v = nearVertex(evp(e), 14); if (!v) return; const r = S.doc.road[v.i]; if (!r || !r.pts[v.vi]) return;
+  push(); PZ.sel = null; r.pts.splice(v.vi, 1); r.nk.splice(v.vi, 1); if (r.rp) r.rp.splice(v.vi, 1); S.vsel = -1;
+  if (r.pts.length < 2) { S.doc.road.splice(v.i, 1); S.sel = -1; } save(); ui(); touch(); say('Usunięto węzeł (cofnij: ↶).');
+});
 window.addEventListener('keydown', e => { if (e.key === 'Enter' && S.draw && document.activeElement.tagName !== 'INPUT') finishDraw(); if (e.key === 'Escape') setTool('sel'); });
 window.addEventListener('resize', resize);
 

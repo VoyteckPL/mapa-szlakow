@@ -1138,7 +1138,7 @@ async function loadFresh() { if (Math.log2(156543.03 * Math.cos(S.org.lat * Math
     let ok = true; try { importView(); } catch (e) { ok = false; liveLog('BLAD importu: ' + (e && e.stack || e)); }
     if (!ok || (n0 > S.doc.road.length && !S.doc.road.some(inV))) { S.doc.road = before; save(); ui(); touch(); say('Nie udało się wczytać dróg od nowa – zostawiłem poprzedni stan (szczegóły w oknie logu).'); return; } }
   save(); ui(); touch(); say('Wczytano od nowa aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
-$('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
+window.__loadFresh = loadFresh; $('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];
@@ -1323,6 +1323,7 @@ if (!EMBED) (() => {
       for (const w of delWays) S.osm.ways.delete(w.id); S.doc.del = [];
       for (const [w, nt] of wmod) { const o = osmWay(w.id); if (o) o.t = nt; S.doc.road.forEach(r => { if (r.osm === w.id) delete r.tg; }); }
       save(); touch(); { const sb = $('oSend'); sb.classList.remove('blink'); void sb.offsetWidth; sb.classList.add('blink'); } st(`Wysłano: nowych dróg ${newWays.length}, nowych węzłów ${crt.length}, usuniętych węzłów ${dls.length}, usuniętych dróg ${delWays.length}, przesuniętych ${mod.length}, zmienionych dróg ${wmod.length}${miss.length ? `, pominięto ${miss.length}` : ''}. Zestaw zmian: ${OSM}/changeset/${cs}`);
+      if (window.__loadFresh) { setTimeout(() => { S.doc.del = []; window.__loadFresh().catch(e => liveLog('BLAD przeladowania po wysylce: ' + e)); }, 2500); }
     } catch (e) { st('Błąd wysyłki: ' + e.message); liveLog('start wysylka OSM'); liveLog('BLAD wysylki: ' + (e && e.stack || e)); }
   };
 })();

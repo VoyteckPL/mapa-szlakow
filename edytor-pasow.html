@@ -927,10 +927,11 @@ function pzDrawArcs(F, full) { // prosta + galezie + luk z katem (tylko liczby);
     ctx.beginPath(); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.lineWidth = 2; ctx.stroke();
     items.push({ a, ok, k }); }
   { /* ikony: po jednej na galaz (prosto / zjazd), kat pod kazda, wysrodkowane w jednej linii nad wezlem */
-    const isz = full ? 30 : 24, gap = isz + 30, cx = o[0], cy = o[1] - R - (full ? 34 : 26);
+    const isz = full ? 30 : 24, gap = isz + 30, cx = o[0], cy = o[1] - (full ? Math.max(R, PZ_D * S.view.k) + 40 : R + 26); /* ikony poza obwodem okregu 10 m, nie zaslaniaja punktow */
     ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 4;
     items.forEach((q, i) => { const x = cx + (i - (items.length - 1) / 2) * gap, br = q.k || 'main', cm = pzCmd(F, br), ex = cm.some(c => c.exit), kk = cm.map(c => c.c), kind = ex ? 'exit' : (F.merge && q.k === 'exit') ? 'merge' : (q.a === 0 ? 'prosto' : kk[0] || 'lekko'), tx = Math.abs(q.a).toFixed(0) + '°' + (q.ok ? '✓' : '');
-      pzIcon(x, cy, kind, q.a, isz, false); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(tx, x, cy + isz / 2 + 14); ctx.fillStyle = q.ok ? '#13703a' : '#a35f00'; ctx.fillText(tx, x, cy + isz / 2 + 14); }); }
+      pzIcon(x, cy, kind, q.a, isz, false); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(tx, x, cy + isz / 2 + 14); ctx.fillStyle = q.ok ? '#13703a' : '#a35f00'; ctx.fillText(tx, x, cy + isz / 2 + 14); });
+    if (full) { /* przycisk: dodaj punkty 10 m od wezla (dopiero po kliknieciu) */ const bw = 64, bh = 26, bx = cx + (items.length - 1) / 2 * gap + isz / 2 + 14, by = cy - bh / 2; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, bh, 6) : ctx.rect(bx, by, bw, bh); ctx.fillStyle = '#1f6fd0'; ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('+ punkty', bx + bw / 2, by + 17); PZ.btn = { x: bx, y: by, w: bw, h: bh }; } else PZ.btn = null; }
   ctx.restore();
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
@@ -1043,6 +1044,7 @@ cv.addEventListener('pointerdown', e => {
   cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, evp(e));
   if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: dist(a, b), k: S.view.k, c: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], v: { x: S.view.x, y: S.view.y } }; drag = null; return; }
   const p = evp(e), w = s2w(p);
+  if (PZ.btn && PZ.sel && S.tool === 'sel' && p[0] >= PZ.btn.x && p[0] <= PZ.btn.x + PZ.btn.w && p[1] >= PZ.btn.y && p[1] <= PZ.btn.y + PZ.btn.h) { drag = null; const nd = PZ.sel.node; let hit = null; S.doc.road.forEach((r, ri) => r.pts.forEach((q, vi) => { if (!hit && dist(q, nd) < 0.4) hit = [ri, vi]; })); if (hit) pzFocus(hit[0], hit[1]); return; }
   if (e.button === 1 || e.button === 2 || S.tool === 'pan') { drag = { m: 'pan', p, v: { x: S.view.x, y: S.view.y } }; return; }
   if (S.tool === 'rend') {
     const sr = S.doc.road[S.sel];
@@ -1090,7 +1092,7 @@ function endPtr(e) {
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }
-  PZ.live = null; if (d.m === 'vtx' && !d.moved) { PZ.sel = null; } if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'vtx') { const rr = S.doc.road[d.i]; if (rr && rr.pts[d.vi]) { const nn = rr.pts[d.vi]; if (pzDetect(nn)) setTimeout(() => pzFocus(d.i, d.vi), 0); else if (S.doc.road.filter(o => o.pts.some(p2 => dist(p2, nn) < 0.4)).length > 1) say('To nie jest rozwidlenie: ' + pzWhy(nn) + '.'); } } if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
+  PZ.live = null; if (d.m === 'vtx' && !d.moved) { PZ.sel = null; } if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'vtx') { const rr = S.doc.road[d.i]; if (rr && rr.pts[d.vi]) { const nn = rr.pts[d.vi]; if (pzDetect(nn)) { PZ.sel = { node: nn.slice() }; render(); } else if (S.doc.road.filter(o => o.pts.some(p2 => dist(p2, nn) < 0.4)).length > 1) say('To nie jest rozwidlenie: ' + pzWhy(nn) + '.'); } } if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
   save(); render();
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);

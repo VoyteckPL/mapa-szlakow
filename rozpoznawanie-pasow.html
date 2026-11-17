@@ -148,23 +148,35 @@ async function run() {
   keep.sort((a, b) => a - b);
   const lines = keep.map(c => { let on = 0, tr = 0, prev = 0; for (let r = 0; r < NR; r++) { let h = 0; for (let e = -2; e <= 2; e++) if (c + e >= 0 && c + e < NC) h |= hit[r * NC + c + e]; on += h; if (r && h !== prev) tr++; prev = h; }
     const f = on / NR; return { d: +dOf(c).toFixed(2), pokrycie: +f.toFixed(2), typ: f > 0.7 ? 'ciągła' : tr >= 4 ? 'przerywana' : 'niepewna', c }; });
-  // pasy = przerwy 2,2–4,8 m między sąsiednimi liniami (najdłuższa ciągła grupa)
-  let best = [], cur = [];
-  for (let i = 0; i + 1 < lines.length; i++) { const g = lines[i + 1].d - lines[i].d; if (g >= 2.2 && g <= 4.8) { cur.push(+g.toFixed(2)); if (cur.length > best.length) best = cur.slice(); } else cur = []; }
-  LAST = { osm_way: nw.w.i, nazwa: t.name || '', lanes_osm: t.lanes ? +t.lanes : null, lanes_wykryte: best.length, szerokosci_pasow: best, linie: lines.map(({ c, ...l }) => l), punkt: [lat, lon], dlugosc_m: LEN };
-  draw(bmp, { x0, y1, res, pts, k, lines, IW, IH }, { strip, NR, NC, occ, lines, DD, HALF });
-  const ok = LAST.lanes_osm == null ? '' : LAST.lanes_osm === best.length ? ' ✓ zgodne z OSM' : ` ✗ OSM ma ${LAST.lanes_osm}`;
-  $('res').innerHTML = `<div class="big">Wykryte pasy: ${best.length}${ok}</div>` +
-    `<div>Szerokości: ${best.map(x => x.toFixed(2).replace('.', ',') + ' m').join(', ') || '–'}</div>` +
+  // jezdnia = ciągły obszar „asfaltu” (szary, niskie nasycenie) wokół osi; krawędzie tam, gdzie asfalt się kończy
+  const asph = new Float32Array(NC);
+  for (let c = 0; c < NC; c++) { let n = 0; for (let r = 0; r < NR; r++) { const q = r * NC + c; n += (sat[q] < 30 && lum[q] > 60 && lum[q] < 200) || hit[q] ? 1 : 0; } asph[c] = n / NR; }
+  const sm = Array.from(asph, (_, c) => { let a = 0, n = 0; for (let e = -3; e <= 3; e++) if (asph[c + e] !== undefined) { a += asph[c + e]; n++; } return a / n; });
+  const c0 = Math.round(HALF / DD), GAP = Math.round(0.6 / DD); let cl = c0, cr = c0;
+  for (let c = c0, miss = 0; c < NC && miss <= GAP; c++) { if (sm[c] >= 0.6) { cl = c; miss = 0; } else miss++; }
+  for (let c = c0, miss = 0; c >= 0 && miss <= GAP; c--) { if (sm[c] >= 0.6) { cr = c; miss = 0; } else miss++; }
+  const edges = [+dOf(cr).toFixed(2), +dOf(cl).toFixed(2)];
+  // pasy = odstępy między kolejnymi granicami (krawędź, linie wewnątrz jezdni, krawędź); linia przy krawędzi zastępuje krawędź
+  const inner = lines.filter(l => l.d > edges[0] - 0.5 && l.d < edges[1] + 0.5);
+  const bnd = [edges[0], ...inner.map(l => l.d), edges[1]].sort((a, b) => a - b).filter((d, i, a) => !i || d - a[i - 1] > 0.8);
+  const best = []; for (let i = 0; i + 1 < bnd.length; i++) best.push(+(bnd[i + 1] - bnd[i]).toFixed(2));
+  const nLanes = best.filter(g => g >= 2.2).length;
+  LAST = { osm_way: nw.w.i, nazwa: t.name || '', lanes_osm: t.lanes ? +t.lanes : null, lanes_wykryte: nLanes, szerokosci_pasow: best, krawedzie_jezdni: edges, linie: lines.map(({ c, ...l }) => l), punkt: [lat, lon], dlugosc_m: LEN };
+  draw(bmp, { x0, y1, res, pts, k, lines, edges, IW, IH }, { strip, NR, NC, occ, asph, lines, edges, DD, HALF });
+  const ok = LAST.lanes_osm == null ? '' : LAST.lanes_osm === nLanes ? ' ✓ zgodne z OSM' : ` ✗ OSM ma ${LAST.lanes_osm}`;
+  $('res').innerHTML = `<div class="big">Wykryte pasy: ${nLanes}${ok}</div>` +
+    `<div>Jezdnia od ${edges[0].toFixed(1)} do ${edges[1] > 0 ? '+' : ''}${edges[1].toFixed(1)} m</div><div>Szerokości: ${best.map(x => x.toFixed(2).replace('.', ',') + ' m').join(', ') || '–'}</div>` +
     `<table><tr><td><b>odsunięcie</b></td><td><b>typ</b></td><td><b>pokrycie</b></td></tr>` + lines.map(l => `<tr><td>${l.d > 0 ? '+' : ''}${l.d.toFixed(1)} m</td><td>${l.typ}</td><td>${Math.round(l.pokrycie * 100)}%</td></tr>`).join('') + `</table><small>Odsunięcie od osi OSM, + w lewo od kierunku digitalizacji.</small>`;
 }
 
 function draw(bmp, G, S) {
-  const cv = $('cvO'), g = cv.getContext('2d'), sc = Math.min(cv.width / G.IW, cv.height / G.IH);
+  const cv = $('cvO'); const f0 = Math.min(900 / G.IW, 640 / G.IH); cv.width = Math.round(G.IW * f0); cv.height = Math.round(G.IH * f0);
+  const g = cv.getContext('2d'), sc = f0;
   g.clearRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, G.IW * sc, G.IH * sc);
   const s = (X, Y) => [(X - G.x0) / G.res * sc, (G.y1 - Y) / G.res * sc];
   const path = (d, col, w, dash) => { g.beginPath(); G.pts.forEach((p, i) => { const q = s(p[0] - p.ty * d / G.k, p[1] + p.tx * d / G.k); i ? g.lineTo(...q) : g.moveTo(...q); }); g.strokeStyle = col; g.lineWidth = w; g.setLineDash(dash || []); g.stroke(); g.setLineDash([]); };
   path(0, 'rgba(60,140,255,.9)', 2, [6, 4]);
+  for (const d of G.edges) path(d, '#22d3ee', 2, [3, 3]);
   for (const l of G.lines) path(l.d, l.typ === 'ciągła' ? '#ffd400' : l.typ === 'przerywana' ? '#ff8a00' : '#ff3b6b', 2);
   // wyprostowany pas (stacja → x) + profil pokrycia z prawej
   const c2 = $('cvS'), h = c2.getContext('2d'), PW = 140, sx = (c2.width - PW) / S.NR, sy = c2.height / S.NC;
@@ -175,6 +187,8 @@ function draw(bmp, G, S) {
   const yOf = d => (S.HALF - d) / S.DD * sy;
   h.strokeStyle = 'rgba(60,140,255,.9)'; h.setLineDash([6, 4]); h.beginPath(); h.moveTo(0, yOf(0)); h.lineTo(c2.width - PW, yOf(0)); h.stroke(); h.setLineDash([]);
   h.fillStyle = '#7dd3fc'; for (let c = 0; c < S.NC; c++) h.fillRect(c2.width - PW, (S.NC - 1 - c) * sy, S.occ[c] * PW, Math.max(1, sy));
+  h.fillStyle = 'rgba(160,160,160,.5)'; for (let c = 0; c < S.NC; c++) h.fillRect(c2.width - PW, (S.NC - 1 - c) * sy, S.asph[c] * PW * 0.5, Math.max(1, sy));
+  h.strokeStyle = '#22d3ee'; h.setLineDash([3, 3]); for (const d of S.edges) { h.beginPath(); h.moveTo(0, yOf(d)); h.lineTo(c2.width - PW, yOf(d)); h.stroke(); } h.setLineDash([]);
   h.font = '11px system-ui';
   for (const l of S.lines) { const y = yOf(l.d); h.fillStyle = l.typ === 'ciągła' ? '#ffd400' : l.typ === 'przerywana' ? '#ff8a00' : '#ff3b6b'; h.fillRect(c2.width - PW - 6, y - 1, 6, 2); h.fillText(`${l.d > 0 ? '+' : ''}${l.d.toFixed(1)}`, c2.width - 34, y - 3); }
   G.toLL = (cx, cy) => toLL(G.x0 + cx / sc * G.res, G.y1 - cy / sc * G.res);

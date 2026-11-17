@@ -38,7 +38,7 @@ const HW = /^(motorway|trunk)(_link)?$/;
 
 // ---------- pamięć podręczna ortofoto ----------
 const CACHE = 'pasy-orto-v1';
-async function fetchT(url, ms) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms); try { return await fetch(url, { signal: ac.signal }); } finally { clearTimeout(t); } }
+async function fetchT(url, ms, opt) { const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms); try { return await fetch(url, { ...opt, signal: ac.signal }); } finally { clearTimeout(t); } }
 async function cachedFetch(url, ms) {
   let c = null; try { c = await caches.open(CACHE); const hit = await c.match(url); if (hit) return hit; } catch (e) {}
   const r = await fetchT(url, ms);
@@ -84,14 +84,26 @@ function build() {
   MAP.getSource('pasy').setData({ type: 'FeatureCollection', features: F });
   $('st').textContent = `Dróg: ${WAYS.size}`;
 }
+// poza Gdynią (brak gotowego kafla) – te same kafle 0,02°×0,01° wprost z OSM przez Overpass
+const OVP = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+async function overpassTile(x, y) {
+  const bb = [y * 0.01, x * 0.02, (y + 1) * 0.01, (x + 1) * 0.02].map(v => v.toFixed(4)).join(',');
+  const q = `[out:json][timeout:25];way[highway~"^(motorway|trunk)(_link)?$"](${bb});out tags geom;`;
+  for (const u of OVP) { try { $('st').textContent = 'Pobieram z OSM (Overpass)…';
+    const r = await fetchT(u, 30000, { method: 'POST', body: 'data=' + encodeURIComponent(q) }); if (!r.ok) continue;
+    return (await r.json()).elements.filter(e => e.geometry).map(e => ({ i: e.id, t: e.tags || {}, g: e.geometry.map(p => [p.lon, p.lat]) })); } catch (e) {} }
+  return null;
+}
 async function loadView() {
-  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } const b = MAP.getBounds(); let add = false;
+  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } $('st').textContent = `Dróg: ${WAYS.size}`; const b = MAP.getBounds(); let add = false;
   for (let x = Math.floor(b.getWest() / 0.02); x <= Math.floor(b.getEast() / 0.02); x++) for (let y = Math.floor(b.getSouth() / 0.01); y <= Math.floor(b.getNorth() / 0.01); y++) {
     const k = x + '_' + y; if (TILES.has(k)) continue; TILES.add(k);
-    try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000); if (!r.ok) continue;
-      for (const w of await r.json()) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { WAYS.set(w.i, { i: w.i, t: w.t, g: w.g.map(c => toM(c[0], c[1])) }); add = true; } } catch (e) { TILES.delete(k); }
+    try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000);
+      const list = r.ok ? await r.json() : r.status === 404 ? await overpassTile(x, y) : null;
+      if (!list) { TILES.delete(k); continue; }
+      for (const w of list) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { WAYS.set(w.i, { i: w.i, t: w.t, g: w.g.map(c => toM(c[0], c[1])) }); add = true; }
+      if (add) { build(); add = false; } } catch (e) { TILES.delete(k); }
   }
-  if (add) build();
 }
 
 // ---------- mapa ----------

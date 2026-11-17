@@ -495,6 +495,7 @@ function layout() {
   const inPoly = (pt, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
   const connNb = R.map((r, i) => { const set = new Set(); r.nk.forEach(k => { if (!k || handled.has(k)) return; for (const j of nodeRoads.get(k) || []) { if (j === i) continue; const G = ends.get(k) || [], gi = G.find(e => e.i === i), gj = G.find(e => e.i === j); if (gi && gj) { const a = unitFrom(C[i], gi.st), b = unitFrom(C[j], gj.st); if (a[0] * b[0] + a[1] * b[1] < -0.8) continue; } set.add(j); } }); return [...set]; });
   const rng = [];
+  const edgeOf = [];
   R.forEach((r, i) => {
     rng[i] = [lines.length, arrows.length, polys.length];
     const c = C[i], Q = c.Q, n = Q.length, cuts = [];
@@ -504,7 +505,7 @@ function layout() {
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
     const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
-    polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb });
+    polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb }); edgeOf[i] = { Lf, Rt };
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const lwr = r.lw || 3.75, mm = c.w.map(v => v / lwr), full = mm.map(m => Math.abs(m - Math.round(m)) < 0.04), mx = Math.round(Math.max(...mm));
@@ -552,6 +553,13 @@ function layout() {
     }
   });
   R.forEach((r, i) => { const ly = r.ly | 0, nx = rng[i + 1] || [lines.length, arrows.length, polys.length], b = rng[i]; if (!b) return; for (let j = b[0]; j < nx[0]; j++) lines[j].ly = ly; for (let j = b[1]; j < nx[1]; j++) arrows[j].ly = ly; for (let j = b[2]; j < nx[2]; j++) { polys[j].ly = ly; polys[j].br = !!r.br; } });
+  for (const [k, G] of ends) { /* zaslepka szczeliny na zlaczu dwoch drog: czworokat miedzy koncami krawedzi */
+    if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i && edgeOf[G[0].i] && edgeOf[G[1].i])) continue;
+    const ep = e => { const E = edgeOf[e.i], j = e.st ? 0 : E.Lf.length - 1; return [E.Lf[j], E.Rt[j]]; }, [a1, a2] = ep(G[0]), [b1, b2] = ep(G[1]);
+    if (!a1 || !a2 || !b1 || !b2) continue;
+    const P = dist(a1, b1) + dist(a2, b2) <= dist(a1, b2) + dist(a2, b1) ? [a1, a2, b2, b1] : [a1, a2, b1, b2];
+    polys.push({ P, L: [], R: [], kerb: false, ly: Math.max(R[G[0].i].ly | 0, R[G[1].i].ly | 0), br: false });
+  }
   { // skrzyzowanie T: droga boczna dojezdza do przelotowej pod dowolnym katem - luki (fillety) krawedzi na zlaczu
     const FR = 5; /* promien luku [m] */
     for (const [k, G] of ends) {

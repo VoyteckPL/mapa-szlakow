@@ -31,5 +31,6 @@ header = """// ==UserScript==
 adapter = open(root + '/tools/idlanes-adapter.js', encoding='utf-8').read()
 import time
 out = header.replace('%VERSION%', time.strftime('%Y.%m.%d.%H%M')) + "(function () {\n" + engine + "\n" + adapter + "\n})();\n"
+out = out.replace('%VERSION%', time.strftime('%H%M'))
 open(root + '/idlanes.user.js', 'w', encoding='utf-8').write(out)
 print('ok', len(out))

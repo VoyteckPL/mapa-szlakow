@@ -19,7 +19,7 @@
   #cvS.off { display:none; }
   @media (max-width:700px) { #app { flex-direction:column; } #panel { flex:0 0 auto; max-height:40%; } #main { flex:1 1 0; } }
   label { display:flex; justify-content:space-between; gap:8px; margin:5px 0; align-items:center; }
-  input { width:120px; padding:3px 6px; border:1px solid var(--bd); border-radius:6px; background:var(--bg); color:var(--tx); }
+  input, select { width:120px; padding:3px 6px; border:1px solid var(--bd); border-radius:6px; background:var(--bg); color:var(--tx); }
   button { padding:6px 12px; border-radius:7px; border:1px solid var(--ac); background:var(--ac); color:#fff; cursor:pointer; margin:4px 4px 0 0; }
   button.sec { background:transparent; color:var(--ac); }
   canvas { max-width:100%; border-radius:8px; background:#222; display:block; }
@@ -35,13 +35,14 @@
 <div id="app">
   <div id="panel">
     <h1>Rozpoznawanie pasów z ortofoto</h1>
-    <small>Bierze oś drogi z OSM, pobiera ortofoto Geoportalu, prostuje pas wzdłuż osi i szuka białych linii. Wynik to propozycja do porównania z tagiem <code>lanes</code>. Przesuwaj i przybliżaj mapę jak zwykle. <b>Kliknij drogę</b>, żeby ją rozpoznać.</small>
+    <small>Bierze oś drogi z OSM, pobiera ortofoto Geoportalu, prostuje pas wzdłuż osi i szuka białych linii. Wynik to propozycja do porównania z tagiem <code>lanes</code>. Przesuwaj i przybliżaj mapę jak zwykle. <b>Kliknij drogę</b>, żeby ją zaznaczyć, potem <b>Pobierz i analizuj</b>.</small>
     <label>Szer. geo. <input id="lat" value="54.4693417"></label>
     <label>Dł. geo. <input id="lon" value="18.5036106"></label>
     <label>Długość odcinka [m] <input id="len" type="number" value="80"></label>
     <label>Skan w bok ± [m] <input id="half" type="number" value="10"></label>
     <label>Próg jasności <input id="thr" type="number" value="26"></label>
-    <button id="go">Rozpoznaj</button><button id="exp" class="sec">Eksport JSON</button><button id="tgS" class="sec">Pasek</button>
+    <label>Podkład <select id="bm"><option value="orto">Ortofoto</option><option value="osm">OSM</option></select></label>
+    <button id="go">Pobierz i analizuj</button><button id="exp" class="sec">Eksport JSON</button><button id="tgS" class="sec">Pasek</button>
     <div id="msg"></div>
     <div id="res"></div>
   </div>
@@ -262,7 +263,7 @@ function draw(bmp, G, S) {
   for (const l of S.lines) { const y = yOf(l.d); h.fillStyle = l.typ === 'ciągła' ? '#ffd400' : l.typ === 'przerywana' ? '#ff8a00' : '#ff3b6b'; h.fillRect(c2.width - PW - 6, y - 1, 6, 2); h.fillText(`${l.d > 0 ? '+' : ''}${l.d.toFixed(1)}`, c2.width - 34, y - 3); }
 }
 
-$('go').onclick = () => { if (MAP) MAP.easeTo({ center: [+$('lon').value, +$('lat').value] }); run().catch(e => log('Błąd: ' + e.message)); };
+$('go').onclick = () => { run().catch(e => log('Błąd: ' + e.message)); };
 $('exp').onclick = () => { if (!LAST) return; const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(LAST, null, 1)], { type: 'application/json' })); a.download = `pasy-${LAST.osm_way}.json`; a.click(); };
 const qp = new URLSearchParams(location.search); if (qp.get('lat')) { $('lat').value = qp.get('lat'); $('lon').value = qp.get('lon'); }
 $('tgS').onclick = () => $('cvS').classList.toggle('off');
@@ -281,9 +282,11 @@ try {
         { id: 'linie', type: 'line', source: 'det', filter: ['!', ['in', ['get', 'kind'], ['literal', ['os', 'kraw']]]], paint: { 'line-width': 2.5,
           'line-color': ['match', ['get', 'kind'], 'ciągła', '#ffd400', 'przerywana', '#ff8a00', '#ff3b6b'] } } ] } });
   MAP.addControl(new maplibregl.NavigationControl({ visualizePitch: false }));
-  MAP.on('click', e => { $('lat').value = e.lngLat.lat.toFixed(7); $('lon').value = e.lngLat.lng.toFixed(7); run().catch(er => log('Błąd: ' + er.message)); });
+  const mk = new maplibregl.Marker({ color: '#e11d48' }).setLngLat([+$('lon').value, +$('lat').value]).addTo(MAP);
+  MAP.on('click', e => { $('lat').value = e.lngLat.lat.toFixed(7); $('lon').value = e.lngLat.lng.toFixed(7); mk.setLngLat(e.lngLat); log('Punkt zaznaczony. Kliknij „Pobierz i analizuj”.'); });
+  $('bm').onchange = () => MAP.setLayoutProperty('orto', 'visibility', $('bm').value === 'orto' ? 'visible' : 'none');
   MAP.on('load', () => { if (PENDING) MAP.getSource('det').setData(PENDING); });
-  run().catch(e => log('Błąd: ' + e.message));
+  log('Kliknij drogę na mapie i „Pobierz i analizuj”.');
 } catch (e) { log('Mapa się nie wczytała: ' + e.message); run().catch(er => log('Błąd: ' + er.message)); }
 </script>
 </body>

@@ -861,12 +861,12 @@ function pzSnap(dr, w) { // przeciaganie PIERWSZEGO wezla galezi (wjazd, na wpro
   const cand = PZI.map(z => z.p); if (PZ.sel) cand.unshift(PZ.sel.node);
   for (const node of cand) { if (dist(node, w) > 80) continue; const F = pzDetect(node); if (!F) continue;
     for (const [k, br] of [['x', F.X], ['main', F.main], ['exit', F.exit]]) { const kj = pzKey(br), kr = br.refs[kj]; if (!kr || kr.ri !== dr.i || kr.vi !== dr.vi) continue;
-      const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', d = dist(F.node, w), tol = Math.max(2.5, Math.atan(12 / S.view.k / Math.max(d, 1)) / PZ_R);
+      const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', d0 = dist(F.node, w), snD = Math.abs(d0 - PZ_D) * S.view.k <= 12, d = snD ? PZ_D : d0, tol = Math.max(2.5, Math.atan(12 / S.view.k / Math.max(d0, 1)) / PZ_R);
       let a, best = null, T;
-      if (k === 'x') { const tabs = pzB(F.node, F.main.P[pzKey(F.main)]) + 180; a = pzN(pzB(F.node, w) - tabs); T = [0]; if (Math.abs(a) <= tol) best = 0; const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((tabs + ang) * PZ_R), F.node[1] + d * Math.sin((tabs + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; }
+      if (k === 'x') { const tabs = pzB(F.node, F.main.P[pzKey(F.main)]) + 180; a = pzN(pzB(F.node, w) - tabs); T = [0]; if (Math.abs(a) <= tol) best = 0; const ang = best ?? a, q = best == null && !snD ? w : [F.node[0] + d * Math.cos((tabs + ang) * PZ_R), F.node[1] + d * Math.sin((tabs + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null || snD, k }; }
       const side = Math.sign(F.a0.exit - F.a0.main) || 1; T = k === 'main' && F.type !== 'B' ? [0] : F.type === 'B' ? [12, 15, 18].map(t => t * (k === 'main' ? -1 : 1)) : (top ? [22, 25, 30] : [30, 35, 40]).map(t => t * side);
       a = pzN(pzB(F.node, w) - F.din); for (const t of T) if (Math.abs(a - t) <= tol && (best == null || Math.abs(a - t) < Math.abs(a - best))) best = t;
-      const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; } }
+      const ang = best ?? a, q = best == null && !snD ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null || snD, k }; } }
   return null;
 }
 const PZ_D = 10; // wspolna odleglosc kluczowych punktow gałęzi od węzła rozwidlenia [m]

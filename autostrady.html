@@ -85,7 +85,7 @@ function build() {
   $('st').textContent = `Dróg: ${WAYS.size}`;
 }
 async function loadView() {
-  if (MAP.getZoom() < 12) return; const b = MAP.getBounds(); let add = false;
+  if (MAP.getZoom() < 15) { $('st').textContent = 'Przybliż do zoomu 15, żeby pobrać drogi OSM.'; return; } const b = MAP.getBounds(); let add = false;
   for (let x = Math.floor(b.getWest() / 0.02); x <= Math.floor(b.getEast() / 0.02); x++) for (let y = Math.floor(b.getSouth() / 0.01); y <= Math.floor(b.getNorth() / 0.01); y++) {
     const k = x + '_' + y; if (TILES.has(k)) continue; TILES.add(k);
     try { const r = await fetchT(`data/roads/gdynia/${k}.json`, 15000); if (!r.ok) continue;

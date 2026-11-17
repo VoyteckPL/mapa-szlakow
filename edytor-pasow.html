@@ -1120,8 +1120,11 @@ async function loadFresh() { if (Math.log2(156543.03 * Math.cos(S.org.lat * Math
   if (!(await refreshLive())) return; push();
   { /* pobranie = wczytanie od nowa: drogi OSM z tego widoku sa usuwane i importowane ze swiezych danych (bez duplikatow); sandbox i wlasne drogi zostaja */
     const a = s2w([0, 0]), b = s2w([W, H]), m = 40, x0 = Math.min(a[0], b[0]) - m, x1 = Math.max(a[0], b[0]) + m, y0 = Math.min(a[1], b[1]) - m, y1 = Math.max(a[1], b[1]) + m, n0 = S.doc.road.length;
-    S.doc.road = S.doc.road.filter(r => !(r.osm && !r.sb && r.pts.some(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1))); S.sel = -1; S.vsel = -1; liveLog('wczytanie od nowa: usunieto ' + (n0 - S.doc.road.length) + ' dr. z widoku'); }
-  importView(); save(); ui(); touch(); say('Wczytano od nowa aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
+    const before = S.doc.road.slice(), inV = r => r.osm && !r.sb && r.pts.some(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1);
+    S.doc.road = S.doc.road.filter(r => !inV(r)); S.sel = -1; S.vsel = -1; liveLog('wczytanie od nowa: usunieto ' + (n0 - S.doc.road.length) + ' dr. z widoku');
+    let ok = true; try { importView(); } catch (e) { ok = false; liveLog('BLAD importu: ' + (e && e.stack || e)); }
+    if (!ok || (n0 > S.doc.road.length && !S.doc.road.some(inV))) { S.doc.road = before; save(); ui(); touch(); say('Nie udało się wczytać dróg od nowa – zostawiłem poprzedni stan (szczegóły w oknie logu).'); return; } }
+  save(); ui(); touch(); say('Wczytano od nowa aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
 $('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;

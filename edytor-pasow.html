@@ -541,6 +541,44 @@ function layout() {
     }
   });
   R.forEach((r, i) => { const ly = r.ly | 0, nx = rng[i + 1] || [lines.length, arrows.length, polys.length], b = rng[i]; if (!b) return; for (let j = b[0]; j < nx[0]; j++) lines[j].ly = ly; for (let j = b[1]; j < nx[1]; j++) arrows[j].ly = ly; for (let j = b[2]; j < nx[2]; j++) { polys[j].ly = ly; polys[j].br = !!r.br; } });
+  { // skrzyzowanie T: droga boczna dojezdza do przelotowej pod dowolnym katem - luki (fillety) krawedzi na zlaczu
+    const FR = 5; /* promien luku [m] */
+    for (const [k, G] of ends) {
+      if (window.__noFil || handled.has(k) || G.length !== 3 || nodeRoads.get(k).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue;
+      const U = G.map(e => unitFrom(C[e.i], e.st)); let a = 0, b = 1, best = 9;
+      for (let p = 0; p < 3; p++) for (let q = p + 1; q < 3; q++) { const d = U[p][0] * U[q][0] + U[p][1] * U[q][1]; if (d < best) { best = d; a = p; b = q; } }
+      if (best > -0.7) continue; /* przelotowa musi byc prawie prosta */
+      const ci = 3 - a - b, eC = G[ci], eA = G[a], eB = G[b], o = orient(C[eC.i], eC.st).Q[0];
+      const uC = U[ci], t0 = [U[a][0] - U[b][0], U[a][1] - U[b][1]], tl = Math.hypot(t0[0], t0[1]) || 1, t = [t0[0] / tl, t0[1] / tl], nt = [-t[1], t[0]];
+      const hC = rw(R[eC.i]) / 2, hT = Math.max(rw(R[eA.i]), rw(R[eB.i])) / 2, nC = [-uC[1], uC[0]], dn = uC[0] * nt[0] + uC[1] * nt[1];
+      if (Math.abs(dn) < 0.2) continue;
+      const sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
+      for (const s of [-1, 1]) {
+        const lam = (sg * hT - s * hC * (nC[0] * nt[0] + nC[1] * nt[1])) / dn, I = [o[0] + nC[0] * s * hC + uC[0] * lam, o[1] + nC[1] * s * hC + uC[1] * lam];
+        if (lam < -hT * 4 || lam > 40) continue;
+        const u1 = uC, sd = (nC[0] * s * t[0] + nC[1] * s * t[1]) >= 0 ? 1 : -1, u2 = [t[0] * sd, t[1] * sd], cs = u1[0] * u2[0] + u1[1] * u2[1], phi = Math.acos(Math.max(-1, Math.min(1, cs)));
+        if (phi < 0.35 || phi > 2.9) continue;
+        let r = FR, L = r / Math.tan(phi / 2); if (L > 9) { r *= 9 / L; L = 9; }
+        const T1 = [I[0] + u1[0] * L, I[1] + u1[1] * L], T2 = [I[0] + u2[0] * L, I[1] + u2[1] * L], bs = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(bs[0], bs[1]) || 1, cc = [I[0] + bs[0] / bl * r / Math.sin(phi / 2), I[1] + bs[1] / bl * r / Math.sin(phi / 2)];
+        let a1 = Math.atan2(T1[1] - cc[1], T1[0] - cc[0]), a2 = Math.atan2(T2[1] - cc[1], T2[0] - cc[0]), da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        const arc = []; for (let q = 0; q <= 14; q++) arc.push([cc[0] + r * Math.cos(a1 + da * q / 14), cc[1] + r * Math.sin(a1 + da * q / 14)]);
+        fil.push({ I, L, T1, T2, arc });
+      }
+      if (!fil.length) continue;
+      for (const f of fil) { /* wyciecie prostych krawedzi w obrebie luku i zastapienie lukiem */
+        let E1 = null, E2 = null, d1 = 3, d2 = 3; const pieces = [];
+        for (const l of lines) { if (l.st !== 'p2') continue; let run = []; const out = [];
+          for (const p of l.P) { if (dist(p, f.I) < f.L - 0.02) { if (run.length) out.push(run); run = []; } else run.push(p); }
+          if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue;
+          for (const R2 of out) for (const p of [R2[0], R2[R2.length - 1]]) { const q1 = dist(p, f.T1), q2 = dist(p, f.T2); if (q1 < d1) { d1 = q1; E1 = p; } if (q2 < d2) { d2 = q2; E2 = p; } }
+          l.P = out[0] || []; for (let q = 1; q < out.length; q++) pieces.push({ P: out[q], st: 'p2', ly: l.ly });
+        }
+        lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
+        lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly });
+        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: [], R: [], kerb: false, ly, br: false });
+      }
+    }
+  }
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)
     const sol = lines.filter(l => l.st === 'p2'), rest = lines.filter(l => l.st !== 'p2'), tol = 0.7; let ch = true;
     while (ch) { ch = false;

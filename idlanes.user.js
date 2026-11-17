@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pasy w iD (Roads and Lanes)
 // @namespace    https://github.com/VoyteckPL/mapa-szlakow
-// @version      2026.11.17.2055
+// @version      2026.11.17.2057
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
@@ -629,7 +629,7 @@ function drawGroup(g, ly) {
 const IDL = { on: true, hide: true, raf: 0 };
 function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.__idctx, window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
 function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; (document.body || document.documentElement).appendChild(b); } b.textContent = t; return b; }
-function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '2055' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
+function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '2057' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
 idWhen(ctxId => {
   const root = document.querySelector('.main-map') || document.querySelector('.supersurface') || document.querySelector('#id-container .main-content');
   const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5';
@@ -702,12 +702,12 @@ idWhen(ctxId => {
     started = true; clearInterval(boot); try { const b = document.getElementById('idlanes-badge'); if (b) b.remove(); } catch (e) {} run(sup, mm);
   }, 500);
   function run(sup, mm) {
-    const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:50'; sup.appendChild(cvs);
+    const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none'; { const sf = sup.querySelector('svg.surface') || sup.querySelector('.surface'); if (sf && sf.parentNode === sup) sup.insertBefore(cvs, sf); else sup.appendChild(cvs); } /* pod warstwa SVG iD: linie, wezly i uchwyty zostaja na wierzchu i da sie edytowac */
     const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
     const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:56px;top:8px;z-index:60;display:flex;gap:4px;font:12px system-ui;pointer-events:auto'; mm.appendChild(bar);
     const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:3px 8px;border:1px solid #889;border-radius:6px;background:#fff;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
     mk('Pasy: wł.', b => { IDL.on = !IDL.on; b.textContent = 'Pasy: ' + (IDL.on ? 'wł.' : 'wył.'); });
-    mk('Linie iD: ukryte', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'ukryte' : 'widoczne'); css(); });
+    IDL.hide = false; mk('Linie iD: widoczne', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'ukryte' : 'widoczne'); css(); });
     const st = document.createElement('style'); document.head.appendChild(st);
     const css = () => { st.textContent = IDL.hide ? '.layer-osm path.line.tag-highway-motorway,.layer-osm path.line.tag-highway-motorway_link,.layer-osm path.line.tag-highway-trunk,.layer-osm path.line.tag-highway-trunk_link,.layer-osm path.line.tag-highway-primary,.layer-osm path.line.tag-highway-primary_link,.layer-osm path.line.tag-highway-secondary,.layer-osm path.line.tag-highway-secondary_link{opacity:.25}' : ''; }; css();
     const ids = new WeakMap(); let nid = 0, last = '';

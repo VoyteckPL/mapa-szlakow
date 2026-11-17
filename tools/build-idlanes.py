@@ -29,7 +29,7 @@ header = """// ==UserScript==
 // @downloadURL  https://voyteckpl.github.io/mapa-szlakow/idlanes.user.js
 // ==/UserScript==
 """
-adapter = open(root + '/tools/idlanes-adapter.js', encoding='utf-8').read()
+adapter = open(root + '/tools/idlanes-adapter.js', encoding='utf-8').read() + '\n' + open(root + '/tools/idlanes-dom.js', encoding='utf-8').read()
 import time
 out = header.replace('%VERSION%', time.strftime('%Y.%m.%d.%H%M')) + "(function () {\n" + engine + "\n" + adapter + "\n})();\n"
 out = out.replace('%VERSION%', time.strftime('%H%M'))

@@ -1190,7 +1190,7 @@ if (!EMBED) (() => {
 // ---------- Sandbox: rysowanie testowych drog z podstawowymi tagami (nigdy nie trafia do OSM: osm = 0) ----------
 (() => {
   const HW = ['motorway', 'motorway_link', 'trunk', 'trunk_link', 'primary', 'secondary'], TLV = ['', 'left', 'slight_left', 'through', 'through;right', 'slight_right', 'right'], TLN = { '': '–', left: '←', slight_left: '↖', through: '↑', 'through;right': '↑→', slight_right: '↗', right: '→' };
-  const PRE = [['T|T|R', 'through|through|right'], ['T|R|R', 'through|right|right'], ['T|T;R|R', 'through|through;right|right'], ['L|T|T', 'left|through|through'], ['L|T|R', 'left|through|right'], ['T|T|T', 'through|through|through']];
+  const PRE = { 1: ['through', 'right', 'left', 'through;right', 'through;left'], 2: ['through|right', 'left|through', 'through|through;right', 'left|right', 'through|through', 'left;through|through'], 3: ['through|through|right', 'through|right|right', 'through|through;right|right', 'left|through|through', 'left|through|right', 'through|through|through'], 4: ['through|through|through|right', 'through|through|right|right', 'left|through|through|right', 'left|through|through|through', 'through|through|through|through'], 5: ['through|through|through|right|right', 'left|through|through|through|right'], 6: ['through|through|through|through|right|right'] }; // presety turn:lanes dla danej liczby pasow
   const ICP = { '': 'M5 10H11', through: 'M8 17V4M4 8 8 3 12 8', right: 'M5 17V10Q5 6 9 6H12M9 3 13 6 9 9', left: 'M11 17V10Q11 6 7 6H4M7 3 3 6 7 9', slight_right: 'M5 17 11 6M7 5H12V10', slight_left: 'M11 17 5 6M9 5H4V10', 'through;right': 'M6 17V4M2 8 6 3 10 8M6 12Q6 9 9 9H13M10 6 14 9 10 12' };
   const ico = (v, sz = 16) => `<svg width="${sz}" height="${Math.round(sz * 18 / 16)}" viewBox="0 0 16 18" fill="none" stroke="#222" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="${ICP[v] !== undefined ? ICP[v] : ICP['']}"/></svg>`;
   const icoRow = tl => tl.split('|').map(v => ico(v.replace(/slight_/, v.indexOf(';') < 0 ? 'slight_' : ''))).join('<span style="display:inline-block;width:0;height:16px;border-left:1px dashed #99a;margin:0 2px;vertical-align:middle"></span>');
@@ -1221,7 +1221,7 @@ if (!EMBED) (() => {
         + `<span>oneway</span><label><input id="sbOw" type="checkbox" ${r.oneway ? 'checked' : ''}> yes</label></div>`
         + `<div style="margin-top:6px">turn:lanes (od lewej)</div><div style="display:flex;gap:3px;flex-wrap:wrap">${tk.map((v, i) => `<select class="sbTl" data-i="${i}" title="pas ${i + 1}" style="font-size:16px;width:70px">${TLV.map(x => `<option value="${x}" ${x === v ? 'selected' : ''}>${TLN[x]}</option>`).join('')}</select>`).join('')}</div>`
         + `<input id="sbTx" value="${(r.tl || '').replace(/"/g, '&quot;')}" placeholder="turn:lanes np. through|through|right" style="width:100%;box-sizing:border-box;margin-top:4px">`
-        + `<div style="margin-top:4px">${PRE.map(([a, v], i) => tb('sbP' + i, icoRow(v)).replace('<button ', `<button title="${v}" `)).join('')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
+        + `<div style="margin-top:4px">${(PRE[n] || []).map((v, i) => tb('sbP' + i, icoRow(v)).replace('<button ', `<button title="${v}" `)).join('')}</div><div style="margin-top:4px">${tb('sbRev', 'Odwróć kierunek')}${tb('sbDel', 'Usuń drogę')}</div></div>`;
     }
     el.innerHTML = h; const $$ = id => el.querySelector('#' + id);
     $$('sbX').onclick = () => { el.style.display = 'none'; };
@@ -1234,7 +1234,7 @@ if (!EMBED) (() => {
       $$('sbOw').onchange = () => mut(() => { r.oneway = $$('sbOw').checked; });
       el.querySelectorAll('.sbTl').forEach(sel => { sel.onchange = () => mut(() => { const a = (r.tl || '').split('|'); while (a.length < (r.lanes | 0)) a.push(''); a.length = r.lanes | 0; a[+sel.dataset.i] = sel.value; r.tl = a.every(x => !x) ? '' : a.join('|'); }); });
       $$('sbTx').onchange = () => mut(() => { r.tl = $$('sbTx').value.trim(); const n = r.tl ? r.tl.split('|').length : 0; if (n >= 1 && n <= 6) r.lanes = n; });
-      PRE.forEach(([, v], i) => { $$('sbP' + i).onclick = () => mut(() => { r.tl = v; r.lanes = v.split('|').length; }); });
+      (PRE[r.lanes | 0] || []).forEach((v, i) => { $$('sbP' + i).onclick = () => mut(() => { r.tl = v; }); });
       $$('sbRev').onclick = () => mut(() => { r.pts.reverse(); r.nk.reverse(); if (r.rp) r.rp.reverse(); });
       $$('sbDel').onclick = () => mut(() => { S.doc.road.splice(S.sel, 1); S.sel = -1; });
     }

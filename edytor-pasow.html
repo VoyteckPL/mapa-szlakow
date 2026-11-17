@@ -575,7 +575,7 @@ function layout() {
         }
         lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
         lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly });
-        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: [], R: [], kerb: false, ly, br: false });
+        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: true, ly, br: false });
       }
     }
   }

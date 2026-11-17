@@ -915,16 +915,16 @@ function pzDrawArcs(F, full) { // prosta + galezie + luk z katem (tylko liczby);
   ctx.save(); ctx.lineCap = 'round'; if (full) { ctx.setLineDash([3, 4]); ctx.strokeStyle = 'rgba(40,40,40,.45)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(o[0], o[1], PZ_D * S.view.k, 0, 7); ctx.stroke(); } /* okrag: wspolna odleglosc punktow od wezla */
   if (full) for (const br of [F.X, F.main, F.exit]) { const q = w2s(br.P[pzKey(br)]); ctx.setLineDash([]); ctx.beginPath(); ctx.arc(q[0], q[1], 6, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#1f6fd0'; ctx.lineWidth = 2.5; ctx.stroke(); }
   ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(40,40,40,.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(din), o[1] + R * Math.sin(din)); ctx.stroke(); ctx.setLineDash([]);
-  const items = []; for (const k of ['main', 'exit']) { const br = F[k], kp = br.P[pzKey(br)], a = pzN(pzB(F.node, kp) - F.din); if (k === 'main' && F.type !== 'B' && Math.abs(a) < 0.5) { items.push({ a: 0, ok: pzOk(F, 'main', a) }); continue; } const ok = pzOk(F, k, a), col = ok ? '#1f9a4c' : '#e08a00', e = (F.din + a) * PZ_R;
+  const items = []; for (const k of ['main', 'exit']) { const br = F[k], kp = br.P[pzKey(br)], a = pzN(pzB(F.node, kp) - F.din); if (k === 'main' && F.type !== 'B' && Math.abs(a) < 0.5) { items.push({ a: 0, ok: pzOk(F, 'main', a), k: 'main' }); continue; } const ok = pzOk(F, k, a), col = ok ? '#1f9a4c' : '#e08a00', e = (F.din + a) * PZ_R;
     ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(e), o[1] + R * Math.sin(e)); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.closePath(); ctx.fillStyle = ok ? 'rgba(31,154,76,.20)' : 'rgba(224,138,0,.22)'; ctx.fill();
     ctx.beginPath(); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.lineWidth = 2; ctx.stroke();
     items.push({ a, ok, k }); }
-  { /* jedna ikona + katy w jednej wysrodkowanej linii nad wezlem */
-    const cm = pzCmd(F, 'exit'), ex = cm.some(c => c.exit), kk = cm.map(c => c.c), kind = ex ? 'exit' : kk[0] || 'lekko', ea = pzN(pzB(F.node, F.exit.P[pzKey(F.exit)]) - F.din), isz = full ? 30 : 24, tx = items.map(q => (items.length > 1 && q.k !== 'exit' && q.a === 0 ? '0' : Math.abs(q.a).toFixed(0)) + '°' + (q.ok ? '✓' : '')).join('  ·  '), cx = o[0], cy = o[1] - R - (full ? 34 : 26);
-    ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.95)';
-    const allOk = items.every(q => q.ok); ctx.strokeText(tx, cx, cy + isz / 2 + 14); ctx.fillStyle = allOk ? '#13703a' : '#a35f00'; ctx.fillText(tx, cx, cy + isz / 2 + 14);
-    pzIcon(cx, cy, kind, ea, isz, false); }
+  { /* ikony: po jednej na galaz (prosto / zjazd), kat pod kazda, wysrodkowane w jednej linii nad wezlem */
+    const isz = full ? 30 : 24, gap = isz + 30, cx = o[0], cy = o[1] - R - (full ? 34 : 26);
+    ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 4;
+    items.forEach((q, i) => { const x = cx + (i - (items.length - 1) / 2) * gap, br = q.k || 'main', cm = pzCmd(F, br), ex = cm.some(c => c.exit), kk = cm.map(c => c.c), kind = ex ? 'exit' : (q.a === 0 ? 'prosto' : kk[0] || 'lekko'), tx = Math.abs(q.a).toFixed(0) + '°' + (q.ok ? '✓' : '');
+      pzIcon(x, cy, kind, q.a, isz, false); ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(tx, x, cy + isz / 2 + 14); ctx.fillStyle = q.ok ? '#13703a' : '#a35f00'; ctx.fillText(tx, x, cy + isz / 2 + 14); }); }
   ctx.restore();
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)

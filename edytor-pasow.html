@@ -684,10 +684,10 @@ function render() {
     ctx.textAlign = 'start';
   }
   if (S.tool === 'sel' && !EMBED) for (const z of PZI) { const q = w2s(z.p); if (q[0] < -20 || q[1] < -20 || q[0] > W + 20 || q[1] > H + 20) continue; const cl = ['#1f9a4c', '#e08a00', '#d22'][z.lvl]; ctx.beginPath(); ctx.arc(q[0], q[1], z.lvl ? 12 : 9, 0, 7); ctx.fillStyle = ['rgba(30,160,80,.25)', 'rgba(240,150,0,.30)', 'rgba(220,40,40,.30)'][z.lvl]; ctx.fill(); ctx.strokeStyle = cl; ctx.lineWidth = 2.5; ctx.stroke();
-    if (k > 2) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = ['#13703a', '#a35f00', '#b11'][z.lvl]; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
+    if (k > 2 && !(PZ.sel && dist(PZ.sel.node, z.p) < 1)) { ctx.font = 'bold 11px system-ui'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.strokeText(z.msg, q[0] + 15, q[1] - 10); ctx.fillStyle = ['#13703a', '#a35f00', '#b11'][z.lvl]; ctx.fillText(z.msg, q[0] + 15, q[1] - 10); } } /* znaczniki presetu zjazdu: stuknij = okienko presetu */
   if (PZ.live) { const z = PZ.live, a = w2s(z.node), b = w2s(z.w); ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = z.snap ? '#1f9a4c' : '#333'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); ctx.setLineDash([]);
-    const t1 = `${z.lab}: ${z.a >= 0 ? '+' : ''}${z.a.toFixed(1)}°${z.snap ? ' ✓' : ''}`, t2 = z.eng; ctx.font = 'bold 14px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(t1, b[0] + 14, b[1] - 16); ctx.fillStyle = z.snap ? '#13703a' : '#222'; ctx.fillText(t1, b[0] + 14, b[1] - 16);
-    ctx.font = '11px system-ui'; ctx.strokeText(t2, b[0] + 14, b[1]); ctx.fillStyle = '#333'; ctx.fillText(t2, b[0] + 14, b[1]); ctx.restore(); } /* kat na zywo przy przeciaganiu */
+    ctx.restore(); } /* kat na zywo przy przeciaganiu */
+  pzDrawArcs();
   if (FORK_MARKS) for (const f of S.forks3 || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(30,120,255,.22)'; ctx.fill(); ctx.strokeStyle = '#1e78ff'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-u'; ctx.fillStyle = '#1e78ff'; ctx.textAlign = 'center'; ctx.fillText('3→2+1', q[0], q[1] - 24); ctx.textAlign = 'start'; }
   if (FORK_MARKS) for (const f of S.forks || []) { const q = w2s(f); ctx.beginPath(); ctx.arc(q[0], q[1], 18, 0, 7); ctx.fillStyle = 'rgba(255,140,0,.22)'; ctx.fill(); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.font = 'bold 11px system-ui'; ctx.fillStyle = '#b85c00'; ctx.textAlign = 'center'; ctx.fillText('2→1+1', q[0], q[1] - 22); ctx.textAlign = 'start'; }
   if (S.draw) { const P = S.draw.pts; if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
@@ -857,16 +857,42 @@ function pzScan() {
   return out;
 }
 var PZ = { th: null, key: '', type: null, live: null };
-function pzSnap(dr, w) { // przeciaganie wezla galezi przy rozwidleniu: kat na zywo + przyciaganie do katow presetu
-  for (const z of PZI) { if (dist(z.p, w) > 120) continue; const F = pzDetect(z.p); if (!F) continue;
-    for (const k of ['main', 'exit']) { const br = F[k], i = br.refs.findIndex((f, j) => j > 0 && f.ri === dr.i && f.vi === dr.vi); if (i < 0) continue;
-      const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', side = Math.sign(F.a0.exit - F.a0.main) || 1;
-      const T = k === 'main' && F.type !== 'B' ? [0] : F.type === 'B' ? [12, 15, 18].map(t => t * (k === 'main' ? -1 : 1)) : (top ? [22, 25, 30] : [30, 35, 40]).map(t => t * side);
-      const d = dist(F.node, w), a = pzN(pzB(F.node, w) - F.din), tol = Math.max(1.5, Math.atan(6 / S.view.k / Math.max(d, 1)) / PZ_R); let best = null;
-      for (const t of T) if (Math.abs(a - t) <= tol && (best == null || Math.abs(a - t) < Math.abs(a - best))) best = t;
-      const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)];
-      const P = br.P.slice(); P[i] = q; return { w: q, node: F.node, a: ang, snap: best != null, eng: pzEval(F, br, P), lab: k === 'main' ? (F.type === 'B' ? 'lewa' : 'na wprost') : (F.type === 'B' ? 'prawa' : 'zjazd') }; } }
+function pzSnap(dr, w) { // przeciaganie PIERWSZEGO wezla galezi (wjazd, na wprost, zjazd) przy rozwidleniu: kat na zywo + przyciaganie
+  const cand = PZI.map(z => z.p); if (PZ.sel) cand.unshift(PZ.sel.node);
+  for (const node of cand) { if (dist(node, w) > 80) continue; const F = pzDetect(node); if (!F) continue;
+    for (const [k, br] of [['x', F.X], ['main', F.main], ['exit', F.exit]]) { if (!br.refs[1] || br.refs[1].ri !== dr.i || br.refs[1].vi !== dr.vi) continue;
+      const base = (F.X.hw || '').replace('_link', ''), top = base === 'motorway' || base === 'trunk', d = dist(F.node, w), tol = Math.max(2.5, Math.atan(12 / S.view.k / Math.max(d, 1)) / PZ_R);
+      let a, best = null, T;
+      if (k === 'x') { const tabs = pzB(F.node, F.main.P[1]) + 180; a = pzN(pzB(F.node, w) - tabs); T = [0]; if (Math.abs(a) <= tol) best = 0; const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((tabs + ang) * PZ_R), F.node[1] + d * Math.sin((tabs + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; }
+      const side = Math.sign(F.a0.exit - F.a0.main) || 1; T = k === 'main' && F.type !== 'B' ? [0] : F.type === 'B' ? [12, 15, 18].map(t => t * (k === 'main' ? -1 : 1)) : (top ? [22, 25, 30] : [30, 35, 40]).map(t => t * side);
+      a = pzN(pzB(F.node, w) - F.din); for (const t of T) if (Math.abs(a - t) <= tol && (best == null || Math.abs(a - t) < Math.abs(a - best))) best = t;
+      const ang = best ?? a, q = best == null ? w : [F.node[0] + d * Math.cos((F.din + ang) * PZ_R), F.node[1] + d * Math.sin((F.din + ang) * PZ_R)]; PZ.sel = { node: F.node }; return { w: q, node: F.node, a: ang, snap: best != null, k }; } }
   return null;
+}
+function pzIns(arm, dd) { // wstaw wezel na pierwszym odcinku galezi w odleglosci dd od rozwidlenia (geometria bez zmian)
+  const f = arm.refs[1], r = S.doc.road[f.ri], vb = f.vi, va = vb - f.dir, idx = Math.max(va, vb), A = arm.P[0], B = arm.P[1], l = dist(A, B) || 1, q = [A[0] + (B[0] - A[0]) * dd / l, A[1] + (B[1] - A[1]) * dd / l];
+  r.pts.splice(idx, 0, q); if (r.nk) r.nk.splice(idx, 0, null); if (r.rp) r.rp.splice(idx, 0, q.slice());
+}
+async function pzFocus(ri, vi) { // klik w wezel rozwidlenia: aktualne dane OSM + dodatkowe punkty ~10 m od wezla + podglad katow
+  const n0 = S.doc.road[ri].pts[vi].slice(); if (!pzDetect(n0)) { PZ.sel = null; render(); return; }
+  PZ.sel = { node: n0 }; say('Sprawdzam aktualne dane OSM…'); render();
+  const c = unproj(n0), dl = 160 / 111320, dn = dl / Math.cos(c.lat * Math.PI / 180); let live = false; try { live = await refreshLive([c.lon - dn, c.lat - dl, c.lon + dn, c.lat + dl]); } catch (e) {}
+  let node = n0, bd = 6; S.doc.road.forEach(r => r.pts.forEach(p => { const d = dist(p, n0); if (d < bd) { bd = d; node = p.slice(); } }));
+  if (!pzDetect(node)) { PZ.sel = null; say('To rozwidlenie nie istnieje już w OSM.'); render(); return; }
+  PZ.sel = { node }; let added = 0; push(); for (let g = 0; g < 4; g++) { const F = pzDetect(node); if (!F) break; const arm = [F.X, F.main, F.exit].find(a => a.refs[1] && dist(a.P[0], a.P[1]) > 15); if (!arm) break; pzIns(arm, 10); added++; }
+  if (!added) S.undo.pop(); else { save(); S.dirty = true; }
+  say(live ? (added ? `OSM aktualne, dodano ${added} pkt.` : 'OSM aktualne.') : (added ? `Dodano ${added} pkt (OSM niedostępne).` : '')); touch();
+}
+function pzOk(F, k, a) { const top = ['motorway', 'trunk'].includes((F.X.hw || '').replace('_link', '')), x = Math.abs(a); return F.type === 'B' ? x >= 6 && x <= 20 : k === 'main' ? x <= 5 : (top ? x >= 15 && x <= 30 : x >= 21 && x <= 40); }
+function pzDrawArcs() { // prosta + galezie + luk z katem (tylko liczby)
+  if (!PZ.sel || S.tool !== 'sel') return; const F = pzDetect(PZ.sel.node); if (!F) return; const o = w2s(F.node), din = F.din * PZ_R, R = 100, rr = 46;
+  ctx.save(); ctx.lineCap = 'round'; ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(40,40,40,.8)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(din), o[1] + R * Math.sin(din)); ctx.stroke(); ctx.setLineDash([]);
+  for (const k of ['main', 'exit']) { const br = F[k], a = pzN(pzB(F.node, br.P[1]) - F.din); if (k === 'main' && F.type !== 'B' && Math.abs(a) < 0.5) continue; const ok = pzOk(F, k, a), col = ok ? '#1f9a4c' : '#e08a00', e = (F.din + a) * PZ_R;
+    ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.lineTo(o[0] + R * Math.cos(e), o[1] + R * Math.sin(e)); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(o[0], o[1]); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.closePath(); ctx.fillStyle = ok ? 'rgba(31,154,76,.20)' : 'rgba(224,138,0,.22)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(o[0], o[1], rr, din, e, a < 0); ctx.lineWidth = 2; ctx.stroke();
+    const m = din + (e - din) / 2, t = Math.abs(a).toFixed(0) + '°' + (ok ? ' ✓' : ''); ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.strokeText(t, o[0] + (rr + 22) * Math.cos(m), o[1] + (rr + 22) * Math.sin(m) + 5); ctx.fillStyle = ok ? '#13703a' : '#a35f00'; ctx.fillText(t, o[0] + (rr + 22) * Math.cos(m), o[1] + (rr + 22) * Math.sin(m) + 5); }
+  ctx.restore();
 }
 function vbar() { // pasek akcji punktu nad mapa (panel jest dlugi i przyciski bywaja poza ekranem)
   const o = document.getElementById('vbar'); if (o) o.remove(); const r = S.doc.road[S.sel]; if (true || EMBED || S.tool !== 'sel' || !r || S.vsel < 0) return;
@@ -940,7 +966,7 @@ async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmieni
     R[i] = makeRoad(w, ia >= 0 && ib >= 0 ? A : 0, ia >= 0 && ib >= 0 ? B : w.g.length - 1); rep++;
   }
   liveLog(`podmieniono ${rep}, pominieto ${keep}, brak w OSM ${gone}, usunieto z pamieci ${del}`);
-  S.undo = []; save(); if (!bb || rep || tagN || del) { touch(); if (!bb) ui(); } if (!bb) say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, tagi zaktualizowane ${tagN}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
+  if (!bb) S.undo = []; save(); if (!bb || rep || tagN || del) { touch(); if (!bb) ui(); } if (!bb) say(`OSM na żywo: ${fresh.size} dróg pobranych, podmieniono ${rep}, tagi zaktualizowane ${tagN}, usunięto z pamięci ${del}` + (keep ? `, pominięto ${keep} z ręcznymi węzłami` : '') + (gone ? `, ${gone} nie ma już w OSM` : '') + '.');
     return true;
   } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); try { const bad = []; S.doc.road.forEach((r, i) => { const nul = (r.pts || []).filter(q => !q || !isFinite(q[0]) || !isFinite(q[1])).length, cq = S.CC && S.CC[i] ? S.CC[i].Q : null; if (nul || !r.pts || r.pts.length < 2 || (r.rp && r.rp.length !== r.pts.length) || (r.nk && r.nk.length !== r.pts.length) || !cq || cq.length < 2 || cq.some(q => !q)) bad.push(`#${i} way ${r.osm} ${r.hw} lanes=${r.lanes} pts=${(r.pts || []).length} rp=${r.rp ? r.rp.length : '-'} nk=${r.nk ? r.nk.length : '-'} puste=${nul} Q=${cq ? cq.length : '-'}`); }); liveLog('BLAD diagnoza (drogi z problemem): ' + (bad.length ? '\n' + bad.slice(0, 12).join('\n') : 'brak')); } catch (e2) { liveLog('BLAD diagnoza nie powiodla sie: ' + e2.message); } say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
 }
@@ -1024,7 +1050,7 @@ function endPtr(e) {
     else if (S.tool === 'osm') { const o = osmAt(d.w, 12 / S.view.k); if (o && !S.doc.road.some(r => r.osm === o.id)) { push(); S.doc.road.push(makeRoad(o, 0, o.g.length - 1)); S.sel = S.doc.road.length - 1; setTool('sel'); touch(); } }
     else if (S.draw) { const v = nearVertex(w2s(d.w), 14); let pt = d.w, nk = null; if (v) { const r = S.doc.road[v.i]; pt = r.pts[v.vi].slice(); nk = r.nk[v.vi] || null; if (!nk) { nk = 'n' + Math.random().toString(36).slice(2, 9); r.nk[v.vi] = nk; } } S.draw.pts.push(pt); S.draw.nk.push(nk); render(); }
   }
-  PZ.live = null; if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
+  PZ.live = null; if (d.m === 'vtx' && !d.moved) { PZ.sel = null; } if ((d.m === 'vtx' || d.m === 'rvtx') && !d.moved) { S.undo.pop(); if (d.m === 'vtx') { const rr = S.doc.road[d.i]; if (rr && rr.pts[d.vi]) { const nn = rr.pts[d.vi]; if (pzDetect(nn)) setTimeout(() => pzFocus(d.i, d.vi), 0); } } if (d.m === 'rvtx') { const r = S.doc.road[d.i]; if (r && r.rp && r.rp.every((q, j) => q[0] === r.pts[j][0] && q[1] === r.pts[j][1])) delete r.rp; } }
   save(); render();
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);

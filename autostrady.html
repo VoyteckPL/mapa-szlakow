@@ -104,6 +104,7 @@ async function loadView() {
       for (const w of list) if (HW.test(w.t.highway || '') && !WAYS.has(w.i)) { WAYS.set(w.i, { i: w.i, t: w.t, g: w.g.map(c => toM(c[0], c[1])) }); add = true; }
       if (add) { build(); add = false; } } catch (e) { TILES.delete(k); }
   }
+  $('st').textContent = `Dróg: ${WAYS.size}`;
 }
 
 // ---------- mapa ----------

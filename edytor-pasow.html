@@ -1468,7 +1468,7 @@ if (!EMBED) (() => {
   const tbn = (id, inner, act, tip, w) => `<button id="${id}" title="${tip}" style="padding:2px 5px;margin:1px;border:1px solid ${act ? '#3949ab' : '#bbc'};border-radius:6px;background:${act ? '#e8eaf6' : '#fff'};cursor:pointer;font-size:12px;height:24px;box-sizing:border-box;min-width:${w || 26}px">${inner}</button>`;
   function draw() {
     const r = (x => x && !(x.osm && !x.oneway) ? x : null)(S.doc.road[S.sel]), $$ = id => el.querySelector('#' + id); /* dwukierunkowe drogi OSM: pasy w panelu Wybrana droga */
-    let h = `<div style="color:#3949ab;margin:0;font-weight:700;font-size:11px;letter-spacing:.03em">LINIE</div><div>` + Object.entries(TOOLI).map(([k, v]) => tbn('edT_' + k, svg(v[0], v[1]), S.tool === k, v[2])).join('') + `</div>`;
+    let h = `<div style="color:#3949ab;margin:0;font-weight:700;font-size:11px;letter-spacing:.03em">LINIE</div><div>` + Object.entries(TOOLI).map(([k, v]) => tbn('edT_' + k, svg(v[0], v[1]), S.tool === k, v[2])).join('') + tbn('edDel', svg('M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12M9 7V4h6v3', '#e53935'), 0, 'Usuń zaznaczoną drogę (z potwierdzeniem)') + `</div>`;
     if (r) {
       const n = Math.max(1, Math.min(6, r.lanes | 0)), a = tlOf(r);
       h += `<div style="color:#3949ab;margin:6px 0 0;font-weight:700;font-size:11px;letter-spacing:.03em">PASY I TURN:LANES</div><div>${tbn('edLm', '−', 0, 'mniej pasów', 22)}<b style="margin:0 5px">${n}</b>${tbn('edLp', '+', 0, 'więcej pasów', 22)}</div>`;
@@ -1477,6 +1477,7 @@ if (!EMBED) (() => {
     }
     el.innerHTML = h;
     Object.keys(TOOLI).forEach(k => { $$('edT_' + k).onclick = () => { setTool(k); draw(); }; });
+    $$('edDel').onclick = () => { const d = S.doc.road[S.sel]; if (!d) { say('Najpierw zaznacz drogę, którą chcesz usunąć.'); return; } if (!confirm('Usunąć zaznaczoną drogę' + (d.name ? ' „' + d.name + '”' : d.hw ? ' (' + d.hw + ')' : '') + ' z edytora?' + (d.osm ? '\n\nOSM się nie zmieni, dopóki sam niczego nie wyślesz.' : '') + '\nMożna cofnąć przyciskiem ↶.')) return; push(); S.doc.road.splice(S.sel, 1); S.sel = -1; S.vsel = -1; save(); ui(); touch(); say('Droga usunięta z edytora (cofnij: ↶).'); };
     if (r) {
       const mut = fn => { push(); fn(); save(); ui(); touch(); draw(); };
       const n0 = Math.max(1, Math.min(6, r.lanes | 0));
@@ -1489,6 +1490,24 @@ if (!EMBED) (() => {
   const lc = document.getElementById('lcP');
   if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Edytor'; row.className = 'eb'; row.innerHTML = '<button id="lcEd" title="Linie: rozdziel i rysuj; pasy i turn:lanes w ikonach" style="width:auto;padding:0 8px;font-size:12px">▤ Edytor</button>'; lc.append(hr, b, row, el); const lp = document.getElementById('lcP'); if (lp) { lp.style.maxHeight = 'calc(100vh - 70px)'; lp.style.overflowY = 'auto'; } row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
   const oldUi2 = ui; ui = function () { const r0 = oldUi2.apply(this, arguments); try { if (el.style.display !== 'none' && !el.contains(document.activeElement)) draw(); } catch (e) {} return r0; };
+})();
+
+// ---------- maly popup po lewej z tagami zaznaczonej drogi ----------
+(() => {
+  const el = document.createElement('div'); el.id = 'tagPop';
+  el.style.cssText = 'position:fixed;left:10px;top:56px;z-index:13;max-width:230px;max-height:45vh;overflow:auto;background:rgba(255,255,255,.93);border:1px solid #ccd;border-radius:7px;box-shadow:0 2px 8px rgba(0,0,0,.18);padding:5px 7px;font:10px/1.3 ui-monospace,Menlo,Consolas,monospace;color:#333;display:none;pointer-events:none';
+  document.body.appendChild(el);
+  const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  function draw() {
+    const r = S.doc.road[S.sel]; if (!r) { el.style.display = 'none'; return; }
+    let rows = [];
+    if (r.osm) { const t = effTags(r), ch = r.tg || {}; rows = Object.entries(t).map(([k, v]) => [k, v, k in ch]); for (const k of Object.keys(ch)) if (!(k in t)) rows.push([k, '(usunięty)', true]); rows.unshift(['way', r.osm, false]); }
+    else { rows = [['highway', r.hw || '', false], ['lanes', r.lanes, false], ['oneway', r.oneway ? 'yes' : 'no', false]]; if (r.tl) rows.push(['turn:lanes', r.tl, false]); if (r.lw) rows.push(['szer. pasa', r.lw + ' m', false]); rows.unshift(['', r.sb ? 'sandbox / własna' : 'własna droga', false]); }
+    el.innerHTML = rows.map(([k, v, c]) => `<div style="${c ? 'color:#e65100;font-weight:600' : ''}">${k ? '<span style="color:#7a7f88">' + esc(k) + '</span>=' : ''}${esc(v)}</div>`).join('');
+    el.style.display = 'block';
+  }
+  const oldUi3 = ui; ui = function () { const r0 = oldUi3.apply(this, arguments); try { draw(); } catch (e) {} return r0; };
+  draw();
 })();
 </script>
 </body>

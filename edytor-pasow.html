@@ -829,7 +829,7 @@ function pzWalk(ri, vi, dir) { // galaz od wezla w dal (do ~130 m), takze przez 
 function pzWhy(node) { // dlaczego to nie jest rozwidlenie 1 wjazd + 2 gałęzie
   const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
   if (arms.length < 3) return 'schodzą się tylko ' + arms.length + ' odcinki (trzeba 3)'; if (arms.length > 3) return 'schodzi się ' + arms.length + ' odcinków (trzeba 3) – rozdziel drogę w tym węźle'; if (arms.some(a => a.P.length < 2)) return 'za krótka gałąź';
-  const into = arms.filter(a => a.into).length; if (into > 1) return 'dwie gałęzie jednokierunkowe wjeżdżają w węzeł (kierunek oneway?)'; return 'nie rozpoznano układu 1 wjazd + 2 gałęzie';
+  const into = arms.filter(a => a.into).length; if (into > 1) return 'dwie gałęzie jednokierunkowe wjeżdżają w węzeł (kierunek oneway?)'; return 'nie rozpoznano układu (1 wjazd + 2 gałęzie pod kątem do ~75°)';
 }
 function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   const arms = []; S.doc.road.forEach((r, i) => r.pts.forEach((p, j) => { if (dist(p, node) < 0.4) { if (j < r.pts.length - 1) arms.push(pzWalk(i, j, 1)); if (j > 0) arms.push(pzWalk(i, j, -1)); } }));
@@ -844,6 +844,7 @@ function pzDetect(node) { // uklad w wezle: 1 wjazd + 2 galezie
   else { const tk = String(X.tl || '').split('|'), has = re => tk.some(t => t.split(';').some(x => re.test(x))), hT = has(/^through$/), hR = has(/right/), hL = has(/left/), s = ang(Y[0]) < ang(Y[1]);
     if (hT && hR !== hL) { /* turn:lanes np. through|right: galaz po stronie through jedzie prosto, druga to zjazd */ main = hR ? (s ? Y[0] : Y[1]) : (s ? Y[1] : Y[0]); exit = main === Y[0] ? Y[1] : Y[0]; type = top ? (X.lanes >= 3 && main.lanes === X.lanes - 1 ? 'C' : 'A') : 'D'; }
     else { type = 'B'; main = s ? Y[0] : Y[1]; exit = s ? Y[1] : Y[0]; } } // B: main = lewa, exit = prawa
+  if (Math.abs(ang(main)) > 75 || Math.abs(ang(exit)) > 75) return null; /* galaz zawraca/odchodzi pod duzym katem (np. petla rampy) - to nie rozwidlenie */
   return { node, X, main, exit, type, merge, auto: type, din, ang, a0: { main: ang(main), exit: ang(exit) } };
 }
 function pzAng(F, br, P) { return ['G', 'V', 'O'].map(e => { const din = pzB(pzEng(e, F.X.P, F.X.hw, F.X.lanes), F.node), a = pzN(pzB(F.node, pzEng(e, P || br.P, br.hw, br.lanes)) - din); return { e, a, c: PZ_T[e](Math.abs(a)) }; }); }

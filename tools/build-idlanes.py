@@ -20,6 +20,7 @@ header = """// ==UserScript==
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
+// @match        https://www.openstreetmap.org/id*
 // @match        https://ideditor.com/*
 // @match        https://ideditor.netlify.app/*
 // @grant        none

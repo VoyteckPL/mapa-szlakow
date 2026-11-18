@@ -436,6 +436,11 @@ function layout() {
       if (TAPER2 && R[G[0].i].lanes !== R[G[1].i].lanes) skelLanes(G, C, R); // zmiana liczby pasow na szkielecie (jak w piaskownicy)
       continue;
     }
+    if (G.length >= 3 && new Set(G.map(e => e.i)).size === G.length && TAPER2) { /* wezel wielodrogowy: najbardziej prosta para ramion o roznej liczbie pasow zwęza sie plynnie jak przy zwezeniu 2-drozn. */
+      const U = G.map(e => unitFrom(C[e.i], e.st)); let bp = -1, bq = -1, bd = -0.6;
+      for (let p = 0; p < G.length; p++) for (let q = p + 1; q < G.length; q++) { const d = U[p][0] * U[q][0] + U[p][1] * U[q][1]; if (d < bd && R[G[p].i].lanes !== R[G[q].i].lanes) { bd = d; bp = p; bq = q; } }
+      if (bp >= 0 && G.length === 4) { skelLanes([G[bp], G[bq]], C, R); }
+    }
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
       const lw0 = e => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[e.i].hw || ''), hi = G.filter(e => !lw0(e));
       if (hi.length === 2) { /* dwie drogi wyzszej klasy + dojazd niskiej klasy: zmiana liczby pasow tylko miedzy dwiema glownymi (zwezenie jak na zwyklym zlaczu), dojazd to zwykle T */

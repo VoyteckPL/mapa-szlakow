@@ -690,9 +690,9 @@ function layout() {
     const arms = G.map(e => { const E = edgeOf[e.i]; if (!E) return null; const j = e.st ? 0 : E.Lf.length - 1, u = unitFrom(C[e.i], e.st), Lp = e.st ? E.Lf[j] : E.Rt[j], Rp = e.st ? E.Rt[j] : E.Lf[j]; return { e, u, Lp, Rp, ang: Math.atan2(u[1], u[0]), len: C[e.i].cum[C[e.i].cum.length - 1] }; }).filter(Boolean).sort((a, b) => a.ang - b.ang);
     if (arms.length < 3) continue; const lyK = Math.max(...arms.map(a => R[a.e.i].ly | 0));
     for (let q = 0; q < arms.length; q++) { const A = arms[q], B = arms[(q + 1) % arms.length], cr = A.u[0] * B.u[1] - A.u[1] * B.u[0], dt = A.u[0] * B.u[0] + A.u[1] * B.u[1]; if (cr <= 0.05) continue; /* kat CCW od A do B w (0, 180) st. */
-      const phi = Math.acos(Math.max(-1, Math.min(1, dt))); if (phi < 0.35 || phi > 2.9) continue;
-      const P0 = A.Rp, P1 = B.Lp, den = A.u[0] * B.u[1] - A.u[1] * B.u[0], t = ((P1[0] - P0[0]) * B.u[1] - (P1[1] - P0[1]) * B.u[0]) / den, I = [P0[0] + A.u[0] * t, P0[1] + A.u[1] * t]; if (dist(I, P0) > 25) continue;
-      let r = rr0, L = r / Math.tan(phi / 2); const Lm = Math.min(12, A.len * 0.45, B.len * 0.45); if (L > Lm) { r *= Lm / L; L = Lm; } if (L < 0.3) continue;
+      const phi = Math.acos(Math.max(-1, Math.min(1, dt))); if (phi < 0.35 || phi > 2.75) continue;
+      const P0 = A.Rp, P1 = B.Lp, den = A.u[0] * B.u[1] - A.u[1] * B.u[0], t = ((P1[0] - P0[0]) * B.u[1] - (P1[1] - P0[1]) * B.u[0]) / den, I = [P0[0] + A.u[0] * t, P0[1] + A.u[1] * t]; if (dist(I, P0) > 25 || (I[0] - P0[0]) * A.u[0] + (I[1] - P0[1]) * A.u[1] < -0.3 || (I[0] - P1[0]) * B.u[0] + (I[1] - P1[1]) * B.u[1] < -0.3) continue; /* naroznik musi lezec 'za' poczatkami krawedzi ramion (po stronie wezla) */
+      let L = rr0 * 1.6, r = L * Math.tan(phi / 2); const Lm = Math.min(14, A.len * 0.45, B.len * 0.45); if (L > Lm) { r *= Lm / L; L = Lm; } if (L < 0.2) continue; /* suwak = dlugosc stycznej (rowny wzrost niezaleznie od kata ramion) */
       const T1 = [I[0] + A.u[0] * L, I[1] + A.u[1] * L], T2 = [I[0] + B.u[0] * L, I[1] + B.u[1] * L], bs = [A.u[0] + B.u[0], A.u[1] + B.u[1]], bl = Math.hypot(bs[0], bs[1]) || 1, cc = [I[0] + bs[0] / bl * r / Math.sin(phi / 2), I[1] + bs[1] / bl * r / Math.sin(phi / 2)];
       let a1 = Math.atan2(T1[1] - cc[1], T1[0] - cc[0]), a2 = Math.atan2(T2[1] - cc[1], T2[0] - cc[0]), da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       const arc = []; for (let w = 0; w <= 14; w++) arc.push([cc[0] + r * Math.cos(a1 + da * w / 14), cc[1] + r * Math.sin(a1 + da * w / 14)]);
@@ -700,12 +700,9 @@ function layout() {
       for (const l of lines.slice()) { if (l.st !== 'p2' || (l.ly | 0) !== lyK) continue; let run = []; const out = []; for (const p of l.P) { if (inW(p)) { if (run.length) out.push(run); run = []; } else run.push(p); } if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue; const keepP = out.filter(o => { let t = 0; for (let z = 1; z < o.length; z++) t += dist(o[z - 1], o[z]); return t > 1.5; }); l.P = keepP[0] || []; for (let w2 = 1; w2 < keepP.length; w2++) lines.push({ P: keepP[w2], st: 'p2', ly: l.ly }); }
       polys.push({ P: wp, L: arc, R: [], kerb: true, ly: lyK, br: false, ed: true }); } }
     for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
-  for (const [k, G] of ends) { /* Node Controller: reczne poszerzenie wezla (suwak 'Szerokosc wezla') - asfaltowy krazek wokol wezla, krawedzie drog wewnatrz znikaja */
-    const ex = S.nodeW && S.nodeW[k]; if (!(ex > 0.05) || (nodeRoads.get(k) || []).length < 2) continue;
-    const c0 = orient(C[G[0].i], G[0].st).Q[0], rr = Math.max(...G.map(e => rw(R[e.i]))) / 2 + ex, lyN = Math.max(...G.map(e => R[e.i].ly | 0)), ring = []; for (let q = 0; q < 36; q++) ring.push([c0[0] + rr * Math.cos(q * Math.PI / 18), c0[1] + rr * Math.sin(q * Math.PI / 18)]);
-    for (const l of lines.slice()) { if (l.st !== 'p2' || (l.ly | 0) !== lyN) continue; let run = []; const out = []; for (const p of l.P) { if (dist(p, c0) < rr - 0.3) { if (run.length) out.push(run); run = []; } else run.push(p); } if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue; l.P = out[0] || []; for (let q = 1; q < out.length; q++) lines.push({ P: out[q], st: 'p2', ly: l.ly }); }
-    for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
-    polys.push({ P: ring, L: ring.concat([ring[0]]), R: [], kerb: true, ly: lyN, br: false, ed: true }); }
+  for (const [k, G] of ends) { /* Node Controller: przy recznym promieniu linie krawedzi ramion nie sa rysowane wewnatrz asfaltu (zostaje tylko wspolny obrys) */
+    const rr0 = S.nodeR && S.nodeR[k]; if (rr0 == null || rr0 <= 0.05 || G.length < 3) continue; const gi = new Set(G.map(e => e.i));
+    for (const l of lines) { if (l.st !== 'p2' || l.arc) continue; const ri = (() => { const jj = lines.indexOf(l); for (let i2 = R.length - 1; i2 >= 0; i2--) if (rng[i2] && jj >= rng[i2][0]) return i2; return -1; })(); if (gi.has(ri)) l.noInt = true; } }
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], unit = a => { const l = Math.hypot(a[0], a[1]); return l > 1e-9 ? [a[0] / l, a[1] / l] : null; };
   const krn = [];
   for (const l of lines) { /* zaokraglenie ostrych/sfazowanych naroznikow krawedzi (krotki odcinek <1,2 m laczacy dwa prawie prostopadle kierunki -> luk) */
@@ -823,7 +820,7 @@ function drawGroup(g, ly) {
     const [M, E, Bd, E2, L2] = EDGE_C, mg = M.getContext('2d'), eg = E.getContext('2d'), bg = Bd.getContext('2d'), tr = g.getTransform(), dp = tr.a;
     mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, cw, ch); mg.setTransform(tr); mg.beginPath();
     for (const q of Lp) if (q.P.length > 2 && q.ed) { let P = q.P.map(w2s), ar = 0; for (let i = 0; i < P.length; i++) { const a2 = P[i], b2 = P[(i + 1) % P.length]; ar += a2[0] * b2[1] - b2[0] * a2[1]; } if (ar < 0) P = P.reverse(); P.forEach((p, i) => i ? mg.lineTo(p[0], p[1]) : mg.moveTo(p[0], p[1])); mg.closePath(); }
-    mg.fillStyle = mg.strokeStyle = '#fff'; mg.fill('nonzero'); mg.lineJoin = 'round'; mg.lineWidth = Math.max(2.5, 0.12 * k); mg.stroke(); /* zamyka szwy miedzy sasiednimi poligonami */
+    mg.fillStyle = mg.strokeStyle = '#fff'; mg.fill('nonzero'); mg.lineJoin = 'round'; mg.lineWidth = Math.max(2.5, 0.3 * k); mg.stroke(); /* jak asfalt: zamyka waskie szczeliny miedzy sasiednimi poligonami */
     const d = Math.max(1.2, 0.2 * k * dp); /* grubosc paska [px urzadzenia] = 0,2 m jak linia ciagla */
     eg.setTransform(1, 0, 0, 1, 0, 0); eg.globalCompositeOperation = 'source-over'; eg.clearRect(0, 0, cw, ch); eg.drawImage(M, 0, 0); eg.globalCompositeOperation = 'destination-in';
     for (let q = 0; q < 12; q++) { const an = q * Math.PI / 6; eg.drawImage(M, Math.round(Math.cos(an) * d), Math.round(Math.sin(an) * d)); }
@@ -833,7 +830,7 @@ function drawGroup(g, ly) {
       e2.setTransform(1, 0, 0, 1, 0, 0); e2.globalCompositeOperation = 'source-over'; e2.clearRect(0, 0, cw, ch); e2.drawImage(M, 0, 0); e2.globalCompositeOperation = 'destination-in';
       for (let q = 0; q < 12; q++) { const an = q * Math.PI / 6; e2.drawImage(M, Math.round(Math.cos(an) * d2), Math.round(Math.sin(an) * d2)); }
       l2.setTransform(1, 0, 0, 1, 0, 0); l2.globalCompositeOperation = 'source-over'; l2.clearRect(0, 0, cw, ch); l2.setTransform(tr); l2.lineCap = 'butt'; l2.lineJoin = 'round'; l2.strokeStyle = '#f2f2f2'; l2.lineWidth = Math.max(1, LS.p2.w * k);
-      for (const l of Ll) if (l.st === 'p2') { pathOf(l2, l.P, false); l2.stroke(); }
+      for (const l of Ll) if (l.st === 'p2' && !l.noInt) { pathOf(l2, l.P, false); l2.stroke(); }
       l2.setTransform(1, 0, 0, 1, 0, 0); l2.globalCompositeOperation = 'destination-in'; l2.drawImage(E2, 0, 0); bg.globalCompositeOperation = 'source-over'; bg.drawImage(L2, 0, 0); }
     EDGE_PEND = Bd; }
   for (const q of Lp) if (q.P.length > 2) { if (ly > 0 && q.br) { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const E of [q.L, q.R]) { /* dzwigar/fasada pomostu widoczna od spodu */ g.save(); g.translate(0.5 * k, 0.65 * k); pathOf(g, E, false); g.strokeStyle = '#43474d'; g.lineWidth = Math.max(2.5, 0.95 * k); g.stroke(); g.translate(-0.22 * k, -0.28 * k); pathOf(g, E, false); g.strokeStyle = '#8d9197'; g.lineWidth = Math.max(1.5, 0.38 * k); g.stroke(); g.restore(); /* barierki mostu: betonowy parapet 3D: cien rzucony na jezdnie, ciemna sciana boczna, jasny wierzch z listwa swiatla i slupki */ const sh = 0.55 * k; g.save(); g.translate(sh * 0.7, sh * 0.8); pathOf(g, E, false); g.strokeStyle = 'rgba(10,12,16,.32)'; g.lineWidth = Math.max(2.5, 0.75 * k); g.stroke(); g.restore(); pathOf(g, E, false); g.strokeStyle = '#6b6f75'; g.lineWidth = Math.max(2.5, 0.72 * k); g.stroke(); g.save(); g.translate(-0.07 * k, -0.09 * k); pathOf(g, E, false); g.strokeStyle = '#b4b8bd'; g.lineWidth = Math.max(1.5, 0.5 * k); g.stroke(); pathOf(g, E, false); g.strokeStyle = '#e4e6e9'; g.lineWidth = Math.max(1, 0.2 * k); g.stroke(); g.restore(); g.save(); pathOf(g, E, false); g.setLineDash([Math.max(1, 0.18 * k), Math.max(3, 4 * k)]); g.strokeStyle = '#555960'; g.lineWidth = Math.max(2.5, 0.74 * k); g.stroke(); g.restore(); } } }
@@ -860,7 +857,7 @@ function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
   { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } } }
-  drawTiles(); try { updNr(); } catch (e) {}
+  drawTiles(); try { updNr(); updLw(); } catch (e) {}
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; try { DUP = dupScan(); } catch (e) { DUP = []; console.warn('dupScan', e); } try { PZI = pzScan(); } catch (e) { PZI = []; console.warn('pzScan', e); } }
   if ($('cLay').checked) {
@@ -916,20 +913,26 @@ function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 
 /* Node Controller: reczny promien rogow skrzyzowania T (suwak po zaznaczeniu wezla), zapis w localStorage */
 try { S.nodeR = JSON.parse(localStorage.getItem('edNodeR') || '{}') || {}; } catch (e) { S.nodeR = {}; }
 try { S.nodeW = JSON.parse(localStorage.getItem('edNodeW') || '{}') || {}; } catch (e) { S.nodeW = {}; }
+function updLw() { /* Node Controller: szerokosc pasa wybranej drogi (suwak przy dolnej krawedzi) */
+  let bar = document.getElementById('lwbar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'lwbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:84px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
+    bar.innerHTML = 'Szerokość pasa <input type="range" id="lwv" min="2" max="4.5" step="0.05" style="width:120px"> <b id="lwt" style="min-width:52px;display:inline-block"></b>'; document.body.appendChild(bar);
+    bar.querySelector('#lwv').oninput = e => { const r = S.doc.road[S.sel]; if (!r) return; if (!bar.dataset.pushed) { try { push(); } catch (x) {} bar.dataset.pushed = '1'; } r.lw = +(+e.target.value).toFixed(2); try { save(); } catch (x) {} touch(); };
+    bar.querySelector('#lwv').onchange = () => { delete bar.dataset.pushed; }; }
+  const r = S.doc && S.doc.road && S.doc.road[S.sel]; bar.style.display = r ? 'flex' : 'none'; if (!r) { bar.dataset.i = ''; return; }
+  const key = S.sel + '|' + r.lw; if (bar.dataset.i !== key) { bar.dataset.i = key; bar.querySelector('#lwv').value = r.lw || 3.5; bar.querySelector('#lwt').textContent = (r.lw || 3.5).toFixed(2) + ' m × ' + r.lanes; }
+}
 function updNr() {
   let bar = document.getElementById('nrbar');
   if (!bar) { bar = document.createElement('div'); bar.id = 'nrbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
-    bar.style.flexWrap = 'wrap'; bar.style.maxWidth = '340px'; bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button><br>Szerokość węzła <input type="range" id="nwv" min="0" max="12" step="0.5" style="width:110px"> <b id="nwt" style="min-width:42px;display:inline-block"></b> <button id="nwa" style="font:inherit;padding:2px 6px">0</button>'; document.body.appendChild(bar);
+    bar.style.flexWrap = 'wrap'; bar.style.maxWidth = '340px'; bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button>'; document.body.appendChild(bar);
     const save = () => { try { localStorage.setItem('edNodeR', JSON.stringify(S.nodeR)); } catch (e) {} };
     bar.querySelector('#nrv').oninput = e => { if (bar.dataset.k) { S.nodeR[bar.dataset.k] = +e.target.value; save(); touch(); } };
-    const saveW = () => { try { localStorage.setItem('edNodeW', JSON.stringify(S.nodeW)); } catch (e) {} };
-    bar.querySelector('#nwv').oninput = e => { if (bar.dataset.k) { S.nodeW[bar.dataset.k] = +e.target.value; saveW(); touch(); } };
-    bar.querySelector('#nwa').onclick = () => { if (bar.dataset.k) { delete S.nodeW[bar.dataset.k]; saveW(); touch(); } };
     bar.querySelector('#nra').onclick = () => { if (bar.dataset.k) { delete S.nodeR[bar.dataset.k]; save(); touch(); } }; }
   const r = S.doc && S.doc.road && S.doc.road[S.sel], k = r && S.vsel >= 0 ? r.nk[S.vsel] : null;
   let show = false; if (k) { let deg = 0; for (const q of S.doc.road) if (q.nk.includes(k)) deg++; show = deg >= 2; }
   bar.style.display = show ? 'flex' : 'none'; if (!show) { bar.dataset.k = ''; return; }
-  const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v) + '|' + String(S.nodeW[k])) { bar.dataset.k = k; bar.dataset.v = String(v) + '|' + String(S.nodeW[k]); const w = S.nodeW[k] || 0; bar.querySelector('#nwv').value = w; bar.querySelector('#nwt').textContent = w ? '+' + w + ' m' : '0'; bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
+  const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v)) { bar.dataset.k = k; bar.dataset.v = String(v); bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
 }
 function touch() { S.dirty = true; render(); }
 function say(t) { $('st').textContent = t; }

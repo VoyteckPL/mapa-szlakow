@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pasy w iD (Roads and Lanes)
 // @namespace    https://github.com/VoyteckPL/mapa-szlakow
-// @version      2026.11.18.0757
+// @version      2026.11.18.0823
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
@@ -413,7 +413,7 @@ function layout() {
     const addLine = (P, st, kp) => { kp = kp || keep; let run = []; for (let j = 0; j < n; j++) { if (kp[j]) run.push(P[j]); else { if (run.length > 1) lines.push({ P: run, st }); run = []; } } if (run.length > 1) lines.push({ P: run, st }); };
     const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0;
     const Lf = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
-    polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb }); edgeOf[i] = { Lf, Rt };
+    polys.push({ P: Lf.concat(Rt.slice().reverse()), L: Lf, R: Rt, kerb: r.kerb, ed: !!(r.edge || /^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|busway|road|construction)/.test(r.hw || '')) }); edgeOf[i] = { Lf, Rt };
     const nl = ex ? Math.max(1, Math.round(c.w[0] / r.lw)) : Math.max(1, r.lanes | 0);
     if (ex) { let run = []; const es = c.side, EP = offsetPts(Q, c.d.map((v, jj) => v + es * c.w[jj] / 2)); for (let j = 0; j <= n; j++) { if (j < n && keep[j] && c.e[j] > 0.12) run.push(EP[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p1' }); run = []; } } }
     if (c.lat && r.marked) { const lo = c.d.map((v, j) => v - c.w[j] / 2), hi = c.d.map((v, j) => v + c.w[j] / 2); const lwr = r.lw || 3.75, mm = c.w.map(v => v / lwr), full = mm.map(m => Math.abs(m - Math.round(m)) < 0.04), mx = Math.round(Math.max(...mm));
@@ -517,7 +517,7 @@ function layout() {
         if (!E1 || !E2) { lines.forEach((l, q) => { if (snap[q]) l.P = snap[q]; }); continue; } /* krawedzie nie dochodza do stycznych luku: nie ciac (luk bylby oderwany od linii) */
         lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
         lines.push({ P: [E1 || f.T1, ...f.arc, E2 || f.T2], st: 'p2', ly, arc: true }); /* brak krawedzi do ucięcia przy stycznej: luk zaczyna sie w punkcie stycznym */
-        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: false, ly, br: false }); /* krawezniki luku rysowane pozniej wzdluz wygladzonej linii */
+        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: false, ly, br: false, ed: true }); /* krawezniki luku rysowane pozniej wzdluz wygladzonej linii */
       }
     }
   }
@@ -677,6 +677,7 @@ function asphaltPat(g, k) { // tekstura asfaltu: ziarno + plamy, kafel zakotwicz
     ASPT = c; }
   const p = g.createPattern(ASPT, 'repeat'), o = w2s([0, 0]), sc = k / 40; try { p.setTransform(new DOMMatrix([sc, 0, 0, sc, o[0], o[1]])); } catch (e) {} return p;
 }
+let EDGE_C = null, EDGE_PEND = null;
 function drawGroup(g, ly) {
   const k = S.view.k; g.lineJoin = 'round'; const PAT = asphaltPat(g, k) || '#7c8083'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
   if (ly > 0) for (const q of Lp) if (q.br && q.P.length > 2) { /* cien mostu rzucony na nizsze warstwy: rozmyty, przesuniety w dol-prawo (slonce z lewej-gory), z ciemniejszym rdzeniem przy krawedzi */
@@ -686,14 +687,35 @@ function drawGroup(g, ly) {
     g.beginPath(); let any = false; for (const q of Lp) if (q.P.length > 2) { let P = q.P.map(w2s), ar = 0; for (let i = 0; i < P.length; i++) { const a2 = P[i], b2 = P[(i + 1) % P.length]; ar += a2[0] * b2[1] - b2[0] * a2[1]; } if (ar < 0) P = P.reverse(); P.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); any = true; }
     if (any) { g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill('nonzero'); g.fillStyle = PAT; g.fill('nonzero'); g.lineJoin = 'round'; g.lineWidth = Math.max(2.5, 0.3 * k); g.strokeStyle = '#7c8083'; g.stroke(); g.strokeStyle = PAT; g.stroke(); } /* obrys zakrywa waskie szczeliny miedzy sasiednimi jezdniami */
   }
+  const UN = !window.__noUnion && Lp.some(q => q.ed);
+  if (UN) { /* biala krawedz z wspolnego obrysu asfaltu (ciagla i plynna na zlaczach): maska sumy jezdni, erozja przez przesuniecia, pas = maska minus erozja */
+    const cw = g.canvas.width, ch = g.canvas.height, mk = () => { const c = document.createElement('canvas'); c.width = cw; c.height = ch; return c; };
+    EDGE_C = EDGE_C || [mk(), mk(), mk(), mk(), mk()]; for (const c of EDGE_C) if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    const [M, E, Bd, E2, L2] = EDGE_C, mg = M.getContext('2d'), eg = E.getContext('2d'), bg = Bd.getContext('2d'), tr = g.getTransform(), dp = tr.a;
+    mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, cw, ch); mg.setTransform(tr); mg.beginPath();
+    for (const q of Lp) if (q.P.length > 2 && q.ed) { let P = q.P.map(w2s), ar = 0; for (let i = 0; i < P.length; i++) { const a2 = P[i], b2 = P[(i + 1) % P.length]; ar += a2[0] * b2[1] - b2[0] * a2[1]; } if (ar < 0) P = P.reverse(); P.forEach((p, i) => i ? mg.lineTo(p[0], p[1]) : mg.moveTo(p[0], p[1])); mg.closePath(); }
+    mg.fillStyle = mg.strokeStyle = '#fff'; mg.fill('nonzero'); mg.lineJoin = 'round'; mg.lineWidth = Math.max(2.5, 0.12 * k); mg.stroke(); /* zamyka szwy miedzy sasiednimi poligonami */
+    const d = Math.max(1.2, 0.2 * k * dp); /* grubosc paska [px urzadzenia] = 0,2 m jak linia ciagla */
+    eg.setTransform(1, 0, 0, 1, 0, 0); eg.globalCompositeOperation = 'source-over'; eg.clearRect(0, 0, cw, ch); eg.drawImage(M, 0, 0); eg.globalCompositeOperation = 'destination-in';
+    for (let q = 0; q < 12; q++) { const an = q * Math.PI / 6; eg.drawImage(M, Math.round(Math.cos(an) * d), Math.round(Math.sin(an) * d)); }
+    bg.setTransform(1, 0, 0, 1, 0, 0); bg.globalCompositeOperation = 'source-over'; bg.clearRect(0, 0, cw, ch); bg.drawImage(M, 0, 0); bg.globalCompositeOperation = 'destination-out'; bg.drawImage(E, 0, 0); bg.globalCompositeOperation = 'source-in'; bg.fillStyle = '#f2f2f2'; bg.fillRect(0, 0, cw, ch);
+    { /* krawedzie wewnatrz sumy (np. miedzy sasiednimi jezdniami): zostaja tylko tam, gdzie leza dalej niz 0,5 m od obrysu */
+      const e2 = E2.getContext('2d'), l2 = L2.getContext('2d'), d2 = Math.max(2, 0.5 * k * dp);
+      e2.setTransform(1, 0, 0, 1, 0, 0); e2.globalCompositeOperation = 'source-over'; e2.clearRect(0, 0, cw, ch); e2.drawImage(M, 0, 0); e2.globalCompositeOperation = 'destination-in';
+      for (let q = 0; q < 12; q++) { const an = q * Math.PI / 6; e2.drawImage(M, Math.round(Math.cos(an) * d2), Math.round(Math.sin(an) * d2)); }
+      l2.setTransform(1, 0, 0, 1, 0, 0); l2.globalCompositeOperation = 'source-over'; l2.clearRect(0, 0, cw, ch); l2.setTransform(tr); l2.lineCap = 'butt'; l2.lineJoin = 'round'; l2.strokeStyle = '#f2f2f2'; l2.lineWidth = Math.max(1, LS.p2.w * k);
+      for (const l of Ll) if (l.st === 'p2') { pathOf(l2, l.P, false); l2.stroke(); }
+      l2.setTransform(1, 0, 0, 1, 0, 0); l2.globalCompositeOperation = 'destination-in'; l2.drawImage(E2, 0, 0); bg.globalCompositeOperation = 'source-over'; bg.drawImage(L2, 0, 0); }
+    EDGE_PEND = Bd; }
   for (const q of Lp) if (q.P.length > 2) { if (ly > 0 && q.br) { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const E of [q.L, q.R]) { /* dzwigar/fasada pomostu widoczna od spodu */ g.save(); g.translate(0.5 * k, 0.65 * k); pathOf(g, E, false); g.strokeStyle = '#43474d'; g.lineWidth = Math.max(2.5, 0.95 * k); g.stroke(); g.translate(-0.22 * k, -0.28 * k); pathOf(g, E, false); g.strokeStyle = '#8d9197'; g.lineWidth = Math.max(1.5, 0.38 * k); g.stroke(); g.restore(); /* barierki mostu: betonowy parapet 3D: cien rzucony na jezdnie, ciemna sciana boczna, jasny wierzch z listwa swiatla i slupki */ const sh = 0.55 * k; g.save(); g.translate(sh * 0.7, sh * 0.8); pathOf(g, E, false); g.strokeStyle = 'rgba(10,12,16,.32)'; g.lineWidth = Math.max(2.5, 0.75 * k); g.stroke(); g.restore(); pathOf(g, E, false); g.strokeStyle = '#6b6f75'; g.lineWidth = Math.max(2.5, 0.72 * k); g.stroke(); g.save(); g.translate(-0.07 * k, -0.09 * k); pathOf(g, E, false); g.strokeStyle = '#b4b8bd'; g.lineWidth = Math.max(1.5, 0.5 * k); g.stroke(); pathOf(g, E, false); g.strokeStyle = '#e4e6e9'; g.lineWidth = Math.max(1, 0.2 * k); g.stroke(); g.restore(); g.save(); pathOf(g, E, false); g.setLineDash([Math.max(1, 0.18 * k), Math.max(3, 4 * k)]); g.strokeStyle = '#555960'; g.lineWidth = Math.max(2.5, 0.74 * k); g.stroke(); g.restore(); } } }
+  if (EDGE_PEND) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(EDGE_PEND, 0, 0); g.restore(); EDGE_PEND = null; }
   for (const q of Lg) { pathOf(g, q.poly, true); g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill(); g.fillStyle = PAT; g.fill(); g.stroke(); }
   for (const q of Lg) if (q.cap) { g.strokeStyle = '#c9cdd2'; g.lineWidth = Math.max(1.5, 0.7 * k); g.lineCap = 'butt'; pathOf(g, q.cap, false); g.stroke(); } // koniec wyspy: krawężnik łączy się z krawężnikami jezdni
   const line = (P, st, col) => {
     const sty = LS[st] || LS.p1, one = Q => { pathOf(g, Q, false); g.setLineDash(sty.dash ? sty.dash.map(v => v * k) : []); g.lineWidth = Math.max(1, sty.w * k); g.strokeStyle = col || '#f2f2f2'; g.lineCap = 'butt'; g.stroke(); g.setLineDash([]); };
     if (sty.dbl) { one(offsetPts(P, -sty.dbl)); one(offsetPts(P, sty.dbl)); } else one(P);
   };
-  for (const l of Ll) line(l.P, l.st);
+  for (const l of Ll) { if (UN && l.st === 'p2') continue; line(l.P, l.st); }
   for (const q of Lg) {
     if (!q.nl) { line(q.A, 'p2'); line(q.B, 'p2'); }
     for (const e of q.extra || []) line(e, 'p2');
@@ -714,7 +736,7 @@ function drawGroup(g, ly) {
 const IDL = { on: true, hide: true, raf: 0 };
 function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.__idctx, window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
 function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; (document.body || document.documentElement).appendChild(b); } b.textContent = t; return b; }
-function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.__idlDom) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} return; } if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '0757' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
+function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.__idlDom) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} return; } if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '0823' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
 idWhen(ctxId => {
   const root = document.querySelector('.main-map') || document.querySelector('.supersurface') || document.querySelector('#id-container .main-content');
   const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5';
@@ -791,10 +813,10 @@ idWhen(ctxId => {
     const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
     const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:64px;bottom:40px;z-index:60;display:flex;flex-direction:column;gap:4px;font:13px system-ui;pointer-events:auto;box-shadow:0 1px 6px #0006;border-radius:8px'; mm.appendChild(bar); for (const ev of ['pointerdown', 'mousedown', 'touchstart', 'dblclick', 'wheel', 'contextmenu']) bar.addEventListener(ev, e => e.stopPropagation());
     const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:6px 12px;border:1px solid #889;border-radius:8px;background:#fff;color:#222;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
-    { const vl = document.createElement('div'); vl.textContent = 'Pasy v0757'; vl.style.cssText = 'font:11px system-ui;color:#555;background:#fff;border-radius:6px;padding:2px 6px;text-align:center'; bar.appendChild(vl); }
+    { const vl = document.createElement('div'); vl.textContent = 'Pasy v0823'; vl.style.cssText = 'font:11px system-ui;color:#555;background:#fff;border-radius:6px;padding:2px 6px;text-align:center'; bar.appendChild(vl); }
     mk('Pasy: wł.', b => { IDL.on = !IDL.on; b.textContent = 'Pasy: ' + (IDL.on ? 'wł.' : 'wył.'); });
     IDL.hide = false; mk('Linie iD: wł.', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'wył.' : 'wł.'); css(); });
-    mk('Diagnostyka', b => { const h = {}; sup.querySelectorAll('*').forEach(e => { const c = typeof e.className === 'string' ? e.className : (e.className && e.className.baseVal) || ''; const k = e.tagName.toLowerCase() + (c ? '.' + c.trim().split(/\s+/).slice(0, 3).join('.') : ''); h[k] = (h[k] || 0) + 1; }); const top = Object.entries(h).sort((x, y) => y[1] - x[1]).slice(0, 40).map(x => x[1] + 'x ' + x[0]).join('\n'); let pn = document.getElementById('idlanes-diag'); if (!pn) { pn = document.createElement('pre'); pn.id = 'idlanes-diag'; pn.style.cssText = 'position:absolute;left:8px;top:70px;z-index:70;max-width:70%;max-height:70%;overflow:auto;font:11px monospace;background:#fff;color:#222;border:1px solid #889;padding:6px;white-space:pre-wrap;pointer-events:auto'; pn.onclick = () => pn.remove(); mm.appendChild(pn); } pn.textContent = 'DIAG v0757 (klik = zamknij)\ndrogi: ' + S.doc.road.slice(0, 6).map(r => r.osm + ' lanes=' + r.lanes + ' hw=' + r.hw).join(' | ') + '\ngrafy=' + GR.length + '\n' + top; });
+    mk('Diagnostyka', b => { const h = {}; sup.querySelectorAll('*').forEach(e => { const c = typeof e.className === 'string' ? e.className : (e.className && e.className.baseVal) || ''; const k = e.tagName.toLowerCase() + (c ? '.' + c.trim().split(/\s+/).slice(0, 3).join('.') : ''); h[k] = (h[k] || 0) + 1; }); const top = Object.entries(h).sort((x, y) => y[1] - x[1]).slice(0, 40).map(x => x[1] + 'x ' + x[0]).join('\n'); let pn = document.getElementById('idlanes-diag'); if (!pn) { pn = document.createElement('pre'); pn.id = 'idlanes-diag'; pn.style.cssText = 'position:absolute;left:8px;top:70px;z-index:70;max-width:70%;max-height:70%;overflow:auto;font:11px monospace;background:#fff;color:#222;border:1px solid #889;padding:6px;white-space:pre-wrap;pointer-events:auto'; pn.onclick = () => pn.remove(); mm.appendChild(pn); } pn.textContent = 'DIAG v0823 (klik = zamknij)\ndrogi: ' + S.doc.road.slice(0, 6).map(r => r.osm + ' lanes=' + r.lanes + ' hw=' + r.hw).join(' | ') + '\ngrafy=' + GR.length + '\n' + top; });
     const st = document.createElement('style'); document.head.appendChild(st);
     const css = () => { st.textContent = IDL.hide ? ['motorway', 'trunk', 'primary', 'secondary'].map(h => '.layer-osm path.line[class*="tag-highway-' + h + '"],.layer-osm .line[class*="tag-highway-' + h + '"]').join(',') + '{display:none!important;visibility:hidden!important;opacity:0!important}' + ',g.onewaygroup,g.sidedgroup,g.onewaygroup *,g.sidedgroup *,path.oneway,path.sided,text.linelabel,text.linelabel-halo,textpath.textpath,.layer-labels,.layer-labels *,svg [class*="pathlabel"],svg [class*="textpath"],svg [class*="oneway"],svg [class*="sided"],svg [class*="onewaygroup"],svg text.pathlabel,.labels-group,.layer-osm marker,.layer-osm use[class*="oneway"]{display:none!important}' : ''; }; css();
     const ids = new WeakMap(); let nid = 0, last = '';

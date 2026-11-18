@@ -741,7 +741,9 @@ function layout() {
   S.nodeViz = [];
   if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
     if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue;
-    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const u = unitFrom(C[e.i], e.st), cum = C[e.i].cum; return { a: Math.atan2(u[1], u[0]), u, n: [-u[1], u[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(30, cum[cum.length - 1] * 0.45)) }; }).sort((p, q) => p.a - q.a);
+    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const oo = orient(C[e.i], e.st), Qs = oo.Q; let j1 = 1; while (j1 < Qs.length - 1 && dist(Qs[0], Qs[j1]) < 0.5) j1++; const u = unitFrom(Qs.length > 1 ? { ...C[e.i] } : C[e.i], e.st, 3), d0 = unit([Qs[j1][0] - Qs[0][0], Qs[j1][1] - Qs[0][1]]) || u; /* prosty odcinek od wezla: do pierwszego zakretu osi (>3 st.) - wielokat wezla nie wystaje poza droge */
+      let run = 0; for (let q = j1; q < Qs.length; q++) { const dq = unit([Qs[q][0] - Qs[q - 1][0], Qs[q][1] - Qs[q - 1][1]]); if (!dq || dq[0] * d0[0] + dq[1] * d0[1] < 0.9986) break; run = dist(Qs[0], Qs[q]); }
+      return { a: Math.atan2(d0[1], d0[0]), u: d0, n: [-d0[1], d0[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(30, run)) }; }).sort((p, q) => p.a - q.a);
     const pt = (b, kx, v, ky) => [o[0] + b[0] * kx + v[0] * ky, o[1] + b[1] * kx + v[1] * ky], dt = (p, q) => p[0] * q[0] + p[1] * q[1], N = arms.length, poly = [], r0 = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : (window.__nodeR0 != null ? window.__nodeR0 : 3), md = S.arcMode | 0;
     const ix = (p, d, q, e) => { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-9) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; };
     for (let i = 0; i < N; i++) {

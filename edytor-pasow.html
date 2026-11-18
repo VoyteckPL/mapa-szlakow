@@ -741,7 +741,7 @@ function layout() {
   S.nodeViz = [];
   if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
     if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue;
-    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const u = unitFrom(C[e.i], e.st), cum = C[e.i].cum; return { a: Math.atan2(u[1], u[0]), u, n: [-u[1], u[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(8, cum[cum.length - 1] * 0.45)) }; }).sort((p, q) => p.a - q.a);
+    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const u = unitFrom(C[e.i], e.st), cum = C[e.i].cum; return { a: Math.atan2(u[1], u[0]), u, n: [-u[1], u[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(30, cum[cum.length - 1] * 0.45)) }; }).sort((p, q) => p.a - q.a);
     const pt = (b, kx, v, ky) => [o[0] + b[0] * kx + v[0] * ky, o[1] + b[1] * kx + v[1] * ky], dt = (p, q) => p[0] * q[0] + p[1] * q[1], N = arms.length, poly = [], r0 = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : (window.__nodeR0 != null ? window.__nodeR0 : 3), md = S.arcMode | 0;
     const ix = (p, d, q, e) => { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-9) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; };
     for (let i = 0; i < N; i++) {
@@ -751,7 +751,7 @@ function layout() {
       if (gap >= Math.PI - 0.02) { poly.push(L0, R0); continue; }
       const th = Math.acos(Math.max(-1, Math.min(1, -dt(a.u, b.u)))); let rr = r0; if (md === 1 && th > 0.05) rr = r0 / th; else if (md === 2 && th > 0.05) rr = r0 / Math.tan(th / 2);
       let T1, T2, C0, ok = false;
-      for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.h + rr), o[1] + a.n[1] * (a.h + rr)], a.u, [o[0] - b.n[0] * (b.h + rr), o[1] - b.n[1] * (b.h + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= a.len * 0.8 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= b.len * 0.8) { ok = true; break; } rr *= 0.85; }
+      for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.h + rr), o[1] + a.n[1] * (a.h + rr)], a.u, [o[0] - b.n[0] * (b.h + rr), o[1] - b.n[1] * (b.h + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= a.len * 0.95 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= b.len * 0.95) { ok = true; break; } rr *= 0.85; }
       if (!ok || rr <= 0.05) { const I = ix(L0, a.u, R0, b.u); poly.push(I || L0); continue; }
       const a1 = Math.atan2(T1[1] - C0[1], T1[0] - C0[0]), a2 = Math.atan2(T2[1] - C0[1], T2[0] - C0[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       for (let q = 0; q <= 16; q++) poly.push([C0[0] + rr * Math.cos(a1 + da * q / 16), C0[1] + rr * Math.sin(a1 + da * q / 16)]);

@@ -435,11 +435,14 @@ function layout() {
       continue;
     }
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
+      const lw0 = e => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[e.i].hw || ''), hi = G.filter(e => !lw0(e));
+      if (hi.length === 2) { /* dwie drogi wyzszej klasy + dojazd niskiej klasy: zmiana liczby pasow tylko miedzy dwiema glownymi (zwezenie jak na zwyklym zlaczu), dojazd to zwykle T */
+        handled.add(k); if (TAPER2 && R[hi[0].i].lanes !== R[hi[1].i].lanes) skelLanes(hi, C, R); continue; }
       const U = G.map(e => unitFrom(C[e.i], e.st)); let xi = 0, best = 9;
       U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } });
       const ln = G.map(e => R[e.i].lanes), mx = Math.max(...ln); if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);
-      const X = G[xi], Ys = G.filter((_, a) => a !== xi), wX = rw(R[X.i]);
-      if (U[xi][0] * (U[(xi + 1) % 3][0] + U[(xi + 2) % 3][0]) + U[xi][1] * (U[(xi + 1) % 3][1] + U[(xi + 2) % 3][1]) < -1.0 && R[X.i].lanes >= Math.max(R[Ys[0].i].lanes, R[Ys[1].i].lanes)) {
+      const X = G[xi], Ys = G.filter((_, a) => a !== xi), wX = rw(R[X.i]), lowHw = e => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[e.i].hw || ''), lowMix = G.some(lowHw) && !G.every(lowHw); /* dojazd/uliczka niskiej klasy do drogi wyzszej to skrzyzowanie T, nigdy rozjazd (lacznica) */
+      if (!lowMix && U[xi][0] * (U[(xi + 1) % 3][0] + U[(xi + 2) % 3][0]) + U[xi][1] * (U[(xi + 1) % 3][1] + U[(xi + 2) % 3][1]) < -1.0 && R[X.i].lanes >= Math.max(R[Ys[0].i].lanes, R[Ys[1].i].lanes)) {
         handled.add(k);
         const T = R[X.i].lanes === 1 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1 && Ys.every(e => { const uu = unitFrom(C[e.i], e.st); return -(uu[0] * U[xi][0] + uu[1] * U[xi][1]) > 0.5; }) /* obie gałęzie < 60° od przedłużenia wjazdu; prostopadła łącznica to skrzyżowanie T, nie rozjazd */ ? 'rozjazd-1-1+1' : R[X.i].lanes === 2 && R[Ys[0].i].lanes === 1 && R[Ys[1].i].lanes === 1 ? 'rozjazd-2-1+1' : (R[X.i].lanes === 3 && R[Ys[0].i].lanes === 2 && R[Ys[1].i].lanes === 2 ? 'rozjazd-3-2+2' : R[X.i].lanes === 3 && Ys.map(e => R[e.i].lanes).sort().join() === '1,2' ? 'rozjazd-3-2+1' : (R[X.i].lanes >= 2 && R[X.i].lanes <= 6 && (R[X.i].lanes === R[Ys[0].i].lanes + R[Ys[1].i].lanes || R[X.i].lanes + 1 === R[Ys[0].i].lanes + R[Ys[1].i].lanes) ? 'rozjazd-n' : null));
         if (T) { const al = Ys.map(e => { const uu = unitFrom(C[e.i], e.st); return -(uu[0] * U[xi][0] + uu[1] * U[xi][1]); }), thr = al[0] >= al[1] ? 0 : 1, sidA = al[1 - thr]; if (sidA <= 0.5 && R[X.i].lanes === R[Ys[thr].i].lanes) continue; } /* prostopadla galaz (> 60 st. od przedluzenia) dochodzaca do jezdni o STALEJ liczbie pasow to skrzyzowanie T, nie rozjazd - bez wyginania; zmiana liczby pasow (np. 2+1 -> 3) to wlaczenie/zjazd i zostaje rozjazdem */
@@ -481,7 +484,7 @@ function layout() {
   for (const [k, G] of ends) {
     if (G.some(g => forkX.has(g.i)) || G.length !== 3 || (nodeRoads.get(k) || []).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue; // wezel 3 drog: dwie przeciwlegle (droga glowna) + boczna (slip lane)
     const Us = G.map(e => unitFrom(C[e.i], e.st)); let pr = null, bestDot = 9; for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) { const dd = Us[a][0] * Us[b][0] + Us[a][1] * Us[b][1]; if (dd < bestDot) { bestDot = dd; pr = [a, b]; } }
-    if (bestDot > -0.8) continue; const ti = [0, 1, 2].find(x => !pr.includes(x)), e = G[ti], rA = R[e.i], lb = pr.map(x => R[G[x].i].lanes | 0);
+    if (bestDot > -0.8) continue; const ti = [0, 1, 2].find(x => !pr.includes(x)), e = G[ti], rA = R[e.i], lb = pr.map(x => R[G[x].i].lanes | 0); if (/^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(rA.hw || '') && !pr.every(x => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[G[x].i].hw || ''))) continue; /* dojazd niskiej klasy do drogi wyzszej: zwykle T, bez wyspy slip lane */
     if (Math.min(...lb) <= (rA.lanes | 0) || pr.some(x => (RANK[(R[G[x].i].hw || '').replace('_link', '')] || 1) < (RANK[(rA.hw || '').replace('_link', '')] || 1))) continue;
     const cA = C[e.i], nd = orient(cA, e.st).Q[0], tB = nrm2(sub2(Us[pr[0]], Us[pr[1]])), U = Us[ti], sinT = Math.abs(tB[0] * U[1] - tB[1] * U[0]), cosT = Math.abs(tB[0] * U[0] + tB[1] * U[1]); if (sinT < 0.3) continue;
     const nB = [-tB[1], tB[0]], sd = U[0] * nB[0] + U[1] * nB[1] > 0 ? 1 : -1, wB = Math.max(...pr.map(x => rw(R[G[x].i]))), g0 = G[pr[0]], cB0 = C[g0.i], dB = (g0.st ? 1 : -1) * ((cB0.d && cB0.d[g0.st ? 0 : cB0.d.length - 1]) || 0), ext = sd > 0 ? dB + wB / 2 : -(dB - wB / 2), wA = rw(rA); /* krawedz drogi glownej po stronie slip lane (z offsetem d) */
@@ -606,7 +609,7 @@ function layout() {
       }
       if (!fil.length) continue;
       for (const f of fil) { /* wyciecie prostych krawedzi w obrebie luku i zastapienie lukiem */
-        let E1 = null, E2 = null, d1 = 3, d2 = 3; const pieces = [];
+        let E1 = null, E2 = null, d1 = 1.2, d2 = 1.2; const pieces = []; /* koniec luku szukany tylko tuz przy stycznych */
         const Lc = f.L - 0.02, nearRay = p => segDist(p, [2 * f.I[0] - f.T1[0], 2 * f.I[1] - f.T1[1]], f.T1) < 1.0 || segDist(p, [2 * f.I[0] - f.T2[0], 2 * f.I[1] - f.T2[1]], f.T2) < 1.0, inCut = p => dist(p, f.I) < Lc && nearRay(p); /* tnij tylko krawedzie lezace na prostych (wlot i jezdnia glowna) zastepowanych lukiem, nie sasiednie krawedzie waskiej rampy */
         for (const l of lines) { if (l.st !== 'p2' || l.arc) continue; let run = []; const out = []; /* luki wczesniej zrobionych fillet nie sa ciete (przy waskiej rampie luk jednej strony wchodzil w zasieg drugiej i znikal) */
           const PP = []; for (let q = 0; q < l.P.length; q++) { const a = l.P[q]; if (q > 0) { const b = l.P[q - 1], da = dist(a, f.I) - Lc, db = dist(b, f.I) - Lc; if (da * db < 0 && nearRay([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) ) { let lo = 0, hi = 1; for (let it = 0; it < 24; it++) { const m = (lo + hi) / 2, pm = [b[0] + (a[0] - b[0]) * m, b[1] + (a[1] - b[1]) * m]; if ((dist(pm, f.I) - Lc) * db > 0) lo = m; else hi = m; } const mm = (lo + hi) / 2; PP.push([b[0] + (a[0] - b[0]) * mm, b[1] + (a[1] - b[1]) * mm]); } } PP.push(a); } /* dokladne punkty na okregu ciecia: krawedz konczy sie dokladnie tam, gdzie zaczyna sie luk (bez szczeliny) */
@@ -624,8 +627,8 @@ function layout() {
   for (const [k, G] of ends) { /* zlacze dwoch drog: krawedziowe linie ciagle laczymy odcinkami (bez luk i uskokow na zakretach) */
     if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
     const nd = orient(C[G[0].i], G[0].st).Q[0], E = [];
-    lines.forEach(l => { if (l.st !== 'p2' || l.P.length < 2) return; [0, l.P.length - 1].forEach(j => { if (dist(l.P[j], nd) < 5) E.push({ l, j, p: l.P[j] }); }); });
-    const roadOfLine = l => { const j = lines.indexOf(l); for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) return i; return -1; }; /* nie lacz dwoch krawedzi tej samej drogi (waski most: krawedzie leza blizej niz 4,5 m) */
+    const roadOfLine = l => { const j = lines.indexOf(l); for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) return i; return -1; };
+    lines.forEach(l => { if (l.st !== 'p2' || l.arc || l.P.length < 2) return; const eg = G.find(g => g.i === roadOfLine(l)); if (!eg) return; const j = eg.st ? 0 : l.P.length - 1; if (dist(l.P[j], nd) < 5) E.push({ l, j, p: l.P[j] }); }); /* tylko koniec krawedzi lezacy przy TYM wezle */ /* nie lacz dwoch krawedzi tej samej drogi (waski most: krawedzie leza blizej niz 4,5 m) */
     const pairs = []; for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) if (E[x].l !== E[y].l && (E[x].l.ly | 0) === (E[y].l.ly | 0) && roadOfLine(E[x].l) !== roadOfLine(E[y].l)) { const d = dist(E[x].p, E[y].p); if (d > 0.02 && d < 4.5) pairs.push([d, x, y]); } /* mosty/wiadukty (inna warstwa) nie lacza sie krawedziami ze zwykla droga: tam sa barierki */
     pairs.sort((u, v) => u[0] - v[0]); const used = new Set();
     const isect = (A, B, C2, D2) => { const r = [B[0] - A[0], B[1] - A[1]], q = [D2[0] - C2[0], D2[1] - C2[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return null; const t = ((C2[0] - A[0]) * q[1] - (C2[1] - A[1]) * q[0]) / den; return [A[0] + r[0] * t, A[1] + r[1] * t]; };

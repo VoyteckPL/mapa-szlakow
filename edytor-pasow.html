@@ -410,6 +410,10 @@ function finalizeLanes(C, R) {
       const L = wA * LA + wB * LB, Rr = wA * RA + wB * RB; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
 }
 function layout() {
+  if (window.__nodeGeom) { /* wspolny wezel = jeden punkt: koncowki z tym samym kluczem, przesuniete wzgledem siebie (<3 m), sprowadz do punktu odniesienia (wierzcholek drogi przelotowej albo pierwszej drogi) */
+    const ref = new Map(); S.doc.road.forEach(r => r.pts.forEach((q, j) => { const k = r.nk[j]; if (k && j > 0 && j < r.pts.length - 1 && !ref.has(k)) ref.set(k, q); })); S.doc.road.forEach(r => [0, r.pts.length - 1].forEach(j => { const k = r.nk[j]; if (k && !ref.has(k)) ref.set(k, r.pts[j]); }));
+    S.doc.road.forEach(r => [0, r.pts.length - 1].forEach(j => { const k = r.nk[j]; if (!k) return; const q = ref.get(k); if (q && q !== r.pts[j]) { const d = dist(q, r.pts[j]); if (d > 0.02 && d < 3) { r.pts[j] = q.slice(); if (Array.isArray(r.rp) && r.rp.length === r.pts.length) r.rp[j] = q.slice(); } } }));
+  }
   if (window.__nodeGeom) { /* droga przechodzaca przez wezel, w ktorym konczy sie droga niska (service itp.): tnij ja w tym wezle, zeby powstal wezel skrzyzowania */
     const LOW = /^(service|residential|living_street|unclassified|busway|road|construction|track)/, endLow = new Set();
     S.doc.road.forEach(r => { if (!LOW.test(r.hw || '')) return; [0, r.pts.length - 1].forEach(j => { if (r.nk[j]) endLow.add(r.nk[j]); }); });

@@ -583,13 +583,15 @@ function layout() {
       const uC = U[ci], t0 = [U[a][0] - U[b][0], U[a][1] - U[b][1]], tl = Math.hypot(t0[0], t0[1]) || 1, t = [t0[0] / tl, t0[1] / tl], nt = [-t[1], t[0]];
       const hC = rw(R[eC.i]) / 2, hT = Math.max(rw(R[eA.i]), rw(R[eB.i])) / 2, nC = [-uC[1], uC[0]], dn = uC[0] * nt[0] + uC[1] * nt[1];
       if (Math.abs(dn) < 0.5) continue;
-      const sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
+      const cCum = C[eC.i].cum, lenC = cCum[cCum.length - 1], farJ = (nodeRoads.get(R[eC.i].nk[eC.st ? R[eC.i].nk.length - 1 : 0]) || []).length >= 3, sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
       for (const s of [-1, 1]) {
-        const lam = (sg * hT - s * hC * (nC[0] * nt[0] + nC[1] * nt[1])) / dn, I = [o[0] + nC[0] * s * hC + uC[0] * lam, o[1] + nC[1] * s * hC + uC[1] * lam];
+        const sdX = (nC[0] * s * t[0] + nC[1] * s * t[1]) >= 0 ? 1 : -1, eX = sdX > 0 ? eA : eB, oX = orient(C[eX.i], eX.st), uX = unitFrom(C[eX.i], eX.st), nX = [-uX[1], uX[0]], dnX = uC[0] * nX[0] + uC[1] * nX[1];
+        let ed = oX.d[0] + (oX.w[0] / 2) * (dnX >= 0 ? 1 : -1); /* krawedz drogi przelotowej po tej stronie wg jej rzeczywistej szerokosci i offsetu (a nie wspolna dla obu ramion) */
+        const Pe = [oX.Q[0][0] + nX[0] * ed, oX.Q[0][1] + nX[1] * ed], lam = Math.abs(dnX) > 0.3 ? ((Pe[0] - o[0] - nC[0] * s * hC) * nX[0] + (Pe[1] - o[1] - nC[1] * s * hC) * nX[1]) / dnX : (sg * hT - s * hC * (nC[0] * nt[0] + nC[1] * nt[1])) / dn, I = [o[0] + nC[0] * s * hC + uC[0] * lam, o[1] + nC[1] * s * hC + uC[1] * lam];
         if (lam < -hT * 4 || lam > 40) continue;
         const u1 = uC, sd = (nC[0] * s * t[0] + nC[1] * s * t[1]) >= 0 ? 1 : -1, u2 = [t[0] * sd, t[1] * sd], cs = u1[0] * u2[0] + u1[1] * u2[1], phi = Math.acos(Math.max(-1, Math.min(1, cs)));
         if (phi < 0.35 || phi > 2.9) continue;
-        let r = FR, L = r / Math.tan(phi / 2); if (L > 9) { r *= 9 / L; L = 9; }
+        let r = FR, L = r / Math.tan(phi / 2), Lm = 9; if (farJ) Lm = Math.min(Lm, (lenC - 2 * Math.abs(lam)) / 2); if (Lm < 1.5) continue; /* za malo miejsca na wyspie - bez luku (naroznik prosty) */ /* krotka droga laczaca dwa wezly (przerwa w pasie rozdzielajacym): luki obu koncow nie moga na siebie nachodzic */ if (L > Lm) { r *= Lm / L; L = Lm; }
         const T1 = [I[0] + u1[0] * L, I[1] + u1[1] * L], T2 = [I[0] + u2[0] * L, I[1] + u2[1] * L], bs = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(bs[0], bs[1]) || 1, cc = [I[0] + bs[0] / bl * r / Math.sin(phi / 2), I[1] + bs[1] / bl * r / Math.sin(phi / 2)];
         let a1 = Math.atan2(T1[1] - cc[1], T1[0] - cc[0]), a2 = Math.atan2(T2[1] - cc[1], T2[0] - cc[0]), da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
         const arc = []; for (let q = 0; q <= 14; q++) arc.push([cc[0] + r * Math.cos(a1 + da * q / 14), cc[1] + r * Math.sin(a1 + da * q / 14)]);

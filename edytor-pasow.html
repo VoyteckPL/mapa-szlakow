@@ -740,7 +740,7 @@ function layout() {
     l.P = P; if (l.arc) polys.push({ P: [P[0], P[0], P[0]], L: P, R: [], kerb: true, ly: l.ly, br: false }); }
   S.nodeViz = [];
   if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
-    if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue; if (G.some(e => /^(motorway|trunk)/.test(R[e.i].hw || ''))) continue;
+    if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue;
     const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const u = unitFrom(C[e.i], e.st), cum = C[e.i].cum; return { a: Math.atan2(u[1], u[0]), u, n: [-u[1], u[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(8, cum[cum.length - 1] * 0.45)) }; }).sort((p, q) => p.a - q.a);
     const pt = (b, kx, v, ky) => [o[0] + b[0] * kx + v[0] * ky, o[1] + b[1] * kx + v[1] * ky], dt = (p, q) => p[0] * q[0] + p[1] * q[1], N = arms.length, poly = [], r0 = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : (window.__nodeR0 != null ? window.__nodeR0 : 3), md = S.arcMode | 0;
     const ix = (p, d, q, e) => { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-9) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; };

@@ -895,11 +895,12 @@ function drawGroup(g, ly) {
   for (const a of La) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }
 function drawNodeDash() {
+  if (window.__nodeGeom && L) { /* tryb geometrii wezlow: rysowane tylko pasy drog i wezly (bez asfaltu, linii i kraweznikow) */
+    ctx.save(); ctx.lineJoin = 'round'; for (let i = 0; i < S.doc.road.length; i++) { let G = null; try { G = laneGeom(i); } catch (e) {} if (!G) continue; for (let q = 0; q < G.NL; q++) { const A0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + q * G.lw[j])), B0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (q + 1) * G.lw[j])); pathOf(ctx, A0.concat(B0.slice().reverse()), true); ctx.fillStyle = q % 2 ? 'rgba(120,128,134,.9)' : 'rgba(132,140,146,.9)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1; ctx.stroke(); } }
+    for (const nv of S.nodeViz || []) { pathOf(ctx, nv.poly, true); ctx.fillStyle = 'rgba(150,156,162,.95)'; ctx.fill(); } ctx.restore(); }
   if (window.__nodeGeom && S.nodeViz) for (const nv of S.nodeViz) { /* widoczna geometria wezla: obrys wielokata (przerywany) i luki w narozach (niebieskie) */
     ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = '#f5b400'; ctx.beginPath(); nv.poly.forEach((q, i) => { const w = w2s(q); i ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.closePath(); ctx.stroke();
     if (nv.arcs.length > 1) { ctx.setLineDash([]); ctx.lineWidth = 3; ctx.strokeStyle = '#ffc400'; for (let q = 0; q < nv.arcs.length; q++) { const A0 = nv.arcs[q], B0 = nv.arcs[(q + 1) % nv.arcs.length], e1 = w2s(A0[A0.length - 1]), s1 = w2s(B0[0]); ctx.beginPath(); ctx.moveTo(e1[0], e1[1]); ctx.lineTo(s1[0], s1[1]); ctx.stroke(); } }
-    ctx.setLineDash([8, 6]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,.95)'; for (const m of nv.lanes) { const lw = 2 * m.h / m.nl; for (let q = 1; q < m.nl; q++) { const off = -m.h + q * lw, A = w2s([nv.o[0] + m.n[0] * off, nv.o[1] + m.n[1] * off]), B = w2s([nv.o[0] + m.n[0] * off + m.u[0] * m.len, nv.o[1] + m.n[1] * off + m.u[1] * m.len]); ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(B[0], B[1]); ctx.stroke(); } }
-    ctx.setLineDash([]); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(255,255,255,.95)'; for (const m of nv.lanes) { const lw = 2 * m.h / m.nl; for (let q = 0; q < m.nl; q++) { const off = -m.h + (q + 0.5) * lw, C0 = w2s([nv.o[0] + m.n[0] * off, nv.o[1] + m.n[1] * off]), D0 = w2s([nv.o[0] + m.n[0] * off + m.u[0] * 1.2, nv.o[1] + m.n[1] * off + m.u[1] * 1.2]); ctx.beginPath(); ctx.moveTo(C0[0], C0[1]); ctx.lineTo(D0[0], D0[1]); ctx.stroke(); ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.arc(D0[0], D0[1], 2.5, 0, 7); ctx.fill(); } }
     ctx.setLineDash([]); ctx.lineWidth = 3.5; ctx.strokeStyle = '#0050ff'; for (const ar of nv.arcs) { ctx.beginPath(); ar.forEach((q, j) => { const w = w2s(q); j ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.stroke(); } ctx.restore(); }
   if (S.msel && S.msel.size) for (const { i, q } of S.msel.values()) { const G = laneGeom(i); if (!G || q < 0 || q >= G.NL) continue; const A0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + q * G.lw[j])), B0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (q + 1) * G.lw[j])); ctx.save(); pathOf(ctx, A0.concat(B0.slice().reverse()), true); ctx.fillStyle = 'rgba(255,122,0,.35)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,122,0,.95)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
   { const nb = document.getElementById('nrbar'), nk = nb && nb.style.display !== 'none' ? nb.dataset.k : ''; /* geometria przejscia wybranego wezla: przerywana os drog na dlugosci przejscia + znaczniki poczatku i konca */
@@ -916,7 +917,7 @@ function render() {
   drawTiles(); try { updNr(); updLw(); } catch (e) {}
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; try { DUP = dupScan(); } catch (e) { DUP = []; console.warn('dupScan', e); } try { PZI = pzScan(); } catch (e) { PZI = []; console.warn('pzScan', e); } }
-  if ($('cLay').checked) {
+  if ($('cLay').checked && !window.__nodeGeom) {
     octx.setTransform(DPR, 0, 0, DPR, 0, 0); octx.clearRect(0, 0, W, H); drawLayer(octx);
     ctx.globalAlpha = +$('rA').value; ctx.drawImage(off, 0, 0, W, H); ctx.globalAlpha = 1;
   }

@@ -533,9 +533,9 @@ function layout() {
       const hideN = p => connNb[i].some(j => inPoly(p, PO[j])), baseE = sg => keepE.map((v, j) => v && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s)), mkE = (P, sg) => baseE(sg).map((v, j) => v && !inB(P[j]) && !hideN(P[j]));
       const plen = P => { let t = 0; for (let j = 1; j < P.length; j++) t += dist(P[j - 1], P[j]); return t; }, slipIn = c.slip && c.slip.length && /_link/.test(r.hw || '') ? (plen(PLe) > plen(PRe) ? -1 : 1) : 0; /* slip lane: strona od wyspy (wewnetrzna) bez bialej linii - tam jest krawieznik */
       const edgeLine = (P, sg) => { const mk = mkE(P, sg);
-        if (len > 40 || n < 2) { addLine(P, 'p2', mk); return; }
+        if (n < 2) { addLine(P, 'p2', mk); return; }
         /* krotka droga (laczy dwa wezly, np. przejazd przez pas rozdzielajacy): krawedz dzielona co ok. 0,3 m, zeby ukrycie pod sasiednia jezdnia konczylo sie dokladnie na jej krawedzi, a nie na najblizszym wierzcholku co 2 m */
-        const bs = baseE(sg), Pd = [], md = []; for (let j = 0; j < n - 1; j++) { const a = P[j], b = P[j + 1], m = Math.max(1, Math.ceil(dist(a, b) / 0.3)); for (let q = 0; q < m; q++) { const t = q / m, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], jn = t < 0.5 ? j : j + 1; Pd.push(p); md.push(bs[jn] && !inB(p) && !hideN(p)); } }
+        const bs = baseE(sg), Pd = [], md = []; for (let j = 0; j < n - 1; j++) { const a = P[j], b = P[j + 1], m = (len <= 40 || c.cum[j] < 8 || c.cum[j + 1] > len - 8) ? Math.max(1, Math.ceil(dist(a, b) / 0.3)) : 1; /* gestszy podzial tylko przy koncach drogi (krotkie drogi w calosci) */ for (let q = 0; q < m; q++) { const t = q / m, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], jn = t < 0.5 ? j : j + 1; Pd.push(p); md.push(bs[jn] && !inB(p) && !hideN(p)); } }
         Pd.push(P[n - 1]); md.push(mk[n - 1]);
         let run = []; for (let j = 0; j < Pd.length; j++) { if (md[j]) run.push(Pd[j]); else { if (run.length > 1) lines.push({ P: run, st: 'p2' }); run = []; } } if (run.length > 1) lines.push({ P: run, st: 'p2' }); };
       if (slipIn !== -1) edgeLine(PLe, -1); if (slipIn !== 1) edgeLine(PRe, 1);

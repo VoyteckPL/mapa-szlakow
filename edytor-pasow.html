@@ -753,17 +753,13 @@ function layout() {
       const a = arms[i], b = arms[(i + 1) % N]; let gap = b.a - a.a; while (gap <= 0) gap += 2 * Math.PI;
       const L0 = [o[0] + a.n[0] * a.h, o[1] + a.n[1] * a.h], R0 = [o[0] - b.n[0] * b.h, o[1] - b.n[1] * b.h];
       { const e0 = a.EM.length ? a.EM : null; if (i === 0 || true) { /* poczatek ramienia a: prawa krawedz (minus) zakonczona tuz za punktem stycznym poprzedniego rogu - tu tylko daleki koniec */ } }
-      const mEnd = a.EM.length ? a.EM[a.EM.length - 1].p : [o[0] - a.n[0] * a.h + a.u[0] * a.len, o[1] - a.n[1] * a.h + a.u[1] * a.len], pEnd = a.EP.length ? a.EP[a.EP.length - 1].p : [o[0] + a.n[0] * a.h + a.u[0] * a.len, o[1] + a.n[1] * a.h + a.u[1] * a.len];
-      poly.push(mEnd, pEnd);
-      if (gap >= Math.PI - 0.02) { poly.push(...beyond(a.EP, 0).reverse(), L0, R0, ...beyond(b.EM, 0)); continue; }
+      if (gap >= Math.PI - 0.02) { poly.push(L0, R0); continue; }
       const th = Math.acos(Math.max(-1, Math.min(1, -dt(a.u, b.u)))); let rr = r0; if (md === 1 && th > 0.05) rr = r0 / th; else if (md === 2 && th > 0.05) rr = r0 / Math.tan(th / 2);
       let T1, T2, C0, ok = false;
       for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.h + rr), o[1] + a.n[1] * (a.h + rr)], a.u, [o[0] - b.n[0] * (b.h + rr), o[1] - b.n[1] * (b.h + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= a.len * 0.95 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= b.len * 0.95) { ok = true; break; } rr *= 0.85; }
-      if (!ok || rr <= 0.05) { const I = ix(L0, a.u, R0, b.u), tI = I ? dt([I[0] - o[0], I[1] - o[1]], a.u) : 0, tJ = I ? dt([I[0] - o[0], I[1] - o[1]], b.u) : 0; poly.push(...beyond(a.EP, tI).reverse(), I || L0, ...beyond(b.EM, tJ)); continue; }
-      poly.push(...beyond(a.EP, dt([T1[0] - o[0], T1[1] - o[1]], a.u)).reverse());
+      if (!ok || rr <= 0.05) { poly.push(ix(L0, a.u, R0, b.u) || L0); continue; }
       const a1 = Math.atan2(T1[1] - C0[1], T1[0] - C0[0]), a2 = Math.atan2(T2[1] - C0[1], T2[0] - C0[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       const arc = []; for (let q = 0; q <= 16; q++) arc.push([C0[0] + rr * Math.cos(a1 + da * q / 16), C0[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); arcList.push(arc);
-      poly.push(...beyond(b.EM, dt([T2[0] - o[0], T2[1] - o[1]], b.u)));
     }
     polys.push({ P: poly, L: [], R: [], kerb: false, ly: Math.max(...G.map(e => R[e.i].ly | 0)), br: false, ed: true }); (S.nodeViz = S.nodeViz || []).push({ poly, arcs: arcList, o, lanes: arms.map(m => ({ u: m.u, n: m.n, h: m.h, nl: m.nl, len: Math.min(m.len, 6) })) });
   }

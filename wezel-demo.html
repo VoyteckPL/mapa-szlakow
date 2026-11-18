@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Demo węzła</title>
+<style>
+html,body{margin:0;height:100%;font:14px system-ui,sans-serif;background:#eef0e6}
+#bar{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#fffe;padding:8px 10px;border-radius:8px;z-index:2;box-shadow:0 1px 4px #0003}
+canvas{display:block;touch-action:none}
+button,select{font:inherit;padding:4px 8px}
+label{display:flex;gap:6px;align-items:center}
+</style></head><body>
+<div id="bar">
+<label>Promień rogów <input id="rr" type="range" min="0" max="8" step="0.25" value="2.5"><b id="rv">2.5 m</b></label>
+<button id="add">+ droga</button><button id="del">− droga</button>
+<select id="wid"><option value="2.5">1 pas (2,5 m)</option><option value="3.5" selected>1 pas (3,5 m)</option><option value="6">2 pasy (6 m)</option><option value="8">3 pasy (8 m)</option></select>
+<label><input type="checkbox" id="gd" checked> pomoc (żółty obrys, niebieskie łuki)</label>
+<span>Przeciągnij koniec drogi (kółko): obrót i długość. Klik w drogę = zaznacz, lista szerokości zmienia zaznaczoną.</span>
+</div>
+<canvas id="c"></canvas>
+<script>
+const cv = document.getElementById('c'), g = cv.getContext('2d'); const PX = 16; let CX = 0, CY = 0;
+let arms = [{ a: Math.PI, w: 6, len: 12 }, { a: -0.45, w: 3.5, len: 12 }, { a: 0.45, w: 3.5, len: 12 }, { a: -Math.PI / 2 - 0.3, w: 3.5, len: 12 }];
+let sel = 0, drag = -1;
+try { const s = JSON.parse(localStorage.getItem('wdemo') || 'null'); if (s && s.length) arms = s; } catch (e) {}
+const save = () => { try { localStorage.setItem('wdemo', JSON.stringify(arms)); } catch (e) {} };
+function size() { cv.width = innerWidth; cv.height = innerHeight; CX = cv.width / 2; CY = cv.height / 2 + 20; draw(); } addEventListener('resize', size);
+const sc = p => [CX + p[0] * PX, CY + p[1] * PX];
+const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k], dot = (a, b) => a[0] * b[0] + a[1] * b[1];
+function isect(p, d, q, e) { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-9) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return add(p, d, t); }
+function outline(r) {
+  const A = arms.map(m => ({ ...m, u: [Math.cos(m.a), Math.sin(m.a)] })); A.forEach(m => { m.n = [-m.u[1], m.u[0]]; m.h = m.w / 2; });
+  A.sort((p, q) => p.a - q.a); const N = A.length, poly = [], dbg = [];
+  const nrm = x => { while (x < 0) x += 2 * Math.PI; while (x >= 2 * Math.PI) x -= 2 * Math.PI; return x; };
+  for (let i = 0; i < N; i++) {
+    const a = A[i], b = A[(i + 1) % N], gap = N === 1 ? 2 * Math.PI : nrm(b.a - a.a);
+    const S = a.len, Lf = add(add([0, 0], a.n, a.h), a.u, S), Rf = add(add([0, 0], b.n, -b.h), b.u, b.len);
+    if (i === 0 || true) { /* koniec drogi a: prawy, lewy */ }
+    poly.push({ arm: a, far: true }); /* marker */
+    poly.pop(); poly.push(add(add([0, 0], a.n, -a.h), a.u, a.len)); poly.push(add(add([0, 0], a.n, a.h), a.u, a.len));
+    if (gap >= Math.PI - 0.02) { poly.push(add([0, 0], a.n, a.h)); poly.push(add([0, 0], b.n, -b.h)); dbg.push({ i: add([0, 0], a.n, a.h) }); }
+    else {
+      let rr = r, T1, T2, C, ok = false;
+      for (let it = 0; it < 24; it++) {
+        const p1 = add(add([0, 0], a.n, a.h + rr), [0, 0]), p2 = add([0, 0], b.n, -(b.h + rr)); C = isect(p1, a.u, p2, b.u); if (!C) { rr *= 0.7; continue; }
+        T1 = add(C, a.n, -rr); T2 = add(C, b.n, rr); if (dot(T1, a.u) <= a.len * 0.8 && dot(T2, b.u) <= b.len * 0.8) { ok = true; break; } rr *= 0.85;
+      }
+      const I = isect(add([0, 0], a.n, a.h), a.u, add([0, 0], b.n, -b.h), b.u);
+      if (!ok || rr < 0.05) { poly.push(I || [0, 0]); dbg.push({ i: I, arc: null }); }
+      else { const a1 = Math.atan2(T1[1] - C[1], T1[0] - C[0]), a2 = Math.atan2(T2[1] - C[1], T2[0] - C[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; const arc = []; for (let q = 0; q <= 16; q++) arc.push([C[0] + rr * Math.cos(a1 + da * q / 16), C[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); dbg.push({ i: I, arc, T1, T2 }); }
+    }
+  }
+  return { poly, dbg, A };
+}
+function path(P) { g.beginPath(); P.forEach((p, i) => { const s = sc(p); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.closePath(); }
+function draw() {
+  const r = +rr.value; rv.textContent = r + ' m'; const { poly, dbg, A } = outline(r);
+  g.clearRect(0, 0, cv.width, cv.height); g.fillStyle = '#eef0e6'; g.fillRect(0, 0, cv.width, cv.height);
+  g.lineJoin = 'round'; path(poly);
+  g.lineWidth = 0.84 * PX; g.strokeStyle = '#6f716c'; g.stroke(); g.lineWidth = 0.68 * PX; g.strokeStyle = '#c4c6c0'; g.stroke();
+  g.fillStyle = '#7c8083'; g.fill();
+  g.save(); path(poly); g.clip(); path(poly); g.lineWidth = 0.4 * PX; g.strokeStyle = '#f2f2f2'; g.stroke(); g.restore();
+  if (gd.checked) {
+    g.save(); g.lineWidth = 2; g.strokeStyle = '#f5b400'; g.beginPath(); dbg.forEach((d, i) => { if (!d.i) return; const s = sc(d.i); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.closePath(); g.stroke();
+    g.strokeStyle = '#0050ff'; g.lineWidth = 4; for (const d of dbg) if (d.arc) { g.beginPath(); d.arc.forEach((p, i) => { const s = sc(p); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.stroke(); } g.restore();
+  }
+  arms.forEach((m, i) => { const e = sc([Math.cos(m.a) * m.len, Math.sin(m.a) * m.len]); g.strokeStyle = i === sel ? '#ff7a00' : '#2a6bd6'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(CX, CY); g.lineTo(e[0], e[1]); g.stroke(); g.beginPath(); g.arc(e[0], e[1], 7, 0, 7); g.fillStyle = '#fff'; g.fill(); g.stroke(); });
+}
+const pos = ev => [ev.clientX, ev.clientY];
+cv.onpointerdown = ev => { const p = pos(ev); let best = -1, bd = 14; arms.forEach((m, i) => { const e = sc([Math.cos(m.a) * m.len, Math.sin(m.a) * m.len]), d = Math.hypot(e[0] - p[0], e[1] - p[1]); if (d < bd) { bd = d; best = i; } }); if (best >= 0) { sel = best; drag = best; wid.value = String(arms[best].w); cv.setPointerCapture(ev.pointerId); draw(); } };
+cv.onpointermove = ev => { if (drag < 0) return; const p = pos(ev), x = (p[0] - CX) / PX, y = (p[1] - CY) / PX; arms[drag].a = Math.atan2(y, x); arms[drag].len = Math.max(4, Math.hypot(x, y)); draw(); };
+cv.onpointerup = () => { if (drag >= 0) { drag = -1; save(); } };
+rr.oninput = draw; gd.onchange = draw;
+wid.onchange = () => { if (arms[sel]) { arms[sel].w = +wid.value; save(); draw(); } };
+document.getElementById('add').onclick = () => { arms.push({ a: Math.random() * 6.28 - 3.14, w: +wid.value, len: 12 }); sel = arms.length - 1; save(); draw(); };
+document.getElementById('del').onclick = () => { if (arms.length > 1) { arms.splice(sel, 1); sel = 0; save(); draw(); } };
+size();
+</script></body></html>

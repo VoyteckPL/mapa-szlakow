@@ -12,7 +12,7 @@ label{display:flex;gap:6px;align-items:center}
 <label>Promień rogów <input id="rr" type="range" min="0" max="8" step="0.25" value="2.5"><b id="rv">2.5 m</b></label>
 <button id="add">+ droga</button><button id="del">− droga</button>
 <select id="wid"><option value="2.5">1 pas (2,5 m)</option><option value="3.5" selected>1 pas (3,5 m)</option><option value="6">2 pasy (6 m)</option><option value="8">3 pasy (8 m)</option></select>
-<label><input type="checkbox" id="gd" checked> pomoc (żółty obrys, niebieskie łuki)</label>
+<label><input type="checkbox" id="gd" checked> pomoc (niebieskie łuki, końce i obrysy pasów)</label>
 <span>Przeciągnij koniec drogi (kółko): obrót i długość. Klik w drogę = zaznacz, lista szerokości zmienia zaznaczoną.</span>
 </div>
 <canvas id="c"></canvas>
@@ -59,13 +59,15 @@ function draw() {
   g.fillStyle = '#7c8083'; g.fill();
   g.save(); path(poly); g.clip(); path(poly); g.lineWidth = 0.4 * PX; g.strokeStyle = '#f2f2f2'; g.stroke(); g.restore();
   if (gd.checked) {
-    g.save(); g.lineWidth = 2; g.strokeStyle = '#f5b400'; g.beginPath(); dbg.forEach((d, i) => { if (!d.i) return; const s = sc(d.i); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.closePath(); g.stroke();
+    g.save();
     g.strokeStyle = '#0050ff'; g.lineWidth = 4; for (const d of dbg) if (d.arc) { g.beginPath(); d.arc.forEach((p, i) => { const s = sc(p); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.stroke(); } g.restore();
   }
   if (gd.checked) { g.save(); for (const m of A) { const t0 = Math.min(m.tL == null ? 0 : m.tL, m.tR == null ? 0 : m.tR), t1 = Math.max(m.tL == null ? 0 : m.tL, m.tR == null ? 0 : m.tR), nl = Math.max(1, Math.round(m.w / 3.2)), lw = m.w / nl;
       const P = (t, o) => sc(add(add([0, 0], m.u, t), m.n, o));
       g.setLineDash([]); g.strokeStyle = '#e8590c'; g.lineWidth = 2.5; g.beginPath(); { const a0 = P(m.tL == null ? 0 : m.tL, m.h), b0 = P(m.tR == null ? 0 : m.tR, -m.h); g.moveTo(a0[0], a0[1]); g.lineTo(b0[0], b0[1]); } g.stroke();
       for (let k = 0; k < nl; k++) { const o = -m.h + (k + 0.5) * lw, e0 = P((t0 + t1) / 2, o); g.fillStyle = '#e8590c'; g.beginPath(); g.arc(e0[0], e0[1], 4, 0, 7); g.fill(); }
+      { const tl = m.tL == null ? 0 : m.tL, tr = m.tR == null ? 0 : m.tR, te = o => tr + (tl - tr) * (o + m.h) / (2 * m.h); /* koniec pasa zalezy od polozenia na szerokosci (linia konca jest skosna) */
+        g.setLineDash([]); g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1; for (let k = 0; k < nl; k++) { const o0 = -m.h + k * lw, o1 = o0 + lw; g.beginPath(); [P(te(o0), o0), P(m.len, o0), P(m.len, o1), P(te(o1), o1)].forEach((q, i) => i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1])); g.closePath(); g.stroke(); } }
       g.setLineDash([8, 6]); g.strokeStyle = '#f2f2f2'; g.lineWidth = 1.5; for (let k = 1; k < nl; k++) { const o = -m.h + k * lw, s0 = P((t0 + t1) / 2, o), s1 = P(m.len, o); g.beginPath(); g.moveTo(s0[0], s0[1]); g.lineTo(s1[0], s1[1]); g.stroke(); } }
     g.restore(); }
   arms.forEach((m, i) => { const e = sc([Math.cos(m.a) * m.len, Math.sin(m.a) * m.len]); g.strokeStyle = i === sel ? '#ff7a00' : '#2a6bd6'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(CX, CY); g.lineTo(e[0], e[1]); g.stroke(); g.beginPath(); g.arc(e[0], e[1], 7, 0, 7); g.fillStyle = '#fff'; g.fill(); g.stroke(); });

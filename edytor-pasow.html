@@ -68,8 +68,6 @@
     <div id="lc"><button id="lcB" title="Warstwy"><svg class="ic" style="color:#3949ab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></button><div id="lcP">
       <b>Podkład</b>
       <label><input type="radio" name="bmr" value="osm"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> OSM</label>
-      <label><input type="radio" name="bmr" value="orto"><svg class="ic" style="color:#8e24aa" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M4 4l3 3M17 17l3 3M4 20l3-3M17 7l3-3"/></svg> Geoportal</label>
-      <label><input type="radio" name="bmr" value="quiet"><svg class="ic" style="color:#f9a825" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/></svg> Jasne tło</label>
       <hr><b>Warstwy</b>
       <div style="display:flex;align-items:center;justify-content:space-between"><label><input type="checkbox" id="cLay" checked><svg class="ic" style="color:#e53935" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L5 21M16 3l3 18M12 4v3M12 10v4M12 17v3"/></svg> Pasy</label><button id="lcPsB" title="Krycie i przejście" style="width:22px;height:22px;padding:0;border:1px solid #ccc;border-radius:5px;background:#fff;color:#555;cursor:pointer;font-size:11px;line-height:1">▾</button></div>
       <div id="lcPsl" style="display:none">
@@ -105,7 +103,7 @@
     <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     </div>
-    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm">OSM</option><option value="quiet">Jasne</option><option value="orto" selected>Geoportal</option><option value="ortolo">low</option><option value="esri">Esri</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
+    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm" selected>OSM</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
     <div class="tab-off" style="display:none">
     <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>
@@ -1417,7 +1415,7 @@ $('bImp').onclick = async () => {
   if ((box[1] - box[0] + 1) * (box[3] - box[2] + 1) > 40) { say('Widok za duży – przybliż mapę.'); return; }
   say('Pobieram dane widoku…'); await loadOsmAround((la + lb) / 2, (lo + hi) / 2, box); push(); importView();
 };
-try { const sv = JSON.parse(localStorage.getItem('edytor-podklad-v1') || 'null'); if (sv) { if (sv.bm && [...$('bm').options].some(o => o.value === sv.bm)) $('bm').value = sv.bm; if (typeof sv.tile === 'boolean') $('cTile').checked = sv.tile; if (typeof sv.lay === 'boolean') $('cLay').checked = sv.lay; if (typeof sv.ax === 'boolean') $('cAx').checked = sv.ax; if (typeof sv.an === 'boolean') $('cAn').checked = sv.an; if (sv.ra) $('rA').value = sv.ra; if (sv.ft) { $('fT').value = sv.ft; $('fTv').textContent = $('fT').value; $('fT2').value = Math.round(+$('fT').value * 80 / 45 / 5) * 5; $('fT2v').textContent = $('fT2').value; } } } catch (e) {} // zapamietany podklad
+try { const sv = JSON.parse(localStorage.getItem('edytor-podklad-v1') || 'null'); if (sv) {  if (typeof sv.tile === 'boolean') $('cTile').checked = sv.tile; if (typeof sv.lay === 'boolean') $('cLay').checked = sv.lay; if (typeof sv.ax === 'boolean') $('cAx').checked = sv.ax; if (typeof sv.an === 'boolean') $('cAn').checked = sv.an; if (sv.ra) $('rA').value = sv.ra; if (sv.ft) { $('fT').value = sv.ft; $('fTv').textContent = $('fT').value; $('fT2').value = Math.round(+$('fT').value * 80 / 45 / 5) * 5; $('fT2v').textContent = $('fT2').value; } } } catch (e) {} // zapamietany podklad
 $('lcPsB').onclick = () => { const d = $('lcPsl'), o = d.style.display === 'none'; d.style.display = o ? '' : 'none'; $('lcPsB').textContent = o ? '▴' : '▾'; };
 for (const id of ['cTile', 'cLay', 'cAx', 'cAn', 'cBlue', 'rA', 'bm']) $(id).oninput = () => { try { localStorage.setItem('edytor-podklad-v1', JSON.stringify({ bm: $('bm').value, tile: $('cTile').checked, lay: $('cLay').checked, ax: $('cAx').checked, an: $('cAn').checked, ra: $('rA').value, ft: $('fT').value })); } catch (e) {} render(); };
 $('cSm').oninput = () => touch(); $('fP').oninput = () => touch(); $('fT').oninput = () => { const v = +$('fT').value; try { $('bm').oninput(); } catch (e) {} $('fTv').textContent = v; $('fT2').value = Math.round(v * 80 / 45 / 5) * 5; $('fT2v').textContent = $('fT2').value; touch(); }; /* jeden suwak dla wszystkich rozjazdow */
@@ -1709,7 +1707,7 @@ if (!EMBED) (() => {
     }
   }
   const lc = document.getElementById('lcP');
-  if (lc) { const hr = document.createElement('hr'), b = document.createElement('b'), row = document.createElement('div'); b.textContent = 'Sandbox'; row.className = 'eb'; row.innerHTML = '<button id="lcSb" title="Sandbox: rysuj testowe drogi i zmieniaj turn:lanes" style="width:auto;padding:0 8px;font-size:12px">✎ Sandbox</button>'; lc.append(hr, b, row); row.firstChild.onclick = () => { el.style.display = el.style.display === 'none' ? 'block' : 'none'; if (el.style.display === 'block') draw(); }; }
+  /* przycisk Sandboxa usuniety (panel #sbP nigdy sie nie pokazuje) */
   const oldFinish = finishDraw; finishDraw = function () { const n0 = S.doc.road.length; oldFinish(); for (let i = n0; i < S.doc.road.length; i++) { const r = S.doc.road[i]; if (!r.osm) { r.sb = true; r.oneway = true; r.hw = 'motorway'; r.lw = 3.75; r.lanes = 3; } } save(); draw(); };
   document.addEventListener('pointerup', e => { if (el.contains(e.target)) return; /* klik w panelu nie przerysowuje go (zamykalby otwarta liste) */ setTimeout(() => { if (el.style.display !== 'none' && !el.contains(document.activeElement)) draw(); }, 50); });
 })();

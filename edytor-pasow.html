@@ -410,6 +410,15 @@ function finalizeLanes(C, R) {
       const L = wA * LA + wB * LB, Rr = wA * RA + wB * RB; c.d[j] = (L + Rr) / 2; c.w[j] = Rr - L; } });
 }
 function layout() {
+  if (window.__nodeGeom) { /* droga przechodzaca przez wezel, w ktorym konczy sie droga niska (service itp.): tnij ja w tym wezle, zeby powstal wezel skrzyzowania */
+    const LOW = /^(service|residential|living_street|unclassified|busway|road|construction|track)/, endLow = new Set();
+    S.doc.road.forEach(r => { if (!LOW.test(r.hw || '')) return; [0, r.pts.length - 1].forEach(j => { if (r.nk[j]) endLow.add(r.nk[j]); }); });
+    for (let i = 0; i < S.doc.road.length; i++) { const r = S.doc.road[i];
+      for (let j = 1; j < r.pts.length - 1; j++) { const k = r.nk[j]; if (!k || !endLow.has(k) || r.nk.indexOf(k) !== j || r.nk.lastIndexOf(k) !== j) continue;
+        const cp = x => Array.isArray(x) && x.length === r.pts.length ? x.slice(j) : x, r2 = Object.assign({}, r, { pts: r.pts.slice(j), nk: r.nk.slice(j) });
+        if (Array.isArray(r.rp) && r.rp.length === r.pts.length) { r2.rp = r.rp.slice(j); r.rp = r.rp.slice(0, j + 1); }
+        r.pts = r.pts.slice(0, j + 1); r.nk = r.nk.slice(0, j + 1); S.doc.road.push(r2); break; } }
+  }
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   { /* koncowki dwoch drog w tym samym miejscu bez wspolnego wezla: polacz (tylko gdy koniec nie ma klucza) */
     const E = []; R.forEach((r, i) => [0, r.pts.length - 1].forEach(j => E.push({ r, j, p: r.pts[j] })));

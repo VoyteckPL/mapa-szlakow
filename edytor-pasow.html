@@ -816,12 +816,13 @@ function layout() {
 function glyph(g, key) {
   if (key === 'p9a' || key === 'p9b') { const sg = key === 'p9a' ? -1 : 1; g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt'; const x0 = 6, y0 = 16 - sg * 6, x1 = 42, y1 = 16 + sg * 6, ang = Math.atan2(y1 - y0, x1 - x0); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - Math.cos(ang) * 4, y1 - Math.sin(ang) * 4); g.stroke(); g.save(); g.translate(x1, y1); g.rotate(ang); g.beginPath(); g.moveTo(5, 0); g.lineTo(-5, -5.5); g.lineTo(-5, 5.5); g.closePath(); g.fill(); g.restore(); return; }
   const parts = key.split('-'), has = p => parts.includes(p);
-  g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt';
-  const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(6, 0); g.lineTo(-4, -5.5); g.lineTo(-4, 5.5); g.closePath(); g.fill(); g.restore(); };
+  g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 4.2; g.lineCap = 'butt';
+  const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(8, 0); g.lineTo(-6, -8); g.lineTo(-6, 8); g.closePath(); g.fill(); g.restore(); }; /* grot P-8: wydluzony trojkat */
+  const only = parts.length === 1 && !has('through') && (has('left') || has('right')), osg = has('left') ? -1 : 1, ty = only ? 16 - osg * 3.5 : 16; /* strzalka tylko w bok: korpus przesuniety tak, by cala strzalka lezala symetrycznie na osi pasa (P-8b) */
   const fork = has('through') ? 26 : 30;
-  g.beginPath(); g.moveTo(2, 16); g.lineTo(has('through') ? 38 : fork, 16); g.stroke();
-  if (has('through')) head(40, 16, 0);
-  for (const [p, sg] of [['left', -1], ['right', 1]]) if (has(p)) { g.beginPath(); g.moveTo(fork - 6, 16); g.quadraticCurveTo(fork + 2, 16, fork + 4, 16 + sg * 7); g.stroke(); head(fork + 5, 16 + sg * 9.5, sg * Math.PI / 2 - sg * 0.35); }
+  g.beginPath(); g.moveTo(0, ty); g.lineTo(has('through') ? 36 : fork, ty); g.stroke();
+  if (has('through')) head(38, 16, 0);
+  for (const [p, sg] of [['left', -1], ['right', 1]]) if (has(p)) { g.beginPath(); g.moveTo(fork - 6, ty); g.quadraticCurveTo(fork + 2, ty, fork + 4, ty + sg * 7); g.stroke(); head(fork + 5, ty + sg * 9.5, sg * Math.PI / 2 - sg * 0.35); }
 }
 
 // ---------- rysowanie ----------

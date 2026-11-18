@@ -644,6 +644,25 @@ function layout() {
     }
     lines.length = 0; lines.push(...rest, ...sol);
   }
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], unit = a => { const l = Math.hypot(a[0], a[1]); return l > 1e-9 ? [a[0] / l, a[1] / l] : null; };
+  for (const l of lines) { /* zaokraglenie ostrych/sfazowanych naroznikow krawedzi (krotki odcinek <1,2 m laczacy dwa prawie prostopadle kierunki -> luk) */
+    if (l.st !== 'p2' || l.arc || l.P.length < 4) continue;
+    let P = l.P, ch = true, guard = 0;
+    while (ch && guard++ < 20) { ch = false;
+      for (let k = 1; k + 2 < P.length; k++) {
+        const A = P[k], B = P[k + 1], sl = dist(A, B); if (sl > 1.2 || sl < 0.05) continue;
+        let kb = k - 1; while (kb > 0 && dist(P[kb], A) < 1.0) kb--; let kf = k + 2; while (kf < P.length - 1 && dist(P[kf], B) < 1.0) kf++; if (dist(P[kb], A) < 1.0 || dist(P[kf], B) < 1.0) continue; /* oba ramiona proste przez >= 1 m */
+        const d1 = unit(sub(A, P[kb])), d2 = unit(sub(P[kf], B)); if (!d1 || !d2) continue;
+        let okc = true; for (let q = kb + 1; q < k && okc; q++) okc = Math.abs((P[q][0] - A[0]) * d1[1] - (P[q][1] - A[1]) * d1[0]) < 0.08; for (let q = k + 2; q < kf && okc; q++) okc = Math.abs((P[q][0] - B[0]) * d2[1] - (P[q][1] - B[1]) * d2[0]) < 0.08; if (!okc) continue;
+        const cr = d1[0] * d2[1] - d1[1] * d2[0], dt = d1[0] * d2[0] + d1[1] * d2[1]; if (Math.abs(cr) < 0.5) continue; /* skret wiekszy niz ok. 30 st. */
+        const t = ((B[0] - A[0]) * d2[1] - (B[1] - A[1]) * d2[0]) / cr, X = [A[0] + d1[0] * t, A[1] + d1[1] * t];
+        if (t < -0.2 || dist(X, A) > 1.5 || dist(X, B) > 1.5) continue;
+        const r = Math.max(1.0, dist(X, A), dist(X, B)) + 0.1, a0 = [X[0] - d1[0] * r, X[1] - d1[1] * r], a1 = [X[0] + d2[0] * r, X[1] + d2[1] * r];
+        const pre = P.slice(0, k + 1), post = P.slice(k + 1); while (pre.length > 1 && dist(pre[pre.length - 1], X) < r + 0.02) pre.pop(); while (post.length > 1 && dist(post[0], X) < r + 0.02) post.shift();
+        if (pre.length < 1 || post.length < 1) continue;
+        const bz = []; for (let q = 0; q <= 8; q++) { const u = q / 8, w = 1 - u; bz.push([w * w * a0[0] + 2 * w * u * X[0] + u * u * a1[0], w * w * a0[1] + 2 * w * u * X[1] + u * u * a1[1]]); }
+        P = pre.concat(bz, post); ch = true; break; } }
+    l.P = P; }
   S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
 

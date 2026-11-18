@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Pasy w iD (Roads and Lanes)
 // @namespace    https://github.com/VoyteckPL/mapa-szlakow
-// @version      2026.11.18.0654
+// @version      2026.11.18.0657
 // @description  Rysuje pasy ruchu, strzalki, mosty i rozjazdy na zywo nad mapa edytora iD (openstreetmap.org/edit)
 // @match        https://www.openstreetmap.org/edit*
 // @match        https://www.openstreetmap.org/*/edit*
@@ -536,6 +536,25 @@ function layout() {
     }
     lines.length = 0; lines.push(...rest, ...sol);
   }
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], unit = a => { const l = Math.hypot(a[0], a[1]); return l > 1e-9 ? [a[0] / l, a[1] / l] : null; };
+  for (const l of lines) { /* zaokraglenie ostrych/sfazowanych naroznikow krawedzi (krotki odcinek <1,2 m laczacy dwa prawie prostopadle kierunki -> luk) */
+    if (l.st !== 'p2' || l.arc || l.P.length < 4) continue;
+    let P = l.P, ch = true, guard = 0;
+    while (ch && guard++ < 20) { ch = false;
+      for (let k = 1; k + 2 < P.length; k++) {
+        const A = P[k], B = P[k + 1], sl = dist(A, B); if (sl > 1.2 || sl < 0.05) continue;
+        let kb = k - 1; while (kb > 0 && dist(P[kb], A) < 1.0) kb--; let kf = k + 2; while (kf < P.length - 1 && dist(P[kf], B) < 1.0) kf++; if (dist(P[kb], A) < 1.0 || dist(P[kf], B) < 1.0) continue; /* oba ramiona proste przez >= 1 m */
+        const d1 = unit(sub(A, P[kb])), d2 = unit(sub(P[kf], B)); if (!d1 || !d2) continue;
+        let okc = true; for (let q = kb + 1; q < k && okc; q++) okc = Math.abs((P[q][0] - A[0]) * d1[1] - (P[q][1] - A[1]) * d1[0]) < 0.08; for (let q = k + 2; q < kf && okc; q++) okc = Math.abs((P[q][0] - B[0]) * d2[1] - (P[q][1] - B[1]) * d2[0]) < 0.08; if (!okc) continue;
+        const cr = d1[0] * d2[1] - d1[1] * d2[0], dt = d1[0] * d2[0] + d1[1] * d2[1]; if (Math.abs(cr) < 0.5) continue; /* skret wiekszy niz ok. 30 st. */
+        const t = ((B[0] - A[0]) * d2[1] - (B[1] - A[1]) * d2[0]) / cr, X = [A[0] + d1[0] * t, A[1] + d1[1] * t];
+        if (t < -0.2 || dist(X, A) > 1.5 || dist(X, B) > 1.5) continue;
+        const r = Math.max(1.0, dist(X, A), dist(X, B)) + 0.1, a0 = [X[0] - d1[0] * r, X[1] - d1[1] * r], a1 = [X[0] + d2[0] * r, X[1] + d2[1] * r];
+        const pre = P.slice(0, k + 1), post = P.slice(k + 1); while (pre.length > 1 && dist(pre[pre.length - 1], X) < r + 0.02) pre.pop(); while (post.length > 1 && dist(post[0], X) < r + 0.02) post.shift();
+        if (pre.length < 1 || post.length < 1) continue;
+        const bz = []; for (let q = 0; q <= 8; q++) { const u = q / 8, w = 1 - u; bz.push([w * w * a0[0] + 2 * w * u * X[0] + u * u * a1[0], w * w * a0[1] + 2 * w * u * X[1] + u * u * a1[1]]); }
+        P = pre.concat(bz, post); ch = true; break; } }
+    l.P = P; }
   S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
 
@@ -640,7 +659,7 @@ function drawGroup(g, ly) {
 const IDL = { on: true, hide: true, raf: 0 };
 function idCtx() { const ok = c => c && typeof c.map === 'function' && typeof c.graph === 'function' && typeof c.history === 'function' && typeof c.container === 'function'; for (const c of [window.__idctx, window.id, window.context, window.iD && window.iD.context]) if (ok(c)) return c; try { for (const k of Object.getOwnPropertyNames(window)) { let v; try { v = window[k]; } catch (e) { continue; } if (v && typeof v === 'object' && ok(v)) return v; } } catch (e) {} return null; }
 function idBadge(t) { let b = document.getElementById('idlanes-badge'); if (!b) { b = document.createElement('div'); b.id = 'idlanes-badge'; b.style.cssText = 'position:fixed;right:70px;top:8px;z-index:99999;font:12px system-ui;background:#fff;border:1px solid #889;border-radius:6px;padding:3px 8px;box-shadow:0 1px 4px #0004'; (document.body || document.documentElement).appendChild(b); } b.textContent = t; return b; }
-function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.__idlDom) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} return; } if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '0654' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
+function idWhen(cb) { let n = 0; const t = setInterval(() => { if (window.__idlDom) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} return; } if (window.top === window && document.querySelector('iframe[src*="/id"]')) { clearInterval(t); return; } if (n === 0) idBadge('Pasy w iD: szukam edytora…'); const c = idCtx(); const mm = document.querySelector('.main-map, .supersurface, #id-container .main-content'); if (c && mm) { clearInterval(t); try { document.getElementById('idlanes-badge').remove(); } catch (e) {} cb(c); } else if (++n >= 6 && n % 4 === 2) { const cls = new Set(); document.querySelectorAll('div,svg,canvas').forEach(e => { if (cls.size < 12 && e.className && typeof e.className === 'string' && /map|surface|main|content|id-/.test(e.className)) cls.add(e.className.split(' ')[0]); }); idBadge('Pasy w iD v' + '0657' + ': ' + (c ? 'ctx ok' : 'brak ctx') + ', ' + (mm ? 'mapa ok' : 'brak mapy') + '; iD=' + typeof window.iD + ', hook=' + (window.iD && window.iD.coreContext && window.iD.coreContext.__idl ? 'tak' : 'nie') + ', ramki=' + [...document.querySelectorAll('iframe')].map(f => (f.src || f.getAttribute('src') || f.id || '?').slice(0, 90)).join(' ; ') + ', top=' + (window.top === window) + ', klasy=' + [...cls].join(' ')); } }, 500); }
 idWhen(ctxId => {
   const root = document.querySelector('.main-map') || document.querySelector('.supersurface') || document.querySelector('#id-container .main-content');
   const cvs = document.createElement('canvas'); cvs.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:5';
@@ -717,10 +736,10 @@ idWhen(ctxId => {
     const cx = cvs.getContext('2d'), offc = document.createElement('canvas'), ocx = offc.getContext('2d');
     const bar = document.createElement('div'); bar.style.cssText = 'position:absolute;right:64px;bottom:40px;z-index:60;display:flex;flex-direction:column;gap:4px;font:13px system-ui;pointer-events:auto;box-shadow:0 1px 6px #0006;border-radius:8px'; mm.appendChild(bar); for (const ev of ['pointerdown', 'mousedown', 'touchstart', 'dblclick', 'wheel', 'contextmenu']) bar.addEventListener(ev, e => e.stopPropagation());
     const mk = (t, f) => { const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'padding:6px 12px;border:1px solid #889;border-radius:8px;background:#fff;color:#222;cursor:pointer'; b.onclick = () => { f(b); last = ''; }; bar.appendChild(b); };
-    { const vl = document.createElement('div'); vl.textContent = 'Pasy v0654'; vl.style.cssText = 'font:11px system-ui;color:#555;background:#fff;border-radius:6px;padding:2px 6px;text-align:center'; bar.appendChild(vl); }
+    { const vl = document.createElement('div'); vl.textContent = 'Pasy v0657'; vl.style.cssText = 'font:11px system-ui;color:#555;background:#fff;border-radius:6px;padding:2px 6px;text-align:center'; bar.appendChild(vl); }
     mk('Pasy: wł.', b => { IDL.on = !IDL.on; b.textContent = 'Pasy: ' + (IDL.on ? 'wł.' : 'wył.'); });
     IDL.hide = false; mk('Linie iD: wł.', b => { IDL.hide = !IDL.hide; b.textContent = 'Linie iD: ' + (IDL.hide ? 'wył.' : 'wł.'); css(); });
-    mk('Diagnostyka', b => { const h = {}; sup.querySelectorAll('*').forEach(e => { const c = typeof e.className === 'string' ? e.className : (e.className && e.className.baseVal) || ''; const k = e.tagName.toLowerCase() + (c ? '.' + c.trim().split(/\s+/).slice(0, 3).join('.') : ''); h[k] = (h[k] || 0) + 1; }); const top = Object.entries(h).sort((x, y) => y[1] - x[1]).slice(0, 40).map(x => x[1] + 'x ' + x[0]).join('\n'); let pn = document.getElementById('idlanes-diag'); if (!pn) { pn = document.createElement('pre'); pn.id = 'idlanes-diag'; pn.style.cssText = 'position:absolute;left:8px;top:70px;z-index:70;max-width:70%;max-height:70%;overflow:auto;font:11px monospace;background:#fff;color:#222;border:1px solid #889;padding:6px;white-space:pre-wrap;pointer-events:auto'; pn.onclick = () => pn.remove(); mm.appendChild(pn); } pn.textContent = 'DIAG v0654 (klik = zamknij)\ndrogi: ' + S.doc.road.slice(0, 6).map(r => r.osm + ' lanes=' + r.lanes + ' hw=' + r.hw).join(' | ') + '\ngrafy=' + GR.length + '\n' + top; });
+    mk('Diagnostyka', b => { const h = {}; sup.querySelectorAll('*').forEach(e => { const c = typeof e.className === 'string' ? e.className : (e.className && e.className.baseVal) || ''; const k = e.tagName.toLowerCase() + (c ? '.' + c.trim().split(/\s+/).slice(0, 3).join('.') : ''); h[k] = (h[k] || 0) + 1; }); const top = Object.entries(h).sort((x, y) => y[1] - x[1]).slice(0, 40).map(x => x[1] + 'x ' + x[0]).join('\n'); let pn = document.getElementById('idlanes-diag'); if (!pn) { pn = document.createElement('pre'); pn.id = 'idlanes-diag'; pn.style.cssText = 'position:absolute;left:8px;top:70px;z-index:70;max-width:70%;max-height:70%;overflow:auto;font:11px monospace;background:#fff;color:#222;border:1px solid #889;padding:6px;white-space:pre-wrap;pointer-events:auto'; pn.onclick = () => pn.remove(); mm.appendChild(pn); } pn.textContent = 'DIAG v0657 (klik = zamknij)\ndrogi: ' + S.doc.road.slice(0, 6).map(r => r.osm + ' lanes=' + r.lanes + ' hw=' + r.hw).join(' | ') + '\ngrafy=' + GR.length + '\n' + top; });
     const st = document.createElement('style'); document.head.appendChild(st);
     const css = () => { st.textContent = IDL.hide ? ['motorway', 'trunk', 'primary', 'secondary'].map(h => '.layer-osm path.line[class*="tag-highway-' + h + '"],.layer-osm .line[class*="tag-highway-' + h + '"]').join(',') + '{display:none!important;visibility:hidden!important;opacity:0!important}' + ',g.onewaygroup,g.sidedgroup,g.onewaygroup *,g.sidedgroup *,path.oneway,path.sided,text.linelabel,text.linelabel-halo,textpath.textpath,.layer-labels,.layer-labels *,svg [class*="pathlabel"],svg [class*="textpath"],svg [class*="oneway"],svg [class*="sided"],svg [class*="onewaygroup"],svg text.pathlabel,.labels-group,.layer-osm marker,.layer-osm use[class*="oneway"]{display:none!important}' : ''; }; css();
     const ids = new WeakMap(); let nid = 0, last = '';

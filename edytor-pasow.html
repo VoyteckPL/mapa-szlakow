@@ -516,10 +516,6 @@ function layout() {
     const cA = C[e.i], nd = orient(cA, e.st).Q[0], tB = nrm2(sub2(Us[pr[0]], Us[pr[1]])), U = Us[ti], sinT = Math.abs(tB[0] * U[1] - tB[1] * U[0]), cosT = Math.abs(tB[0] * U[0] + tB[1] * U[1]); if (sinT < 0.3) continue;
     const nB = [-tB[1], tB[0]], sd = U[0] * nB[0] + U[1] * nB[1] > 0 ? 1 : -1, wB = Math.max(...pr.map(x => rw(R[G[x].i]))), g0 = G[pr[0]], cB0 = C[g0.i], dB = (g0.st ? 1 : -1) * ((cB0.d && cB0.d[g0.st ? 0 : cB0.d.length - 1]) || 0), ext = sd > 0 ? dB + wB / 2 : -(dB - wB / 2), wA = rw(rA); /* krawedz drogi glownej po stronie slip lane (z offsetem d) */
     slipEnd(e, rA, cA, nd, nB, sd, ext, sinT, cosT, wA);
-    { /* rampa zaczyna sie szerokoscia pasa drogi glownej i plynnie poszerza sie do swojej szerokosci */
-      const n = cA.Q.length, wfull = rw(rA), w0 = Math.min(wfull, (R[G[pr[0]].i].lw || wfull) * (rA.lanes | 0));
-      if (w0 < wfull - 0.05 && n > 1) { const Lr = Math.min(14, 0.6 * cA.cum[n - 1]), wArr = cA.w && cA.w.length === n ? cA.w.slice() : new Array(n).fill(wfull); for (let j = 0; j < n; j++) { const sj = e.st ? cA.cum[j] : cA.cum[n - 1] - cA.cum[j]; if (sj < Lr) { const f = sj / Lr, sm = f * f * (3 - 2 * f); wArr[j] = w0 + (wArr[j] - w0) * sm; } } cA.w = wArr; }
-    }
   }
   finalizeLanes(C, R);
   // zszycie polaczen dwoch drog (taka sama lub rozna liczba pasow): krawedzie obu jezdni na styku maja sie schodzic; roznica rozkladana plynnie wzdluz obu drog

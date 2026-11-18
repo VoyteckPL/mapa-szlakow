@@ -617,7 +617,7 @@ function layout() {
         }
         lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
         lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly, arc: true });
-        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: true, ly, br: false });
+        polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: false, ly, br: false }); /* krawezniki luku rysowane pozniej wzdluz wygladzonej linii */
       }
     }
   }
@@ -666,6 +666,10 @@ function layout() {
         P = pre.concat(bz, post); ch = true; krn.push({ P: [bz[0], bz[0], bz[0]], L: bz, R: [], kerb: true, ly: l.ly, br: false }); break; } }
     l.P = P; }
   polys.push(...krn); /* krawezniki wzdluz zaokraglonych naroznikow */
+  for (const l of lines) { /* wygladzenie drobnych garbow bialych krawedzi na zlaczach (3-10 cm): lekkie usrednianie sasiednich punktow, konce nieruchome */
+    if (l.st !== 'p2' || l.P.length < 5) continue; let P = l.P;
+    for (let it = 0; it < 3; it++) { const Q = P.map(p => p); for (let j = 1; j < P.length - 1; j++) { if (dist(P[j - 1], P[j]) > 0.8 || dist(P[j], P[j + 1]) > 0.8) continue; Q[j] = [P[j][0] * 0.5 + (P[j - 1][0] + P[j + 1][0]) * 0.25, P[j][1] * 0.5 + (P[j - 1][1] + P[j + 1][1]) * 0.25]; } P = Q; }
+    l.P = P; if (l.arc) polys.push({ P: [P[0], P[0], P[0]], L: P, R: [], kerb: true, ly: l.ly, br: false }); }
   S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
 
@@ -737,7 +741,7 @@ function drawGroup(g, ly) {
   const k = S.view.k; g.lineJoin = 'round'; const PAT = asphaltPat(g, k) || '#7c8083'; const Lp = L.polys.filter(q => (q.ly | 0) === ly), Lg = L.gores.filter(q => (q.ly | 0) === ly), Ll = L.lines.filter(q => (q.ly | 0) === ly), La = L.arrows.filter(q => (q.ly | 0) === ly);
   if (ly > 0) for (const q of Lp) if (q.br && q.P.length > 2) { /* cien mostu rzucony na nizsze warstwy: rozmyty, przesuniety w dol-prawo (slonce z lewej-gory), z ciemniejszym rdzeniem przy krawedzi */
     g.save(); g.lineJoin = 'round'; { /* cien tylko miedzy poprzecznymi koncami mostu: nie zachodzi na drogi dojazdowe (asfalt jednolity przy wjezdach) */ const A0 = q.L[0], B0 = q.R[0], A1 = q.L[q.L.length - 1], B1 = q.R[q.R.length - 1], n0 = [B0[0] - A0[0], B0[1] - A0[1]], n1 = [B1[0] - A1[0], B1[1] - A1[1]], l0 = Math.hypot(n0[0], n0[1]) || 1, l1 = Math.hypot(n1[0], n1[1]) || 1, W = 60, m0 = [(A0[0] + B0[0]) / 2, (A0[1] + B0[1]) / 2], m1 = [(A1[0] + B1[0]) / 2, (A1[1] + B1[1]) / 2]; pathOf(g, [[m0[0] - n0[0] / l0 * W, m0[1] - n0[1] / l0 * W], [m0[0] + n0[0] / l0 * W, m0[1] + n0[1] / l0 * W], [m1[0] + n1[0] / l1 * W, m1[1] + n1[1] / l1 * W], [m1[0] - n1[0] / l1 * W, m1[1] - n1[1] / l1 * W]], true); g.clip(); } for (const [dx, dy, bl, al] of [[2.6, 3.2, 1.6, 0.20], [1.2, 1.5, 0.7, 0.22]]) { g.save(); try { g.filter = 'blur(' + Math.max(0.5, bl * k) + 'px)'; } catch (e) {} g.translate(dx * k, dy * k); pathOf(g, q.P, true); g.fillStyle = 'rgba(8,10,14,' + al + ')'; g.fill(); g.restore(); } g.restore(); } // cień wiaduktu na niższych drogach
-  for (const q of Lp) if (q.P.length > 2 && q.kerb !== false) { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const [col, wd] of [['#6f716c', 0.84], ['#c4c6c0', 0.68]]) { g.strokeStyle = col; g.lineWidth = Math.max(1.5, wd * k); for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } } // krawezniki: waski jasny pasek na zewnatrz konturu (wnetrze przykrywa jezdnia)
+  { g.lineCap = 'butt'; g.lineJoin = 'round'; for (const [col, wd] of [['#6f716c', 0.84], ['#c4c6c0', 0.68]]) { g.strokeStyle = col; g.lineWidth = Math.max(1.5, wd * k); for (const q of Lp) if (q.P.length > 2 && q.kerb !== false) for (const E of [q.L, q.R]) { pathOf(g, E, false); g.stroke(); } } } /* najpierw wszystkie ciemne obrysy, potem jasne: bez szwow na zlaczach segmentow */ // krawezniki: waski jasny pasek na zewnatrz konturu (wnetrze przykrywa jezdnia)
   { // asfalt jezdni: jeden wspolny obrys (jednolita powierzchnia bez szwow miedzy jezdniami); kierunek obrysow ujednolicony, zeby nakladajace sie nie wycinaly dziur
     g.beginPath(); let any = false; for (const q of Lp) if (q.P.length > 2) { let P = q.P.map(w2s), ar = 0; for (let i = 0; i < P.length; i++) { const a2 = P[i], b2 = P[(i + 1) % P.length]; ar += a2[0] * b2[1] - b2[0] * a2[1]; } if (ar < 0) P = P.reverse(); P.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath(); any = true; }
     if (any) { g.fillStyle = g.strokeStyle = '#7c8083'; g.lineWidth = 1; g.fill('nonzero'); g.fillStyle = PAT; g.fill('nonzero'); g.lineJoin = 'round'; g.lineWidth = Math.max(2.5, 0.3 * k); g.strokeStyle = '#7c8083'; g.stroke(); g.strokeStyle = PAT; g.stroke(); } /* obrys zakrywa waskie szczeliny miedzy sasiednimi jezdniami */

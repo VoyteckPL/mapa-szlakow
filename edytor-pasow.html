@@ -598,14 +598,16 @@ function layout() {
       if (!fil.length) continue;
       for (const f of fil) { /* wyciecie prostych krawedzi w obrebie luku i zastapienie lukiem */
         let E1 = null, E2 = null, d1 = 3, d2 = 3; const pieces = [];
-        for (const l of lines) { if (l.st !== 'p2') continue; let run = []; const out = [];
-          for (const p of l.P) { if (dist(p, f.I) < f.L - 0.02) { if (run.length) out.push(run); run = []; } else run.push(p); }
-          if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue;
+        const Lc = f.L - 0.02, nearRay = p => segDist(p, [2 * f.I[0] - f.T1[0], 2 * f.I[1] - f.T1[1]], f.T1) < 1.0 || segDist(p, [2 * f.I[0] - f.T2[0], 2 * f.I[1] - f.T2[1]], f.T2) < 1.0, inCut = p => dist(p, f.I) < Lc && nearRay(p); /* tnij tylko krawedzie lezace na prostych (wlot i jezdnia glowna) zastepowanych lukiem, nie sasiednie krawedzie waskiej rampy */
+        for (const l of lines) { if (l.st !== 'p2' || l.arc) continue; let run = []; const out = []; /* luki wczesniej zrobionych fillet nie sa ciete (przy waskiej rampie luk jednej strony wchodzil w zasieg drugiej i znikal) */
+          const PP = []; for (let q = 0; q < l.P.length; q++) { const a = l.P[q]; if (q > 0) { const b = l.P[q - 1], da = dist(a, f.I) - Lc, db = dist(b, f.I) - Lc; if (da * db < 0 && nearRay([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) ) { let lo = 0, hi = 1; for (let it = 0; it < 24; it++) { const m = (lo + hi) / 2, pm = [b[0] + (a[0] - b[0]) * m, b[1] + (a[1] - b[1]) * m]; if ((dist(pm, f.I) - Lc) * db > 0) lo = m; else hi = m; } const mm = (lo + hi) / 2; PP.push([b[0] + (a[0] - b[0]) * mm, b[1] + (a[1] - b[1]) * mm]); } } PP.push(a); } /* dokladne punkty na okregu ciecia: krawedz konczy sie dokladnie tam, gdzie zaczyna sie luk (bez szczeliny) */
+          for (const p of PP) { if (inCut(p)) { if (run.length) out.push(run); run = []; } else run.push(p); }
+          if (run.length) out.push(run); if (out.length === 1 && out[0].length === PP.length) continue;
           for (const R2 of out) for (const p of [R2[0], R2[R2.length - 1]]) { const q1 = dist(p, f.T1), q2 = dist(p, f.T2); if (q1 < d1) { d1 = q1; E1 = p; } if (q2 < d2) { d2 = q2; E2 = p; } }
           l.P = out[0] || []; for (let q = 1; q < out.length; q++) pieces.push({ P: out[q], st: 'p2', ly: l.ly });
         }
         lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
-        lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly });
+        lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly, arc: true });
         polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: true, ly, br: false });
       }
     }

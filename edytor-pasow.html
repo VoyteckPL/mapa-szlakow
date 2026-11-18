@@ -136,7 +136,7 @@ const LS = { p1: { dash: [3, 6], w: 0.12 }, p2: { dash: null, w: 0.2 }, p4: { da
 const LW_CLASS = { motorway: 3.75, trunk: 3.5, primary: 3.5, secondary: 3.4, tertiary: 3.5, unclassified: 2.5, residential: 2.5, living_street: 2.25, service: 4, busway: 3.25 };
 const RANK = { motorway: 4, trunk: 4, primary: 3, secondary: 3, tertiary: 2 };
 const HW_COL = { motorway: '#e0457b', trunk: '#e0457b', primary: '#e58a00', secondary: '#c9a400', tertiary: '#2f6fae', unclassified: '#6a7f94', residential: '#6a7f94', living_street: '#6a7f94', service: '#8d99a6', busway: '#6668ab' };
-const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary']); /* 2026-11-17: na razie tylko autostrady, glowne i secondary (+ lacznice); dawniej + tertiary, unclassified, residential, living_street, service, busway */
+const OKHW = new Set(['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'unclassified', 'residential', 'living_street', 'service']); /* 2026-11-18: dodane nizsze klasy (bez busway); service bez parking_aisle/driveway */
 const ARR = new Set(['through', 'left', 'right', 'through-left', 'through-right', 'left-right', 'through-left-right', 'reverse', 'p9a', 'p9b']);
 const TOOLS = [['sel', 'Zaznacz / przesuwaj'], ['pan', 'Widok'], ['osm', 'Dodaj drogę z OSM'], ['road', 'Rysuj drogę'], ['rend', 'Przesuń render']];
 const S = { hints: {}, org: { lat: 54.4985, lon: 18.4614 }, osm: { ways: new Map(), tiles: new Set() }, doc: { road: [] }, view: { x: 0, y: 0, k: 3 }, tool: 'sel', sel: -1, vsel: -1, draw: null, dirty: true, undo: [], redo: [] };
@@ -527,7 +527,7 @@ function layout() {
       const DL = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 + k * c.w[j] / nl)), dst = centre ? (r.centre === 'auto' ? (nl >= 4 ? 'p4' : 'p1') : r.centre) : 'p1';
       addLine(DL, dst); // linia pasow przed rozjazdem tez przerywana, jak reszta drogi
     }
-    if (r.edge || /^(motorway|trunk|primary|secondary|tertiary)/.test(r.hw || '')) {
+    if (r.edge || /^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service)/.test(r.hw || '')) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));
       const PLe = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), PRe = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
       const hideN = p => connNb[i].some(j => inPoly(p, PO[j])), baseE = sg => keepE.map((v, j) => v && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s)), mkE = (P, sg) => baseE(sg).map((v, j) => v && !inB(P[j]) && !hideN(P[j]));

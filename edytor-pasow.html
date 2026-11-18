@@ -60,6 +60,9 @@
   #oSt { margin-top:4px; color:#555; }
   #panel { display:none !important; } /* lewy panel Narzedzia usuniety: narzedzia w menu Edytor */
   #lcLoad:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
+  /* panele przyklejone do prawej: zmienny tekst nie moze zmieniac szerokosci (suwaki nie skacza) */
+  #smWrap label b[id], #nrt, #npTt, #npSt { display:inline-block; min-width:4.2em; text-align:right; font-variant-numeric:tabular-nums; }
+  #smWrap #diag { width:0; min-width:100%; overflow-wrap:anywhere; }
 </style>
 </head>
 <body>

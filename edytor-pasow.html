@@ -215,7 +215,10 @@ const noOff = r => { const t = (r.tl || '').split('|'); return (r.lanes | 0) ===
 const newRoad = (pts, nk) => ({ pts, nk, lanes: 2, lw: 3.5, oneway: false, centre: 'auto', marked: true, edge: false, kerb: true, osm: 0, name: '', hw: 'residential', tl: '', nf: 1 });
 
 // ---------- warstwa OSM ----------
-async function loadOsmAround(lat, lon, box) {
+let osmBusy = 0, osmWait = [];
+const osmIdle = () => osmBusy ? Promise.race([new Promise(r => osmWait.push(r)), new Promise(r => setTimeout(r, 10000))]) : Promise.resolve(); /* podklad (Geoportal) czeka na wczytanie drog OSM */
+async function loadOsmAround(lat, lon, box) { osmBusy++; try { return await loadOsmAround0(lat, lon, box); } finally { if (!--osmBusy) { osmWait.forEach(f => f()); osmWait = []; } } }
+async function loadOsmAround0(lat, lon, box) {
   const tx = Math.floor(lon / 0.02), ty = Math.floor(lat / 0.01); let fail = 0;
   const [xa, xb, ya, yb] = box || [tx - 1, tx + 1, ty - 1, ty + 1];
   for (let x = xa; x <= xb; x++) for (let y = ya; y <= yb; y++) {
@@ -802,6 +805,7 @@ function glyph(g, key) {
 const TILES = new Map(); let tq = 0; const tw = [];
 const merc = (x, y, n) => { const R = 20037508.342789244; return [x / n * 2 * R - R, R - y / n * 2 * R]; };
 async function fetchTile(kind, z, x, y, im) {
+  if (kind === 'orto' || kind === 'ortolo' || kind === 'esri') await osmIdle();
   while (tq >= (kind === 'orto' || kind === 'ortolo' ? 6 : 4)) await new Promise(r => tw.push(r)); tq++;
   try {
     { /* kafelek, ktory przestal byc widoczny (przesuniecie/zoom w trakcie kolejki), nie jest pobierany: kolejka obsluguje to, co jest na ekranie */ const n = 2 ** z, lo = v => v / n * 360 - 180, la = v => Math.atan(Math.sinh(Math.PI * (1 - 2 * v / n))) * 180 / Math.PI, a = w2s(proj(lo(x), la(y))), b = w2s(proj(lo(x + 1), la(y + 1))), zc = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k);

@@ -870,6 +870,7 @@ function drawGroup(g, ly) {
   for (const a of La) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }
 function drawNodeDash() {
+  if (S.msel && S.msel.size) for (const { i, q } of S.msel.values()) { const G = laneGeom(i); if (!G || q < 0 || q >= G.NL) continue; const A0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + q * G.lw[j])), B0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (q + 1) * G.lw[j])); ctx.save(); pathOf(ctx, A0.concat(B0.slice().reverse()), true); ctx.fillStyle = 'rgba(255,122,0,.35)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,122,0,.95)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
   { const nb = document.getElementById('nrbar'), nk = nb && nb.style.display !== 'none' ? nb.dataset.k : ''; /* geometria przejscia wybranego wezla: przerywana os drog na dlugosci przejscia + znaczniki poczatku i konca */
     if (nk) { const P = S.nodeP[nk] || {}, T = P.T || (+$('fT').value || 35), SA = P.s != null ? P.s : 0.3; ctx.save(); ctx.setLineDash([7, 5]); ctx.lineWidth = 2; ctx.strokeStyle = '#ff7a00';
       for (const r of S.doc.road) { const j = r.nk.indexOf(nk); if (j < 0) continue; for (const dir of [1, -1]) { if (j + dir < 0 || j + dir >= r.pts.length) continue; let acc = 0, prev = r.pts[j], pts = [prev], mk = [];
@@ -1393,6 +1394,8 @@ function endPtr(e) {
   if (d.m === 'lax') { if (!d.moved) S.undo.pop(); save(); render(); return; }
   if (d.m === 'axisIns') { hideLanePal(); S.vsel = -1; ui(); render(); return; }
   if (d.m === 'maybe') {
+    if (e.shiftKey && S.tool === 'sel' && !EMBED) { /* Shift + klik: zaznaczanie pasow z kilku roznych linii OSM naraz */ const ns = hitRoad(d.w), r0 = ns >= 0 ? S.doc.road[ns] : null; if (r0 && r0.osm) { const ls = laneAt(r0, d.w, ns), ab = r0.oneway ? ls.i : (ls.r === 0 ? (r0.lanes - (r0.nf || 1)) + ls.i : (r0.lanes - (r0.nf || 1)) - 1 - ls.i), key = ns + ':' + ab; S.msel = S.msel || new Map(); if (S.msel.has(key)) S.msel.delete(key); else S.msel.set(key, { i: ns, q: ab }); say('Zaznaczone pasy: ' + S.msel.size + ' (Shift + klik dodaje/odznacza, zwykły klik czyści)'); render(); } return; }
+    if (S.msel && S.msel.size) { S.msel.clear(); }
     if (S.tool === 'sel' || S.tool === 'rend') { const ns = hitRoad(d.w), same = ns >= 0 && ns === S.sel; S.vsel = -1; const onAxis = ns >= 0 && axisDistPx(S.doc.road[ns], d.w) < 9; if (S.tool === 'sel' && same && !onAxis && S.doc.road[ns].osm && !EMBED) { LANE_ON = true; LSEL = laneAt(S.doc.road[ns], d.w, ns); ensureLaneAxis(ns, laneAbs(S.doc.road[ns])); save(); ui(); showLanePal(); } else { S.sel = ns; LANE_ON = false; hideLanePal(); ui(); } }
     else if (S.tool === 'split') { const ns = hitRoad(d.w); if (ns < 0) { say('Kliknij drogę w miejscu podziału.'); } else { const r = S.doc.road[ns]; let i = -1, bd = r.osm ? 1e9 : 14; r.pts.forEach((q, j) => { if (j > 0 && j < r.pts.length - 1) { const dd = dist(w2s(q), w2s(d.w)); if (dd < bd) { bd = dd; i = j; } } });
         if (i < 0 && !r.osm) { const pj = axisProj(r, d.w); if (pj.d < 12) { push(); r.pts.splice(pj.i + 1, 0, pj.p); r.nk.splice(pj.i + 1, 0, null); if (r.rp) r.rp.splice(pj.i + 1, 0, pj.p.slice()); i = pj.i + 1; } else { say('Kliknij na osi drogi.'); } }

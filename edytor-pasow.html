@@ -586,7 +586,7 @@ function layout() {
   { // skrzyzowanie T: droga boczna dojezdza do przelotowej pod dowolnym katem - luki (fillety) krawedzi na zlaczu
     const FR = 3.5; /* promien luku [m] */
     for (const [k, G] of ends) {
-      if (window.__noFil || forkDone.has(k) || G.length !== 3 || nodeRoads.get(k).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue;
+      if (window.__noFil || (S.nodeR && S.nodeR[k] != null && G.length >= 3) || forkDone.has(k) || G.length !== 3 || nodeRoads.get(k).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue;
       const U = G.map(e => unitFrom(C[e.i], e.st)); let a = 0, b = 1, best = 9;
       for (let p = 0; p < 3; p++) for (let q = p + 1; q < 3; q++) { const d = U[p][0] * U[q][0] + U[p][1] * U[q][1]; if (d < best) { best = d; a = p; b = q; } }
       if (best > -0.7) continue; /* przelotowa musi byc prawie prosta */
@@ -685,6 +685,21 @@ function layout() {
     }
     lines.length = 0; lines.push(...rest, ...sol);
   }
+  for (const [k, G] of ends) { /* Node Controller: reczny promien rogow - wkleslle luki (fillety) miedzy kazda para sasiednich ramion wezla (3+ drog) */
+    const rr0 = S.nodeR && S.nodeR[k]; if (rr0 == null || rr0 <= 0.05 || G.length < 3 || new Set(G.map(e => e.i)).size < 3) continue;
+    const arms = G.map(e => { const E = edgeOf[e.i]; if (!E) return null; const j = e.st ? 0 : E.Lf.length - 1, u = unitFrom(C[e.i], e.st), Lp = e.st ? E.Lf[j] : E.Rt[j], Rp = e.st ? E.Rt[j] : E.Lf[j]; return { e, u, Lp, Rp, ang: Math.atan2(u[1], u[0]), len: C[e.i].cum[C[e.i].cum.length - 1] }; }).filter(Boolean).sort((a, b) => a.ang - b.ang);
+    if (arms.length < 3) continue; const lyK = Math.max(...arms.map(a => R[a.e.i].ly | 0));
+    for (let q = 0; q < arms.length; q++) { const A = arms[q], B = arms[(q + 1) % arms.length], cr = A.u[0] * B.u[1] - A.u[1] * B.u[0], dt = A.u[0] * B.u[0] + A.u[1] * B.u[1]; if (cr <= 0.05) continue; /* kat CCW od A do B w (0, 180) st. */
+      const phi = Math.acos(Math.max(-1, Math.min(1, dt))); if (phi < 0.35 || phi > 2.9) continue;
+      const P0 = A.Rp, P1 = B.Lp, den = A.u[0] * B.u[1] - A.u[1] * B.u[0], t = ((P1[0] - P0[0]) * B.u[1] - (P1[1] - P0[1]) * B.u[0]) / den, I = [P0[0] + A.u[0] * t, P0[1] + A.u[1] * t]; if (dist(I, P0) > 25) continue;
+      let r = rr0, L = r / Math.tan(phi / 2); const Lm = Math.min(12, A.len * 0.45, B.len * 0.45); if (L > Lm) { r *= Lm / L; L = Lm; } if (L < 0.3) continue;
+      const T1 = [I[0] + A.u[0] * L, I[1] + A.u[1] * L], T2 = [I[0] + B.u[0] * L, I[1] + B.u[1] * L], bs = [A.u[0] + B.u[0], A.u[1] + B.u[1]], bl = Math.hypot(bs[0], bs[1]) || 1, cc = [I[0] + bs[0] / bl * r / Math.sin(phi / 2), I[1] + bs[1] / bl * r / Math.sin(phi / 2)];
+      let a1 = Math.atan2(T1[1] - cc[1], T1[0] - cc[0]), a2 = Math.atan2(T2[1] - cc[1], T2[0] - cc[0]), da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+      const arc = []; for (let w = 0; w <= 14; w++) arc.push([cc[0] + r * Math.cos(a1 + da * w / 14), cc[1] + r * Math.sin(a1 + da * w / 14)]);
+      const wp = [I, T1, ...arc, T2], inW = p => inPoly(p, wp) || segDist(p, I, T1) < 0.2 || segDist(p, I, T2) < 0.2; /* krawedzie ramion wewnatrz klina luku znikaja (obrys robi wspolna krawedz) */
+      for (const l of lines.slice()) { if (l.st !== 'p2' || (l.ly | 0) !== lyK) continue; let run = []; const out = []; for (const p of l.P) { if (inW(p)) { if (run.length) out.push(run); run = []; } else run.push(p); } if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue; const keepP = out.filter(o => { let t = 0; for (let z = 1; z < o.length; z++) t += dist(o[z - 1], o[z]); return t > 1.5; }); l.P = keepP[0] || []; for (let w2 = 1; w2 < keepP.length; w2++) lines.push({ P: keepP[w2], st: 'p2', ly: l.ly }); }
+      polys.push({ P: wp, L: arc, R: [], kerb: true, ly: lyK, br: false, ed: true }); } }
+    for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
   for (const [k, G] of ends) { /* Node Controller: reczne poszerzenie wezla (suwak 'Szerokosc wezla') - asfaltowy krazek wokol wezla, krawedzie drog wewnatrz znikaja */
     const ex = S.nodeW && S.nodeW[k]; if (!(ex > 0.05) || (nodeRoads.get(k) || []).length < 2) continue;
     const c0 = orient(C[G[0].i], G[0].st).Q[0], rr = Math.max(...G.map(e => rw(R[e.i]))) / 2 + ex, lyN = Math.max(...G.map(e => R[e.i].ly | 0)), ring = []; for (let q = 0; q < 36; q++) ring.push([c0[0] + rr * Math.cos(q * Math.PI / 18), c0[1] + rr * Math.sin(q * Math.PI / 18)]);

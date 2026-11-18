@@ -535,7 +535,7 @@ function layout() {
     if (r.edge || /^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|busway|road|construction)/.test(r.hw || '')) {
       const len = c.cum[n - 1], kpe = sg => keep.map((kk, j) => kk && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s));
       const PLe = offsetPts(Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), PRe = offsetPts(Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j)));
-      const hideN = p => connNb[i].some(j => inPoly(p, PO[j])), baseE = sg => keepE.map((v, j) => v && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s)), mkE = (P, sg) => baseE(sg).map((v, j) => v && !inB(P[j]) && !hideN(P[j]));
+      const hideN = p => connNb[i].some(j => inPoly(p, PO[j]) && !nearEdge(p, PO[j])), nearEdge = (p, poly) => { for (let q = 0; q < poly.length; q++) if (segDist(p, poly[q], poly[(q + 1) % poly.length]) < 0.3) return true; return false; } /* punkt tuz przy krawedzi sasiedniego asfaltu nie jest ukrywany (linia biegnaca wzdluz granicy nie moze miec dziury) */, baseE = sg => keepE.map((v, j) => v && !(c.skipIn && c.skipIn.sg === sg && c.skipIn.m[j]) && !cutIn.some(ci => ci.i === i && ci.ss === sg && (ci.st ? c.cum[j] : len - c.cum[j]) < ci.s)), mkE = (P, sg) => baseE(sg).map((v, j) => v && !inB(P[j]) && !hideN(P[j]));
       const plen = P => { let t = 0; for (let j = 1; j < P.length; j++) t += dist(P[j - 1], P[j]); return t; }, slipIn = c.slip && c.slip.length && /_link/.test(r.hw || '') ? (plen(PLe) > plen(PRe) ? -1 : 1) : 0; /* slip lane: strona od wyspy (wewnetrzna) bez bialej linii - tam jest krawieznik */
       const edgeLine = (P, sg) => { const mk = mkE(P, sg);
         if (n < 2) { addLine(P, 'p2', mk); return; }
@@ -613,7 +613,7 @@ function layout() {
       }
       if (!fil.length) continue;
       for (const f of fil) { /* wyciecie prostych krawedzi w obrebie luku i zastapienie lukiem */
-        let E1 = null, E2 = null, d1 = 1.2, d2 = 1.2; const pieces = []; /* koniec luku szukany tylko tuz przy stycznych */
+        const snap = lines.map(l => l.P); let E1 = null, E2 = null, d1 = 1.2, d2 = 1.2; const pieces = []; /* koniec luku szukany tylko tuz przy stycznych */
         const Lc = f.L - 0.02, nearRay = p => segDist(p, [2 * f.I[0] - f.T1[0], 2 * f.I[1] - f.T1[1]], f.T1) < 1.0 || segDist(p, [2 * f.I[0] - f.T2[0], 2 * f.I[1] - f.T2[1]], f.T2) < 1.0, inCut = p => dist(p, f.I) < Lc && nearRay(p); /* tnij tylko krawedzie lezace na prostych (wlot i jezdnia glowna) zastepowanych lukiem, nie sasiednie krawedzie waskiej rampy */
         for (const l of lines) { if (l.st !== 'p2' || l.arc) continue; let run = []; const out = []; /* luki wczesniej zrobionych fillet nie sa ciete (przy waskiej rampie luk jednej strony wchodzil w zasieg drugiej i znikal) */
           const PP = []; for (let q = 0; q < l.P.length; q++) { const a = l.P[q]; if (q > 0) { const b = l.P[q - 1], da = dist(a, f.I) - Lc, db = dist(b, f.I) - Lc; if (da * db < 0 && nearRay([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) ) { let lo = 0, hi = 1; for (let it = 0; it < 24; it++) { const m = (lo + hi) / 2, pm = [b[0] + (a[0] - b[0]) * m, b[1] + (a[1] - b[1]) * m]; if ((dist(pm, f.I) - Lc) * db > 0) lo = m; else hi = m; } const mm = (lo + hi) / 2; PP.push([b[0] + (a[0] - b[0]) * mm, b[1] + (a[1] - b[1]) * mm]); } } PP.push(a); } /* dokladne punkty na okregu ciecia: krawedz konczy sie dokladnie tam, gdzie zaczyna sie luk (bez szczeliny) */
@@ -622,8 +622,9 @@ function layout() {
           for (const R2 of out) for (const p of [R2[0], R2[R2.length - 1]]) { const q1 = dist(p, f.T1), q2 = dist(p, f.T2); if (q1 < d1) { d1 = q1; E1 = p; } if (q2 < d2) { d2 = q2; E2 = p; } }
           l.P = out[0] || []; for (let q = 1; q < out.length; q++) pieces.push({ P: out[q], st: 'p2', ly: l.ly });
         }
+        if (!E1 || !E2) { lines.forEach((l, q) => { if (snap[q]) l.P = snap[q]; }); continue; } /* krawedzie nie dochodza do stycznych luku: nie ciac (luk bylby oderwany od linii) */
         lines.push(...pieces); for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
-        lines.push({ P: [E1, ...f.arc, E2].filter(Boolean), st: 'p2', ly, arc: true });
+        lines.push({ P: [E1 || f.T1, ...f.arc, E2 || f.T2], st: 'p2', ly, arc: true }); /* brak krawedzi do ucięcia przy stycznej: luk zaczyna sie w punkcie stycznym */
         polys.push({ P: [f.I, f.T1, ...f.arc, f.T2], L: f.arc, R: f.arc, kerb: false, ly, br: false }); /* krawezniki luku rysowane pozniej wzdluz wygladzonej linii */
       }
     }
@@ -662,7 +663,8 @@ function layout() {
             const oP = jb === 0 ? PB.slice(0, ci) : PB.slice(ci + 1).reverse(), pl = cv0.concat(oP.slice().reverse().filter(p => dist(p, C) > 0.01)); let cx = 0, cy = 0; pl.forEach(p => { cx += p[0]; cy += p[1]; }); cx /= pl.length; cy /= pl.length;
             if (PO.some(po => po.length > 2 && inPoly([cx, cy], po))) continue; /* uskok ma byc wypelniony tylko tam, gdzie jest teren (nie zwezamy asfaltu) */ }
           if (!best || turn > best.turn) best = { A, B, pA, C, ci, tA, tC, turn, jb }; }
-        if (!best) continue; const { A, B, pA, C, ci, tA, tC, jb } = best, PB = B.l.P, pB = PB[jb], dAC = dist(pA, C), h = dAC * 0.4, c1 = [pA[0] + tA[0] * h, pA[1] + tA[1] * h], c2 = [C[0] - tC[0] * h, C[1] - tC[1] * h], cv = [];
+        if (!best) { if (d < 1.0 && !F[x].used && !F[y].used) { used.add(x); used.add(y); lines.push({ P: [F[x].l.P[F[x].j], F[y].l.P[F[y].j]], st: 'p2', ly: F[x].l.ly }); } continue; } /* brak miejsca na krzywa (wezel zakryty asfaltem): prosty lacznik, zeby linia nie miala dziury */
+        const { A, B, pA, C, ci, tA, tC, jb } = best, PB = B.l.P, pB = PB[jb], dAC = dist(pA, C), h = dAC * 0.4, c1 = [pA[0] + tA[0] * h, pA[1] + tA[1] * h], c2 = [C[0] - tC[0] * h, C[1] - tC[1] * h], cv = [];
         for (let q = 0; q <= 12; q++) { const u = q / 12, w = 1 - u; cv.push([w * w * w * pA[0] + 3 * w * w * u * c1[0] + 3 * w * u * u * c2[0] + u * u * u * C[0], w * w * w * pA[1] + 3 * w * w * u * c1[1] + 3 * w * u * u * c2[1] + u * u * u * C[1]]); }
         const old = jb === 0 ? [pB, ...PB.slice(1, ci)] : [pB, ...PB.slice(ci + 1).reverse()].reverse().reverse(); /* stary przebieg B -> C (do zastapienia) */
         const oldP = jb === 0 ? PB.slice(0, ci) : PB.slice(ci + 1).reverse(); /* od B w strone C */

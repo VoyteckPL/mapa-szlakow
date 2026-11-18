@@ -594,7 +594,9 @@ function layout() {
       const uC = U[ci], t0 = [U[a][0] - U[b][0], U[a][1] - U[b][1]], tl = Math.hypot(t0[0], t0[1]) || 1, t = [t0[0] / tl, t0[1] / tl], nt = [-t[1], t[0]];
       const hC = rw(R[eC.i]) / 2, hT = Math.max(rw(R[eA.i]), rw(R[eB.i])) / 2, nC = [-uC[1], uC[0]], dn = uC[0] * nt[0] + uC[1] * nt[1];
       if (Math.abs(dn) < 0.5) continue;
-      const cCum = C[eC.i].cum, lenC = cCum[cCum.length - 1], farJ = (nodeRoads.get(R[eC.i].nk[eC.st ? R[eC.i].nk.length - 1 : 0]) || []).length >= 3, sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
+      const cCum = C[eC.i].cum, pts0 = R[eC.i].pts, nk0 = R[eC.i].nk, dir0 = eC.st ? 1 : -1; let lenC = cCum[cCum.length - 1], farJ = (nodeRoads.get(nk0[eC.st ? nk0.length - 1 : 0]) || []).length >= 3;
+      { let acc = 0; for (let ix = eC.st ? 0 : pts0.length - 1; ix + dir0 >= 0 && ix + dir0 < pts0.length;) { acc += dist(pts0[ix], pts0[ix + dir0]); ix += dir0; const kk = nk0[ix]; if (kk && (nodeRoads.get(kk) || []).length >= 2 && !(nodeRoads.get(kk) || []).every(q => q === eC.i)) { if (acc < lenC) { lenC = acc; farJ = true; } break; } } } /* dojazd przechodzacy przez jezdnie (wezel posredni na jej wierzcholku) tez ogranicza dlugosc luku */
+      const sg = dn > 0 ? 1 : -1, ly = Math.max(R[eA.i].ly | 0, R[eB.i].ly | 0), fil = [];
       for (const s of [-1, 1]) {
         const sdX = (nC[0] * s * t[0] + nC[1] * s * t[1]) >= 0 ? 1 : -1, eX = sdX > 0 ? eA : eB, oX = orient(C[eX.i], eX.st), uX = unitFrom(C[eX.i], eX.st), nX = [-uX[1], uX[0]], dnX = uC[0] * nX[0] + uC[1] * nX[1];
         let ed = oX.d[0] + (oX.w[0] / 2) * (dnX >= 0 ? 1 : -1); /* krawedz drogi przelotowej po tej stronie wg jej rzeczywistej szerokosci i offsetu (a nie wspolna dla obu ramion) */

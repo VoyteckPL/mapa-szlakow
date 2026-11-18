@@ -369,7 +369,7 @@ function skelFork(X, yl, yr, C, R, gores) {
 }
 
 // ---------- zmiana liczby pasow na szkielecie (przyrost / redukcja) ----------
-function skelLanes(G, C, R) {
+function skelLanes(G, C, R, after) { /* after = true: wezsza droga zaczyna sie pelna szerokoscia przy wezle i zwęza sie ZA nim (skrzyzowanie), szersza zostaje pelna do wezla */
   const n0 = R[G[0].i].lanes, n1 = R[G[1].i].lanes, we = n0 > n1 ? G[0] : G[1], ne = n0 > n1 ? G[1] : G[0], m = Math.max(n0, n1), n = Math.min(n0, n1), w = R[we.i].lw || 3.75;
   const cw = C[we.i], ow = orient(cw, we.st), node = ow.Q[0], u = unitFrom(cw, we.st); let bd = 25, sf = 1; // strona zewnetrzna = od najblizszej innej drogi
   R.forEach((r2, i2) => { if (i2 === G[0].i || i2 === G[1].i) return; r2.pts.forEach(q => { const dd = dist(q, node); if (dd < bd) { bd = dd; sf = (u[0] * (q[1] - node[1]) - u[1] * (q[0] - node[0])) >= 0 ? -1 : 1; } }); });
@@ -382,12 +382,14 @@ function skelLanes(G, C, R) {
     lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, p0: l.p0 == null ? null : e.st ? l.p0 : -l.p0, T: l.T, st: e.st, a: l.a, b: l.b })); };
   const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
-  const SN = [], SW = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
+  const SN = [], SW = [], MATCH = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
   { const wl = SW.map(x => toDp(x) + sw), used = new Set(); /* linie pasow szerszej drogi: kazda linia wezszej przechodzi plynnie w najblizsza linie szerszej, nadmiarowe linie szerszej wyrastaja dalej */
-    SN.forEach(x => { const q = toDp(x) + sn; let k = -1, bk = 1e9; wl.forEach((y, kk) => { if (!used.has(kk) && Math.abs(y - q) < bk) { bk = Math.abs(y - q); k = kk; } }); if (k >= 0) { used.add(k); linesW.push({ p: wl[k], p0: q, T, a: 0, b: BIG }); } linesN.push({ p: -toDp(x) - sn, a: 0, b: BIG }); });
+    SN.forEach(x => { const q = toDp(x) + sn; let k = -1, bk = 1e9; wl.forEach((y, kk) => { if (!used.has(kk) && Math.abs(y - q) < bk) { bk = Math.abs(y - q); k = kk; } }); if (k >= 0) { used.add(k); linesW.push({ p: wl[k], p0: q, T, a: 0, b: BIG }); MATCH.push({ x, y: wl[k] }); } linesN.push({ p: -toDp(x) - sn, a: 0, b: BIG }); });
     wl.forEach((y, kk) => { if (!used.has(kk)) linesW.push({ p: y, a: T * 0.6, b: BIG }); }); }
   const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
   const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * sm5(cl(s / (0.7 * T))) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
+  if (after) { const on2 = orient(C[ne.i], ne.st), e2 = s => sm(cl(s / T)); set(we, ow.cum, ow.cum.map(() => Lm), ow.cum.map(() => Rm), SW.map(x => ({ p: toDp(x) + sw, a: 0, b: BIG })));
+    set(ne, on2.cum, on2.cum.map(s => -(Rm + (Rn - Rm) * e2(s))), on2.cum.map(s => -(Lm + (Ln - Lm) * e2(s))), MATCH.map(m => ({ p: -toDp(m.x) - sn, p0: -m.y, T, a: 0, b: BIG }))); return; }
   set(we, ow.cum, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
   const on = orient(C[ne.i], ne.st); set(ne, on.cum, on.cum.map(() => -Rn), on.cum.map(() => -Ln), linesN);
 }
@@ -437,7 +439,7 @@ function layout() {
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
       const lw0 = e => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[e.i].hw || ''), hi = G.filter(e => !lw0(e));
       if (hi.length === 2) { /* dwie drogi wyzszej klasy + dojazd niskiej klasy: zmiana liczby pasow tylko miedzy dwiema glownymi (zwezenie jak na zwyklym zlaczu), dojazd to zwykle T */
-        handled.add(k); if (TAPER2 && R[hi[0].i].lanes !== R[hi[1].i].lanes) skelLanes(hi, C, R); continue; }
+        if (TAPER2 && R[hi[0].i].lanes !== R[hi[1].i].lanes) skelLanes(hi, C, R, !window.__noAfter); continue; } /* (bez handled: krawedzie dojazdu pod jezdnia glowna maja byc ukryte) */
       const U = G.map(e => unitFrom(C[e.i], e.st)); let xi = 0, best = 9;
       U.forEach((u, a) => { const o = [0, 1, 2].filter(b => b !== a), v = u[0] * (U[o[0]][0] + U[o[1]][0]) + u[1] * (U[o[0]][1] + U[o[1]][1]); if (v < best) { best = v; xi = a; } });
       const ln = G.map(e => R[e.i].lanes), mx = Math.max(...ln); if (ln.filter(v => v === mx).length === 1) xi = ln.indexOf(mx);

@@ -36,7 +36,7 @@ function outline(r) {
     if (i === 0 || true) { /* koniec drogi a: prawy, lewy */ }
     poly.push({ arm: a, far: true }); /* marker */
     poly.pop(); poly.push(add(add([0, 0], a.n, -a.h), a.u, a.len)); poly.push(add(add([0, 0], a.n, a.h), a.u, a.len));
-    if (gap >= Math.PI - 0.02) { poly.push(add([0, 0], a.n, a.h)); poly.push(add([0, 0], b.n, -b.h)); dbg.push({ i: add([0, 0], a.n, a.h) }); }
+    if (gap >= Math.PI - 0.02) { poly.push(add([0, 0], a.n, a.h)); poly.push(add([0, 0], b.n, -b.h)); dbg.push({ i: add([0, 0], a.n, a.h) }); a.tL = 0; b.tR = 0; }
     else {
       let rr = r, T1, T2, C, ok = false;
       for (let it = 0; it < 24; it++) {
@@ -44,8 +44,8 @@ function outline(r) {
         T1 = add(C, a.n, -rr); T2 = add(C, b.n, rr); if (dot(T1, a.u) <= a.len * 0.8 && dot(T2, b.u) <= b.len * 0.8) { ok = true; break; } rr *= 0.85;
       }
       const I = isect(add([0, 0], a.n, a.h), a.u, add([0, 0], b.n, -b.h), b.u);
-      if (!ok || rr < 0.05) { poly.push(I || [0, 0]); dbg.push({ i: I, arc: null }); }
-      else { const a1 = Math.atan2(T1[1] - C[1], T1[0] - C[0]), a2 = Math.atan2(T2[1] - C[1], T2[0] - C[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; const arc = []; for (let q = 0; q <= 16; q++) arc.push([C[0] + rr * Math.cos(a1 + da * q / 16), C[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); dbg.push({ i: I, arc, T1, T2 }); }
+      if (!ok || rr < 0.05) { poly.push(I || [0, 0]); dbg.push({ i: I, arc: null }); if (I) { a.tL = dot(I, a.u); b.tR = dot(I, b.u); } }
+      else { const a1 = Math.atan2(T1[1] - C[1], T1[0] - C[0]), a2 = Math.atan2(T2[1] - C[1], T2[0] - C[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; const arc = []; for (let q = 0; q <= 16; q++) arc.push([C[0] + rr * Math.cos(a1 + da * q / 16), C[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); dbg.push({ i: I, arc, T1, T2 }); a.tL = dot(T1, a.u); b.tR = dot(T2, b.u); }
     }
   }
   return { poly, dbg, A };
@@ -62,6 +62,12 @@ function draw() {
     g.save(); g.lineWidth = 2; g.strokeStyle = '#f5b400'; g.beginPath(); dbg.forEach((d, i) => { if (!d.i) return; const s = sc(d.i); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.closePath(); g.stroke();
     g.strokeStyle = '#0050ff'; g.lineWidth = 4; for (const d of dbg) if (d.arc) { g.beginPath(); d.arc.forEach((p, i) => { const s = sc(p); i ? g.lineTo(s[0], s[1]) : g.moveTo(s[0], s[1]); }); g.stroke(); } g.restore();
   }
+  if (gd.checked) { g.save(); for (const m of A) { const t0 = Math.min(m.tL == null ? 0 : m.tL, m.tR == null ? 0 : m.tR), t1 = Math.max(m.tL == null ? 0 : m.tL, m.tR == null ? 0 : m.tR), nl = Math.max(1, Math.round(m.w / 3.2)), lw = m.w / nl;
+      const P = (t, o) => sc(add(add([0, 0], m.u, t), m.n, o));
+      g.setLineDash([]); g.strokeStyle = '#e8590c'; g.lineWidth = 2.5; g.beginPath(); { const a0 = P(m.tL == null ? 0 : m.tL, m.h), b0 = P(m.tR == null ? 0 : m.tR, -m.h); g.moveTo(a0[0], a0[1]); g.lineTo(b0[0], b0[1]); } g.stroke();
+      for (let k = 0; k < nl; k++) { const o = -m.h + (k + 0.5) * lw, e0 = P((t0 + t1) / 2, o); g.fillStyle = '#e8590c'; g.beginPath(); g.arc(e0[0], e0[1], 4, 0, 7); g.fill(); }
+      g.setLineDash([8, 6]); g.strokeStyle = '#f2f2f2'; g.lineWidth = 1.5; for (let k = 1; k < nl; k++) { const o = -m.h + k * lw, s0 = P((t0 + t1) / 2, o), s1 = P(m.len, o); g.beginPath(); g.moveTo(s0[0], s0[1]); g.lineTo(s1[0], s1[1]); g.stroke(); } }
+    g.restore(); }
   arms.forEach((m, i) => { const e = sc([Math.cos(m.a) * m.len, Math.sin(m.a) * m.len]); g.strokeStyle = i === sel ? '#ff7a00' : '#2a6bd6'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(CX, CY); g.lineTo(e[0], e[1]); g.stroke(); g.beginPath(); g.arc(e[0], e[1], 7, 0, 7); g.fillStyle = '#fff'; g.fill(); g.stroke(); });
 }
 const pos = ev => [ev.clientX, ev.clientY];

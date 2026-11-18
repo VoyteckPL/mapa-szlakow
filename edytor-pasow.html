@@ -68,6 +68,7 @@
     <div id="lc"><button id="lcB" title="Warstwy"><svg class="ic" style="color:#3949ab" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></button><div id="lcP">
       <b>Podkład</b>
       <label><input type="radio" name="bmr" value="osm"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> OSM</label>
+      <label><input type="radio" name="bmr" value="topo"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> OpenTopo</label>
       <hr><b>Warstwy</b>
       <div style="display:flex;align-items:center;justify-content:space-between"><label><input type="checkbox" id="cLay" checked><svg class="ic" style="color:#e53935" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3L5 21M16 3l3 18M12 4v3M12 10v4M12 17v3"/></svg> Pasy</label><button id="lcPsB" title="Krycie i przejście" style="width:22px;height:22px;padding:0;border:1px solid #ccc;border-radius:5px;background:#fff;color:#555;cursor:pointer;font-size:11px;line-height:1">▾</button></div>
       <div id="lcPsl" style="display:none">
@@ -103,7 +104,7 @@
     <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     </div>
-    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm" selected>OSM</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
+    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm" selected>OSM</option><option value="topo">OpenTopo</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
     <div class="tab-off" style="display:none">
     <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>
@@ -752,7 +753,11 @@ function layout() {
     l.P = P; if (l.arc) polys.push({ P: [P[0], P[0], P[0]], L: P, R: [], kerb: true, ly: l.ly, br: false }); }
   S.nodeViz = [];
   if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
-    if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue;
+    if (forkDone.has(k)) continue;
+    if (G.length === 2 && G[0].i !== G[1].i && (nodeRoads.get(k) || []).length === 2) { /* mini-wezel: dwie drogi zlaczone pod katem (zakret > ~12 st.) */
+      const dd = e => { const Q = orient(C[e.i], e.st).Q; let j = 1; while (j < Q.length - 1 && dist(Q[0], Q[j]) < 3) j++; return unit([Q[j][0] - Q[0][0], Q[j][1] - Q[0][1]]) || [1, 0]; }, u1 = dd(G[0]), u2 = dd(G[1]);
+      if (-(u1[0] * u2[0] + u1[1] * u2[1]) > 0.978) continue; /* prawie prosto: zwykle polaczenie */
+    } else if (G.length < 3 || new Set(G.map(e => e.i)).size < 3) continue;
     const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const oo = orient(C[e.i], e.st), Qs = oo.Q; let j1 = 1; while (j1 < Qs.length - 1 && dist(Qs[0], Qs[j1]) < 0.5) j1++; const d0 = unit([Qs[j1][0] - Qs[0][0], Qs[j1][1] - Qs[0][1]]) || [1, 0];
       let run = 0; for (let q = j1; q < Qs.length; q++) { const dq = unit([Qs[q][0] - Qs[q - 1][0], Qs[q][1] - Qs[q - 1][1]]); if (!dq || dq[0] * d0[0] + dq[1] * d0[1] < 0.9986) break; run = dist(Qs[0], Qs[q]); }
       const h = rw(R[e.i]) / 2, d00 = (oo.d && oo.d[0]) || 0, w00 = (oo.w && oo.w[0]) || 2 * h, hp = d00 + w00 / 2, hq = w00 / 2 - d00, tot = Qs.reduce((t, q, z) => z ? t + dist(Qs[z - 1], q) : 0, 0), D = Math.max(1, Math.min(14, tot * 0.5, Math.max(run, 1) + 1.5)), sc = [0]; for (let q = 1; q < Qs.length; q++) sc.push(sc[q - 1] + dist(Qs[q - 1], Qs[q]));
@@ -819,6 +824,7 @@ async function fetchTile(kind, z, x, y, im) {
     { /* kafelek, ktory przestal byc widoczny (przesuniecie/zoom w trakcie kolejki), nie jest pobierany: kolejka obsluguje to, co jest na ekranie */ const n = 2 ** z, lo = v => v / n * 360 - 180, la = v => Math.atan(Math.sinh(Math.PI * (1 - 2 * v / n))) * 180 / Math.PI, a = w2s(proj(lo(x), la(y))), b = w2s(proj(lo(x + 1), la(y + 1))), zc = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k);
       if (b[0] < -300 || b[1] < -300 || a[0] > W + 300 || a[1] > H + 300 || Math.abs(z - Math.round(zc)) > 3) { TILES.delete(kind + z + '/' + x + '/' + y); return; } }
     let url = `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
+    if (kind === 'topo') url = `https://${'abc'[(x + y) % 3]}.tile.opentopomap.org/${z}/${x}/${y}.png`;
     if (kind === 'quiet') url = `https://a.basemaps.cartocdn.com/light_nolabels/${z}/${x}/${y}.png`;
     if (kind === 'esri') url = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
     if (kind === 'ortolo') { const n = 2 ** z, a = merc(x, y + 1, n), b = merc(x + 1, y, n); url = `https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS=Raster&STYLES=&FORMAT=image/jpeg&TRANSPARENT=FALSE&CRS=EPSG:3857&WIDTH=256&HEIGHT=256&BBOX=${a[0]},${a[1]},${b[0]},${b[1]}`; }
@@ -834,7 +840,7 @@ let srT = 0, srLast = 0; function schedRender() { if (srT) return; const wait = 
 function tile(kind, z, x, y) { const k = kind + z + '/' + x + '/' + y; let im = TILES.get(k); if (!im) { im = new Image(); im.onload = schedRender; TILES.set(k, im); fetchTile(kind, z, x, y, im); } return im; }
 function drawTiles() {
   if (!$('cTile').checked) return;
-  const kind = $('bm').value; if (kind === 'quiet') { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#eceef1'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore(); return; } let z = Math.round(Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k)); z = Math.max(2, Math.min(kind === 'orto' ? 20 : kind === 'ortolo' ? 18 : 19, z));
+  const kind = $('bm').value; if (kind === 'quiet') { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#eceef1'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore(); return; } let z = Math.round(Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k)); z = Math.max(2, Math.min(kind === 'topo' ? 17 : kind === 'orto' ? 20 : kind === 'ortolo' ? 18 : 19, z));
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), n = 2 ** z;
   const tx = lon => (lon + 180) / 360 * n, ty = lat => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * n;
   const lonOf = x => x / n * 360 - 180, latOf = y => Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n))) * 180 / Math.PI;

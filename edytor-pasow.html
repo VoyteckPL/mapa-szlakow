@@ -509,7 +509,7 @@ function layout() {
   // obrysy jezdni (do ukrywania linii krawedzi wewnatrz asfaltu sasiednich drog - zamiast kolowego wycinania wokol wezlow)
   const PO = C.map(c => { const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0; const Lf = offsetPts(c.Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(c.Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j))); return Lf.concat(Rt.slice().reverse()); });
   const inPoly = (pt, P) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) { const a = P[i], b = P[j]; if ((a[1] > pt[1]) !== (b[1] > pt[1]) && pt[0] < (b[0] - a[0]) * (pt[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c; } return c; };
-  const connNb = R.map((r, i) => { const set = new Set(); r.nk.forEach(k => { if (!k || handled.has(k)) return; for (const j of nodeRoads.get(k) || []) { if (j === i) continue; const G = ends.get(k) || [], gi = G.find(e => e.i === i), gj = G.find(e => e.i === j); if (gi && gj) { const a = unitFrom(C[i], gi.st), b = unitFrom(C[j], gj.st); if (a[0] * b[0] + a[1] * b[1] < -0.8) continue; } set.add(j); } }); return [...set]; });
+  const connNb = R.map((r, i) => { const set = new Set(); r.nk.forEach(k => { if (!k || handled.has(k)) return; for (const j of nodeRoads.get(k) || []) { if (j === i) continue; const G = ends.get(k) || [], gi = G.find(e => e.i === i), gj = G.find(e => e.i === j); if (gi && gj) { const a = unitFrom(C[i], gi.st), b = unitFrom(C[j], gj.st); if (a[0] * b[0] + a[1] * b[1] < -0.8 && rw(R[j]) <= rw(R[i]) + 0.5) continue; /* prosta kontynuacja: pomijamy, chyba ze sasiad jest wyraznie szerszy (jego asfalt zakrywa krawedzie wezszej galezi) */ } set.add(j); } }); return [...set]; });
   const rng = [];
   const edgeOf = [];
   R.forEach((r, i) => {
@@ -649,15 +649,27 @@ function layout() {
       if (forkDone.has(k) || (nodeRoads.get(k) || []).length < 3 || new Set(G.map(e => e.i)).size < 3) continue;
       const nd = orient(C[G[0].i], G[0].st).Q[0], F = [];
       for (const e of free) { if (e.used || e.l.arc) continue; const ri = roadOf(e.l), eg = G.find(g => g.i === ri); if (!eg) continue; if ((eg.st ? 0 : e.l.P.length - 1) !== e.j) continue; if (dist(e.l.P[e.j], nd) > 7) continue; F.push(e); }
-      const pr = []; for (let x = 0; x < F.length; x++) for (let y = x + 1; y < F.length; y++) { if (roadOf(F[x].l) === roadOf(F[y].l) || (F[x].l.ly | 0) !== (F[y].l.ly | 0)) continue; const d = dist(F[x].l.P[F[x].j], F[y].l.P[F[y].j]); if (d > 0.15 && d < 4.5) pr.push([d, x, y]); }
+      const pr = []; for (let x = 0; x < F.length; x++) for (let y = x + 1; y < F.length; y++) { if (roadOf(F[x].l) === roadOf(F[y].l) || (F[x].l.ly | 0) !== (F[y].l.ly | 0)) continue; const d = dist(F[x].l.P[F[x].j], F[y].l.P[F[y].j]); if (d > 0.04 && d < 2.6) pr.push([d, x, y]); }
       pr.sort((a, b) => a[0] - b[0]); const used = new Set();
-      for (const [d, x, y] of pr) { if (used.has(x) || used.has(y)) continue; const A = F[x], B = F[y], pA = A.l.P[A.j], pB = B.l.P[B.j], nA = A.l.P[A.j === 0 ? 1 : A.l.P.length - 2], nB2 = B.l.P[B.j === 0 ? 1 : B.l.P.length - 2];
-        const tA = uu_(sb_(pA, nA)), tB = uu_(sb_(pB, nB2)), dir = uu_(sb_(pB, pA)); if (!tA || !tB || !dir) continue;
-        if (tA[0] * dir[0] + tA[1] * dir[1] < 0.15 || -(tB[0] * dir[0] + tB[1] * dir[1]) < 0.15) continue; /* krawedzie musza biec ku sobie */
-        const mq = [0.3, 0.5, 0.7].map(u => [pA[0] + (pB[0] - pA[0]) * u, pA[1] + (pB[1] - pA[1]) * u]); if (mq.some(m => PO.some(po => po.length > 2 && inPoly(m, po)))) continue; /* krzywa nie moze przecinac asfaltu (nie zamykamy wlotu drogi) */
-        used.add(x); used.add(y); A.used = B.used = true; const h = d * 0.4, c1 = [pA[0] + tA[0] * h, pA[1] + tA[1] * h], c2 = [pB[0] + tB[0] * h, pB[1] + tB[1] * h], cv = [];
-        for (let q = 0; q <= 10; q++) { const u = q / 10, w = 1 - u; cv.push([w * w * w * pA[0] + 3 * w * w * u * c1[0] + 3 * w * u * u * c2[0] + u * u * u * pB[0], w * w * w * pA[1] + 3 * w * w * u * c1[1] + 3 * w * u * u * c2[1] + u * u * u * pB[1]]); }
-        lines.push({ P: cv, st: 'p2', ly: A.l.ly }); polys.push({ P: [cv[0], cv[0], cv[0]], L: cv, R: [], kerb: true, ly: A.l.ly | 0, br: false }); }
+      for (const [d, x, y] of pr) { if (used.has(x) || used.has(y)) continue;
+        let best = null;
+        for (const [iA, iB] of [[x, y], [y, x]]) { const A = F[iA], B = F[iB], pA = A.l.P[A.j], PB = B.l.P, jb = B.j, nA = A.l.P[A.j === 0 ? 1 : A.l.P.length - 2], tA = uu_(sb_(pA, nA)); if (!tA) continue;
+          /* C = punkt na krawedzi B w odleglosci s od jej konca */ const s0 = Math.min(3.5, Math.max(1.2, d * 2.5)); let acc = 0, ci = jb, C = null, prev = PB[jb];
+          for (let q = jb === 0 ? 1 : PB.length - 2; q >= 0 && q < PB.length; q += jb === 0 ? 1 : -1) { const seg = dist(prev, PB[q]); if (acc + seg >= s0) { const u = (s0 - acc) / (seg || 1); C = [prev[0] + (PB[q][0] - prev[0]) * u, prev[1] + (PB[q][1] - prev[1]) * u]; ci = q; break; } acc += seg; prev = PB[q]; }
+          if (!C) continue; const tC = uu_(sb_(C, prev)); if (!tC) continue; const turn = tA[0] * tC[0] + tA[1] * tC[1]; if (turn < 0.34) continue; /* skret < ok. 70 st. (ostrzejsze naroza to luki fillet) */
+          { const dAC0 = dist(pA, C), h0 = dAC0 * 0.4, c10 = [pA[0] + tA[0] * h0, pA[1] + tA[1] * h0], c20 = [C[0] - tC[0] * h0, C[1] - tC[1] * h0], cv0 = [];
+            for (let q = 0; q <= 12; q++) { const u = q / 12, w = 1 - u; cv0.push([w * w * w * pA[0] + 3 * w * w * u * c10[0] + 3 * w * u * u * c20[0] + u * u * u * C[0], w * w * w * pA[1] + 3 * w * w * u * c10[1] + 3 * w * u * u * c20[1] + u * u * u * C[1]]); }
+            const oP = jb === 0 ? PB.slice(0, ci) : PB.slice(ci + 1).reverse(), pl = cv0.concat(oP.slice().reverse().filter(p => dist(p, C) > 0.01)); let cx = 0, cy = 0; pl.forEach(p => { cx += p[0]; cy += p[1]; }); cx /= pl.length; cy /= pl.length;
+            if (PO.some(po => po.length > 2 && inPoly([cx, cy], po))) continue; /* uskok ma byc wypelniony tylko tam, gdzie jest teren (nie zwezamy asfaltu) */ }
+          if (!best || turn > best.turn) best = { A, B, pA, C, ci, tA, tC, turn, jb }; }
+        if (!best) continue; const { A, B, pA, C, ci, tA, tC, jb } = best, PB = B.l.P, pB = PB[jb], dAC = dist(pA, C), h = dAC * 0.4, c1 = [pA[0] + tA[0] * h, pA[1] + tA[1] * h], c2 = [C[0] - tC[0] * h, C[1] - tC[1] * h], cv = [];
+        for (let q = 0; q <= 12; q++) { const u = q / 12, w = 1 - u; cv.push([w * w * w * pA[0] + 3 * w * w * u * c1[0] + 3 * w * u * u * c2[0] + u * u * u * C[0], w * w * w * pA[1] + 3 * w * w * u * c1[1] + 3 * w * u * u * c2[1] + u * u * u * C[1]]); }
+        const old = jb === 0 ? [pB, ...PB.slice(1, ci)] : [pB, ...PB.slice(ci + 1).reverse()].reverse().reverse(); /* stary przebieg B -> C (do zastapienia) */
+        const oldP = jb === 0 ? PB.slice(0, ci) : PB.slice(ci + 1).reverse(); /* od B w strone C */
+        const poly = cv.concat(oldP.slice().reverse().filter(p => dist(p, C) > 0.01)); let ar = 0; for (let q = 0; q < poly.length; q++) { const p1 = poly[q], p2 = poly[(q + 1) % poly.length]; ar += p1[0] * p2[1] - p2[0] * p1[1]; } ar = Math.abs(ar) / 2; if (ar > 6) continue; /* wypelnienie tylko maly uskok */
+        used.add(x); used.add(y); A.used = B.used = true;
+        B.l.P = jb === 0 ? PB.slice(ci) : PB.slice(0, ci + 1); if (jb === 0) B.l.P[0] = C; else B.l.P[B.l.P.length - 1] = C;
+        lines.push({ P: cv, st: 'p2', ly: A.l.ly }); polys.push({ P: poly, L: [], R: [], kerb: false, ly: A.l.ly | 0, br: false }); polys.push({ P: [cv[0], cv[0], cv[0]], L: cv, R: [], kerb: true, ly: A.l.ly | 0, br: false }); }
     }
   }
   { // łączenie linii ciągłych, które kończą się w tym samym punkcie (brak dziur na styku dróg)

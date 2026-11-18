@@ -597,7 +597,8 @@ function layout() {
         if (lam < -hT * 4 || lam > 40) continue;
         const u1 = uC, sd = (nC[0] * s * t[0] + nC[1] * s * t[1]) >= 0 ? 1 : -1, u2 = [t[0] * sd, t[1] * sd], cs = u1[0] * u2[0] + u1[1] * u2[1], phi = Math.acos(Math.max(-1, Math.min(1, cs)));
         if (phi < 0.35 || phi > 2.9) continue;
-        let r = FR, L = r / Math.tan(phi / 2), Lm = 9; if (farJ) Lm = Math.min(Lm, (lenC - 2 * Math.abs(lam)) / 2); if (Lm < 1.5) continue; /* za malo miejsca na wyspie - bez luku (naroznik prosty) */ /* krotka droga laczaca dwa wezly (przerwa w pasie rozdzielajacym): luki obu koncow nie moga na siebie nachodzic */ if (L > Lm) { r *= Lm / L; L = Lm; }
+        const FRn = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : FR; if (FRn <= 0.05) continue; /* promien wezla ustawiony recznie (suwak „Promien rogow”), 0 = brak luku */
+        let r = FRn, L = r / Math.tan(phi / 2), Lm = 9; if (farJ) Lm = Math.min(Lm, (lenC - 2 * Math.abs(lam)) / 2); if (Lm < 1.5) continue; /* za malo miejsca na wyspie - bez luku (naroznik prosty) */ /* krotka droga laczaca dwa wezly (przerwa w pasie rozdzielajacym): luki obu koncow nie moga na siebie nachodzic */ if (L > Lm) { r *= Lm / L; L = Lm; }
         const T1 = [I[0] + u1[0] * L, I[1] + u1[1] * L], T2 = [I[0] + u2[0] * L, I[1] + u2[1] * L], bs = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(bs[0], bs[1]) || 1, cc = [I[0] + bs[0] / bl * r / Math.sin(phi / 2), I[1] + bs[1] / bl * r / Math.sin(phi / 2)];
         let a1 = Math.atan2(T1[1] - cc[1], T1[0] - cc[0]), a2 = Math.atan2(T2[1] - cc[1], T2[0] - cc[0]), da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
         const arc = []; for (let q = 0; q <= 14; q++) arc.push([cc[0] + r * Math.cos(a1 + da * q / 14), cc[1] + r * Math.sin(a1 + da * q / 14)]);
@@ -764,7 +765,7 @@ function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
   { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } } }
-  drawTiles();
+  drawTiles(); try { updNr(); } catch (e) {}
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; try { DUP = dupScan(); } catch (e) { DUP = []; console.warn('dupScan', e); } try { PZI = pzScan(); } catch (e) { PZI = []; console.warn('pzScan', e); } }
   if ($('cLay').checked) {
@@ -817,6 +818,20 @@ function render() {
   drawScale();
 }
 function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : k > 0.3 ? 100 : k > 0.08 ? 500 : 2000; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar >= 1000 ? bar / 1000 + ' km' : bar + ' m', 12, H - 22); }
+/* Node Controller: reczny promien rogow skrzyzowania T (suwak po zaznaczeniu wezla), zapis w localStorage */
+try { S.nodeR = JSON.parse(localStorage.getItem('edNodeR') || '{}') || {}; } catch (e) { S.nodeR = {}; }
+function updNr() {
+  let bar = document.getElementById('nrbar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'nrbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
+    bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button>'; document.body.appendChild(bar);
+    const save = () => { try { localStorage.setItem('edNodeR', JSON.stringify(S.nodeR)); } catch (e) {} };
+    bar.querySelector('#nrv').oninput = e => { if (bar.dataset.k) { S.nodeR[bar.dataset.k] = +e.target.value; save(); touch(); } };
+    bar.querySelector('#nra').onclick = () => { if (bar.dataset.k) { delete S.nodeR[bar.dataset.k]; save(); touch(); } }; }
+  const r = S.doc && S.doc.road && S.doc.road[S.sel], k = r && S.vsel >= 0 ? r.nk[S.vsel] : null;
+  let show = false; if (k) { let deg = 0; for (const q of S.doc.road) if (q.nk.includes(k)) deg++; show = deg === 3; }
+  bar.style.display = show ? 'flex' : 'none'; if (!show) { bar.dataset.k = ''; return; }
+  const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v)) { bar.dataset.k = k; bar.dataset.v = String(v); bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
+}
 function touch() { S.dirty = true; render(); }
 function say(t) { $('st').textContent = t; }
 function resize() { const r = $('stage').getBoundingClientRect(); DPR = window.devicePixelRatio || 1; W = r.width; H = r.height; for (const c of [cv, off]) { c.width = Math.round(W * DPR); c.height = Math.round(H * DPR); } render(); }

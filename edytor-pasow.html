@@ -433,7 +433,7 @@ function layout() {
   for (const [k, G] of [...ends].sort((p, q) => p[1].length - q[1].length)) { // najpierw zwężenia 2-drożne, potem rozwidlenia
     if (G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i) { // połączenie dwóch dróg: zwężenie szerszej
       const ws = G.map(e => rw(R[e.i])); handled.add(k);
-      if (TAPER2 && R[G[0].i].lanes !== R[G[1].i].lanes) skelLanes(G, C, R); // zmiana liczby pasow na szkielecie (jak w piaskownicy)
+      if (TAPER2 && R[G[0].i].lanes !== R[G[1].i].lanes) skelLanes(G, C, R, !!window.__smooth && !/^(motorway|trunk)/.test(R[G[0].i].hw || '') && !/^(motorway|trunk)/.test(R[G[1].i].hw || '')); /* gladkie rogi (nizsze klasy): szersza zostaje pelna do wezla, wezsza zwęza sie za nim */ // zmiana liczby pasow na szkielecie (jak w piaskownicy)
       continue;
     }
     if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {

@@ -756,8 +756,8 @@ function layout() {
       if (gap >= Math.PI - 0.02) { poly.push(L0, R0); continue; }
       const th = Math.acos(Math.max(-1, Math.min(1, -dt(a.u, b.u)))); let rr = r0; if (md === 1 && th > 0.05) rr = r0 / th; else if (md === 2 && th > 0.05) rr = r0 / Math.tan(th / 2);
       let T1, T2, C0, ok = false;
-      for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.hp + rr), o[1] + a.n[1] * (a.hp + rr)], a.u, [o[0] - b.n[0] * (b.hq + rr), o[1] - b.n[1] * (b.hq + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= a.len * 0.95 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= b.len * 0.95) { ok = true; break; } rr *= 0.85; }
-      if (!ok || rr <= 0.05) { poly.push(ix(L0, a.u, R0, b.u) || L0); continue; }
+      for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.hp + rr), o[1] + a.n[1] * (a.hp + rr)], a.u, [o[0] - b.n[0] * (b.hq + rr), o[1] - b.n[1] * (b.hq + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= Math.max(a.len, 2.5) * 0.95 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= Math.max(b.len, 2.5) * 0.95) { ok = true; break; } rr *= 0.85; }
+      if (!ok || rr <= 0.05) { rr = 0.3; C0 = ix([o[0] + a.n[0] * (a.hp + rr), o[1] + a.n[1] * (a.hp + rr)], a.u, [o[0] - b.n[0] * (b.hq + rr), o[1] - b.n[1] * (b.hq + rr)], b.u); if (!C0) { poly.push(ix(L0, a.u, R0, b.u) || L0); continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; } /* zawsze luk: gdy nie miesci sie, najmniejszy promien */
       const a1 = Math.atan2(T1[1] - C0[1], T1[0] - C0[0]), a2 = Math.atan2(T2[1] - C0[1], T2[0] - C0[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
       const arc = []; for (let q = 0; q <= 16; q++) arc.push([C0[0] + rr * Math.cos(a1 + da * q / 16), C0[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); arcList.push(arc);
     }

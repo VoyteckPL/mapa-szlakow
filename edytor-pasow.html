@@ -380,14 +380,16 @@ function skelLanes(G, C, R, after) { /* after = true: wezsza droga zaczyna sie p
   const set = (e, cum, dLo, dRo, lines) => { const c = C[e.i];
     (c.contrib = c.contrib || {})[e.st ? 'A' : 'B'] = { s: cum.slice(), lo: dLo.slice(), hi: dRo.slice() }; c.e = c.Q.map(() => 0); c.side = 1; c.tf = undefined; c.lat = c.lat || { lines: [] };
     lines.forEach(l => c.lat.lines.push({ p: e.st ? l.p : -l.p, p0: l.p0 == null ? null : e.st ? l.p0 : -l.p0, T: l.T, st: e.st, a: l.a, b: l.b })); };
-  const T = Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
+  const NP = (S.nodeP && S.nodeP[(R[G[0].i].nk || [])[G[0].st ? 0 : R[G[0].i].nk.length - 1]]) || null, SA = NP && NP.s != null ? NP.s : 0.3; /* parametry przejscia ustawione recznie dla wezla */
+  const T = NP && NP.T ? Math.max(3, Math.min(NP.T, ow.cum[ow.cum.length - 1] / 1.2)) : Math.max(10, Math.min(+$('fT').value || 35, ow.cum[ow.cum.length - 1] / 1.5));
   const toDp = x => sf > 0 ? x : -x, linesN = [], linesW = [], BIG = 1e9, same = (x, arr) => arr.some(y => Math.abs(x - y) < 1e-6);
   const SN = [], SW = [], MATCH = []; for (let k = 1; k < n; k++) SN.push(Nu[0] + k * w); for (let k = 1; k < m; k++) SW.push(Wu[0] + k * w);
   { const wl = SW.map(x => toDp(x) + sw), used = new Set(); /* linie pasow szerszej drogi: kazda linia wezszej przechodzi plynnie w najblizsza linie szerszej, nadmiarowe linie szerszej wyrastaja dalej */
     SN.forEach(x => { const q = toDp(x) + sn; let k = -1, bk = 1e9; wl.forEach((y, kk) => { if (!used.has(kk) && Math.abs(y - q) < bk) { bk = Math.abs(y - q); k = kk; } }); if (k >= 0) { used.add(k); linesW.push({ p: wl[k], p0: q, T, a: 0, b: BIG }); MATCH.push({ x, y: wl[k] }); } linesN.push({ p: -toDp(x) - sn, a: 0, b: BIG }); });
     wl.forEach((y, kk) => { if (!used.has(kk)) linesW.push({ p: y, a: T * 0.6, b: BIG }); }); }
   const cl = x => Math.max(0, Math.min(1, x)), wR = Math.abs(Rm - Rn) >= Math.abs(Lm - Ln) - 1e-9, iL = wR ? Ln : Lm, iR = wR ? Rm : Rn; // nowy pas = klin; ciagly pas chwilowo na krawedzi, potem plynnie na srodek osi
-  const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * sm5(cl(s / (0.7 * T))) + (a1 - i0) * sm(cl((s / T - 0.3) / 0.7)));
+  const prof = (a0, i0, a1) => ow.cum.map(s => a0 + (i0 - a0) * sm5(cl(s / ((1 - SA) * T))) + (a1 - i0) * sm(cl((s / T - SA) / (1 - SA))));
+  if (NP && NP.af != null) after = !!NP.af;
   if (after) { const on2 = orient(C[ne.i], ne.st), e2 = s => sm(cl(s / T)); set(we, ow.cum, ow.cum.map(() => Lm), ow.cum.map(() => Rm), SW.map(x => ({ p: toDp(x) + sw, a: 0, b: BIG })));
     set(ne, on2.cum, on2.cum.map(s => -(Rm + (Rn - Rm) * e2(s))), on2.cum.map(s => -(Lm + (Ln - Lm) * e2(s))), MATCH.map(m => ({ p: -toDp(m.x) - sn, p0: -m.y, T, a: 0, b: BIG }))); return; }
   set(we, ow.cum, prof(Ln, iL, Lm), prof(Rn, iR, Rm), linesW);
@@ -867,6 +869,14 @@ function drawGroup(g, ly) {
   }
   for (const a of La) { const p = w2s([a.x, a.y]); g.save(); g.translate(p[0], p[1]); g.rotate((a.rot - 90) * Math.PI / 180); const sc = 5 * k / 48; g.scale(sc, sc); g.translate(-24, -16); glyph(g, a.type); g.restore(); }
 }
+function drawNodeDash() {
+  { const nb = document.getElementById('nrbar'), nk = nb && nb.style.display !== 'none' ? nb.dataset.k : ''; /* geometria przejscia wybranego wezla: przerywana os drog na dlugosci przejscia + znaczniki poczatku i konca */
+    if (nk) { const P = S.nodeP[nk] || {}, T = P.T || (+$('fT').value || 35), SA = P.s != null ? P.s : 0.3; ctx.save(); ctx.setLineDash([7, 5]); ctx.lineWidth = 2; ctx.strokeStyle = '#ff7a00';
+      for (const r of S.doc.road) { const j = r.nk.indexOf(nk); if (j < 0) continue; for (const dir of [1, -1]) { if (j + dir < 0 || j + dir >= r.pts.length) continue; let acc = 0, prev = r.pts[j], pts = [prev], mk = [];
+          for (let q = j + dir; q >= 0 && q < r.pts.length && acc < T; q += dir) { const cur = r.pts[q], d = dist(prev, cur), room = T - acc, f = d > room ? room / d : 1, pt = [prev[0] + (cur[0] - prev[0]) * f, prev[1] + (cur[1] - prev[1]) * f]; if (acc < SA * T && acc + d * f >= SA * T) { const g2 = (SA * T - acc) / (d * f || 1); mk.push([prev[0] + (pt[0] - prev[0]) * g2, prev[1] + (pt[1] - prev[1]) * g2]); } acc += d * f; pts.push(pt); prev = cur; if (f < 1) break; }
+          ctx.beginPath(); pts.forEach((q, i) => { const w = w2s(q); i ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#ff7a00'; for (const q of mk.concat([pts[pts.length - 1]])) { const w = w2s(q); ctx.beginPath(); ctx.arc(w[0], w[1], 4, 0, 7); ctx.fill(); } ctx.setLineDash([7, 5]); } }
+      ctx.restore(); } }
+}
 function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
@@ -922,10 +932,12 @@ function render() {
   if (S.draw) { S.doc.road.forEach(r => r.pts.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 3.5, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#2a7de1'; ctx.stroke(); })); if (S.hov) { const s = w2s(S.hov); ctx.beginPath(); ctx.arc(s[0], s[1], 9, 0, 7); ctx.fillStyle = 'rgba(255,200,0,.35)'; ctx.fill(); ctx.lineWidth = 3; ctx.strokeStyle = '#ffb400'; ctx.stroke(); } const P = S.draw.pts; if (P.length && S.cur) { const a = w2s(P[P.length - 1]), b = w2s(S.hov || S.cur); ctx.save(); ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); } if (P.length) { pathOf(ctx, P, false); ctx.strokeStyle = '#ff5a36'; ctx.lineWidth = 2; ctx.stroke(); P.forEach(p => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], 5, 0, 7); ctx.fillStyle = '#ff5a36'; ctx.fill(); }); } }
   if (DUP.length) { ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round'; for (const d of DUP) { const P = d.P.map(w2s); ctx.beginPath(); P.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.strokeStyle = 'rgba(255,0,60,.35)'; ctx.lineWidth = 12; ctx.stroke(); ctx.setLineDash([8, 6]); ctx.strokeStyle = '#ff003c'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.setLineDash([]); const m = P[Math.floor(P.length / 2)]; ctx.font = '600 11px system-ui,sans-serif'; const tx = 'duplikat'; const w = ctx.measureText(tx).width + 10; ctx.fillStyle = '#ff003c'; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(m[0] + 8, m[1] - 22, w, 16, 4) : ctx.rect(m[0] + 8, m[1] - 22, w, 16); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(tx, m[0] + 13, m[1] - 10); } ctx.restore(); }
   drawScale();
+  try { drawNodeDash(); } catch (er) { console.warn('nodeDash', er); }
 }
 function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : k > 0.3 ? 100 : k > 0.08 ? 500 : 2000; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar >= 1000 ? bar / 1000 + ' km' : bar + ' m', 12, H - 22); }
 /* Node Controller: reczny promien rogow skrzyzowania T (suwak po zaznaczeniu wezla), zapis w localStorage */
 try { S.nodeR = JSON.parse(localStorage.getItem('edNodeR') || '{}') || {}; } catch (e) { S.nodeR = {}; }
+try { S.nodeP = JSON.parse(localStorage.getItem('edNodeP') || '{}') || {}; } catch (e) { S.nodeP = {}; }
 try { S.nodeW = JSON.parse(localStorage.getItem('edNodeW') || '{}') || {}; } catch (e) { S.nodeW = {}; }
 function updLw() { /* Node Controller: szerokosc pasa wybranej drogi (suwak przy dolnej krawedzi) */
   let bar = document.getElementById('lwbar');
@@ -938,14 +950,17 @@ function updLw() { /* Node Controller: szerokosc pasa wybranej drogi (suwak przy
 }
 function updNr() {
   let bar = document.getElementById('nrbar');
-  if (!bar) { bar = document.createElement('div'); bar.id = 'nrbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
-    bar.style.flexWrap = 'wrap'; bar.style.maxWidth = '340px'; bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button>'; document.body.appendChild(bar);
+  if (!bar) { bar = document.createElement('div'); bar.id = 'nrbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:70px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
+    bar.style.flexWrap = 'wrap'; bar.style.maxWidth = '340px'; bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button><div style="flex-basis:100%;border-top:1px solid #fff4;padding-top:5px">Przejście pasów: długość <input type="range" id="npT" min="3" max="60" step="1" style="width:90px"> <b id="npTt"></b><br>początek <input type="range" id="npS" min="0" max="0.7" step="0.05" style="width:90px"> <b id="npSt"></b> <label><input type="checkbox" id="npA"> pełna do węzła</label> <button id="npR" style="font:inherit;padding:2px 6px">auto</button></div>'; document.body.appendChild(bar);
+    const saveP = () => { try { localStorage.setItem('edNodeP', JSON.stringify(S.nodeP)); } catch (e) {} }, setP = (f, v) => { if (!bar.dataset.k) return; const P = S.nodeP[bar.dataset.k] = S.nodeP[bar.dataset.k] || {}; P[f] = v; saveP(); touch(); };
+    bar.querySelector('#npT').oninput = e => setP('T', +e.target.value); bar.querySelector('#npS').oninput = e => setP('s', +e.target.value); bar.querySelector('#npA').onchange = e => setP('af', e.target.checked ? 1 : 0); bar.querySelector('#npR').onclick = () => { if (bar.dataset.k) { delete S.nodeP[bar.dataset.k]; saveP(); touch(); } };
     const save = () => { try { localStorage.setItem('edNodeR', JSON.stringify(S.nodeR)); } catch (e) {} };
     bar.querySelector('#nrv').oninput = e => { if (bar.dataset.k) { S.nodeR[bar.dataset.k] = +e.target.value; save(); touch(); } };
     bar.querySelector('#nra').onclick = () => { if (bar.dataset.k) { delete S.nodeR[bar.dataset.k]; save(); touch(); } }; }
   const r = S.doc && S.doc.road && S.doc.road[S.sel], k = r && S.vsel >= 0 ? r.nk[S.vsel] : null;
   let show = false; if (k) { let deg = 0; for (const q of S.doc.road) if (q.nk.includes(k)) deg++; show = deg >= 2; }
   bar.style.display = show ? 'flex' : 'none'; if (!show) { bar.dataset.k = ''; return; }
+  { const P = S.nodeP[k] || {}; bar.querySelector('#npT').value = P.T || 35; bar.querySelector('#npTt').textContent = P.T ? P.T + ' m' : 'auto'; bar.querySelector('#npS').value = P.s != null ? P.s : 0.3; bar.querySelector('#npSt').textContent = P.s != null ? P.s : 'auto'; bar.querySelector('#npA').checked = !!P.af; }
   const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v)) { bar.dataset.k = k; bar.dataset.v = String(v); bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
 }
 function touch() { S.dirty = true; render(); }

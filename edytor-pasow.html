@@ -741,24 +741,31 @@ function layout() {
   S.nodeViz = [];
   if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
     if (G.length < 3 || new Set(G.map(e => e.i)).size < 3 || forkDone.has(k)) continue;
-    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const oo = orient(C[e.i], e.st), Qs = oo.Q; let j1 = 1; while (j1 < Qs.length - 1 && dist(Qs[0], Qs[j1]) < 0.5) j1++; const u = unitFrom(Qs.length > 1 ? { ...C[e.i] } : C[e.i], e.st, 3), d0 = unit([Qs[j1][0] - Qs[0][0], Qs[j1][1] - Qs[0][1]]) || u; /* prosty odcinek od wezla: do pierwszego zakretu osi (>3 st.) - wielokat wezla nie wystaje poza droge */
+    const o = orient(C[G[0].i], G[0].st).Q[0], arms = G.map(e => { const oo = orient(C[e.i], e.st), Qs = oo.Q; let j1 = 1; while (j1 < Qs.length - 1 && dist(Qs[0], Qs[j1]) < 0.5) j1++; const d0 = unit([Qs[j1][0] - Qs[0][0], Qs[j1][1] - Qs[0][1]]) || [1, 0];
       let run = 0; for (let q = j1; q < Qs.length; q++) { const dq = unit([Qs[q][0] - Qs[q - 1][0], Qs[q][1] - Qs[q - 1][1]]); if (!dq || dq[0] * d0[0] + dq[1] * d0[1] < 0.9986) break; run = dist(Qs[0], Qs[q]); }
-      return { a: Math.atan2(d0[1], d0[0]), u: d0, n: [-d0[1], d0[0]], h: rw(R[e.i]) / 2, len: Math.max(1, Math.min(30, run)) }; }).sort((p, q) => p.a - q.a);
-    const pt = (b, kx, v, ky) => [o[0] + b[0] * kx + v[0] * ky, o[1] + b[1] * kx + v[1] * ky], dt = (p, q) => p[0] * q[0] + p[1] * q[1], N = arms.length, poly = [], r0 = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : (window.__nodeR0 != null ? window.__nodeR0 : 3), md = S.arcMode | 0;
+      const h = rw(R[e.i]) / 2, tot = Qs.reduce((t, q, z) => z ? t + dist(Qs[z - 1], q) : 0, 0), D = Math.max(1, Math.min(14, tot * 0.5, Math.max(run, 1) + 8)), sc = [0]; for (let q = 1; q < Qs.length; q++) sc.push(sc[q - 1] + dist(Qs[q - 1], Qs[q]));
+      const edge = side => { const out = []; for (let q = 0; q < Qs.length && sc[q] <= D; q++) { const a1 = Qs[Math.max(0, q - 1)], b1 = Qs[Math.min(Qs.length - 1, q + 1)], t = unit([b1[0] - a1[0], b1[1] - a1[1]]) || d0, nn = [-t[1], t[0]], cs = Math.max(0.5, nn[0] * (-d0[1]) + nn[1] * d0[0]); out.push({ s: sc[q], p: [Qs[q][0] + side * nn[0] * h / cs * (q === 0 ? 1 : 1), Qs[q][1] + side * nn[1] * h / cs] }); } if (out.length && out[out.length - 1].s < D - 0.05 && Qs.length > out.length) { const q = out.length, f = (D - sc[q - 1]) / (sc[q] - sc[q - 1] || 1), pt = [Qs[q - 1][0] + (Qs[q][0] - Qs[q - 1][0]) * f, Qs[q - 1][1] + (Qs[q][1] - Qs[q - 1][1]) * f]; const t = unit([Qs[q][0] - Qs[q - 1][0], Qs[q][1] - Qs[q - 1][1]]) || d0; out.push({ s: D, p: [pt[0] + side * (-t[1]) * h, pt[1] + side * t[0] * h] }); } return out; };
+      return { a: Math.atan2(d0[1], d0[0]), u: d0, n: [-d0[1], d0[0]], h, len: Math.max(1, Math.min(30, run)), EP: edge(1), EM: edge(-1) }; }).sort((p, q) => p.a - q.a);
+    const dt = (p, q) => p[0] * q[0] + p[1] * q[1], N = arms.length, poly = [], arcList = [], r0 = S.nodeR && S.nodeR[k] != null ? S.nodeR[k] : (window.__nodeR0 != null ? window.__nodeR0 : 3), md = S.arcMode | 0;
     const ix = (p, d, q, e) => { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-9) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; };
+    const beyond = (E, tmin) => E.filter(q => q.s > tmin + 0.02).map(q => q.p); /* punkty krawedzi dalej niz punkt styczny */
     for (let i = 0; i < N; i++) {
       const a = arms[i], b = arms[(i + 1) % N]; let gap = b.a - a.a; while (gap <= 0) gap += 2 * Math.PI;
-      poly.push([o[0] - a.n[0] * a.h + a.u[0] * a.len, o[1] - a.n[1] * a.h + a.u[1] * a.len], [o[0] + a.n[0] * a.h + a.u[0] * a.len, o[1] + a.n[1] * a.h + a.u[1] * a.len]);
       const L0 = [o[0] + a.n[0] * a.h, o[1] + a.n[1] * a.h], R0 = [o[0] - b.n[0] * b.h, o[1] - b.n[1] * b.h];
-      if (gap >= Math.PI - 0.02) { poly.push(L0, R0); continue; }
+      { const e0 = a.EM.length ? a.EM : null; if (i === 0 || true) { /* poczatek ramienia a: prawa krawedz (minus) zakonczona tuz za punktem stycznym poprzedniego rogu - tu tylko daleki koniec */ } }
+      const mEnd = a.EM.length ? a.EM[a.EM.length - 1].p : [o[0] - a.n[0] * a.h + a.u[0] * a.len, o[1] - a.n[1] * a.h + a.u[1] * a.len], pEnd = a.EP.length ? a.EP[a.EP.length - 1].p : [o[0] + a.n[0] * a.h + a.u[0] * a.len, o[1] + a.n[1] * a.h + a.u[1] * a.len];
+      poly.push(mEnd, pEnd);
+      if (gap >= Math.PI - 0.02) { poly.push(...beyond(a.EP, 0).reverse(), L0, R0, ...beyond(b.EM, 0)); continue; }
       const th = Math.acos(Math.max(-1, Math.min(1, -dt(a.u, b.u)))); let rr = r0; if (md === 1 && th > 0.05) rr = r0 / th; else if (md === 2 && th > 0.05) rr = r0 / Math.tan(th / 2);
       let T1, T2, C0, ok = false;
       for (let it = 0; it < 24 && rr > 0.05; it++) { C0 = ix([o[0] + a.n[0] * (a.h + rr), o[1] + a.n[1] * (a.h + rr)], a.u, [o[0] - b.n[0] * (b.h + rr), o[1] - b.n[1] * (b.h + rr)], b.u); if (!C0) { rr *= 0.7; continue; } T1 = [C0[0] - a.n[0] * rr, C0[1] - a.n[1] * rr]; T2 = [C0[0] + b.n[0] * rr, C0[1] + b.n[1] * rr]; if (dt([T1[0] - o[0], T1[1] - o[1]], a.u) <= a.len * 0.95 && dt([T2[0] - o[0], T2[1] - o[1]], b.u) <= b.len * 0.95) { ok = true; break; } rr *= 0.85; }
-      if (!ok || rr <= 0.05) { const I = ix(L0, a.u, R0, b.u); poly.push(I || L0); continue; }
+      if (!ok || rr <= 0.05) { const I = ix(L0, a.u, R0, b.u), tI = I ? dt([I[0] - o[0], I[1] - o[1]], a.u) : 0, tJ = I ? dt([I[0] - o[0], I[1] - o[1]], b.u) : 0; poly.push(...beyond(a.EP, tI).reverse(), I || L0, ...beyond(b.EM, tJ)); continue; }
+      poly.push(...beyond(a.EP, dt([T1[0] - o[0], T1[1] - o[1]], a.u)).reverse());
       const a1 = Math.atan2(T1[1] - C0[1], T1[0] - C0[0]), a2 = Math.atan2(T2[1] - C0[1], T2[0] - C0[0]); let da = a2 - a1; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
-      for (let q = 0; q <= 16; q++) poly.push([C0[0] + rr * Math.cos(a1 + da * q / 16), C0[1] + rr * Math.sin(a1 + da * q / 16)]);
+      const arc = []; for (let q = 0; q <= 16; q++) arc.push([C0[0] + rr * Math.cos(a1 + da * q / 16), C0[1] + rr * Math.sin(a1 + da * q / 16)]); poly.push(...arc); arcList.push(arc);
+      poly.push(...beyond(b.EM, dt([T2[0] - o[0], T2[1] - o[1]], b.u)));
     }
-    polys.push({ P: poly, L: [], R: [], kerb: false, ly: Math.max(...G.map(e => R[e.i].ly | 0)), br: false, ed: true }); (S.nodeViz = S.nodeViz || []).push({ poly, arcs: poly.length });
+    polys.push({ P: poly, L: [], R: [], kerb: false, ly: Math.max(...G.map(e => R[e.i].ly | 0)), br: false, ed: true }); (S.nodeViz = S.nodeViz || []).push({ poly, arcs: arcList });
   }
   S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
@@ -894,8 +901,7 @@ function drawGroup(g, ly) {
 function drawNodeDash() {
   if (window.__nodeGeom && S.nodeViz) for (const nv of S.nodeViz) { /* widoczna geometria wezla: obrys wielokata (przerywany) i luki w narozach (niebieskie) */
     ctx.save(); ctx.setLineDash([6, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = '#f5b400'; ctx.beginPath(); nv.poly.forEach((q, i) => { const w = w2s(q); i ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.closePath(); ctx.stroke();
-    ctx.setLineDash([]); ctx.lineWidth = 3.5; ctx.strokeStyle = '#0050ff'; const P = nv.poly; let run = []; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], d = dist(a, b); if (d < 1.2 && d > 0.01) run.push(a); else { if (run.length) { run.push(a); ctx.beginPath(); run.forEach((q, j) => { const w = w2s(q); j ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.stroke(); } run = []; } }
-    if (run.length > 1) { ctx.beginPath(); run.forEach((q, j) => { const w = w2s(q); j ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.stroke(); } ctx.restore(); }
+    ctx.setLineDash([]); ctx.lineWidth = 3.5; ctx.strokeStyle = '#0050ff'; for (const ar of nv.arcs) { ctx.beginPath(); ar.forEach((q, j) => { const w = w2s(q); j ? ctx.lineTo(w[0], w[1]) : ctx.moveTo(w[0], w[1]); }); ctx.stroke(); } ctx.restore(); }
   if (S.msel && S.msel.size) for (const { i, q } of S.msel.values()) { const G = laneGeom(i); if (!G || q < 0 || q >= G.NL) continue; const A0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + q * G.lw[j])), B0 = offsetPts(G.Q, G.Q.map((_, j) => G.left[j] + (q + 1) * G.lw[j])); ctx.save(); pathOf(ctx, A0.concat(B0.slice().reverse()), true); ctx.fillStyle = 'rgba(255,122,0,.35)'; ctx.fill(); ctx.strokeStyle = 'rgba(255,122,0,.95)'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore(); }
   { const nb = document.getElementById('nrbar'), nk = nb && nb.style.display !== 'none' ? nb.dataset.k : ''; /* geometria przejscia wybranego wezla: przerywana os drog na dlugosci przejscia + znaczniki poczatku i konca */
     if (nk) { const P = S.nodeP[nk] || {}, T = P.T || (+$('fT').value || 35), SA = P.s != null ? P.s : 0.3; ctx.save(); ctx.setLineDash([7, 5]); ctx.lineWidth = 2; ctx.strokeStyle = '#ff7a00';

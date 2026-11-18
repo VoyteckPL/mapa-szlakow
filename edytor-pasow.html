@@ -461,7 +461,7 @@ function layout() {
       if (TAPER2 && !window.__nodeGeom && R[G[0].i].lanes !== R[G[1].i].lanes) skelLanes(G, C, R, !!window.__smooth && !/^(motorway|trunk)/.test(R[G[0].i].hw || '') && !/^(motorway|trunk)/.test(R[G[1].i].hw || '')); /* gladkie rogi (nizsze klasy): szersza zostaje pelna do wezla, wezsza zwęza sie za nim */ // zmiana liczby pasow na szkielecie (jak w piaskownicy)
       continue;
     }
-    if (!window.__nodeGeom && G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
+    if (G.length === 3 && nodeRoads.get(k).length === 3 && new Set(G.map(e => e.i)).size === 3) {
       const lw0 = e => /^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(R[e.i].hw || ''), hi = G.filter(e => !lw0(e));
       if (hi.length === 2) { /* dwie drogi wyzszej klasy + dojazd niskiej klasy: zmiana liczby pasow tylko miedzy dwiema glownymi (zwezenie jak na zwyklym zlaczu), dojazd to zwykle T */
         if (TAPER2 && !window.__nodeGeom && R[hi[0].i].lanes !== R[hi[1].i].lanes) skelLanes(hi, C, R, !window.__noAfter); continue; } /* (bez handled: krawedzie dojazdu pod jezdnia glowna maja byc ukryte) */
@@ -509,7 +509,6 @@ function layout() {
     slipEnd(e, rA, cA, nd, nB, sd, ext, sinT, cosT, rw(rA));
   }
   for (const [k, G] of ends) {
-    if (window.__nodeGeom) continue; /* w trybie wezlow: wezel 3 drog rysuje wielokat wezla, bez skracania koncow (slip lane) */
     if (G.some(g => forkX.has(g.i)) || G.length !== 3 || (nodeRoads.get(k) || []).length !== 3 || new Set(G.map(e => e.i)).size !== 3) continue; // wezel 3 drog: dwie przeciwlegle (droga glowna) + boczna (slip lane)
     const Us = G.map(e => unitFrom(C[e.i], e.st)); let pr = null, bestDot = 9; for (const [a, b] of [[0, 1], [0, 2], [1, 2]]) { const dd = Us[a][0] * Us[b][0] + Us[a][1] * Us[b][1]; if (dd < bestDot) { bestDot = dd; pr = [a, b]; } }
     if (bestDot > -0.8) continue; const ti = [0, 1, 2].find(x => !pr.includes(x)), e = G[ti], rA = R[e.i], lb = pr.map(x => R[G[x].i].lanes | 0); if (/^(service|residential|living_street|unclassified|busway|road|construction|track)/.test(rA.hw || '')) continue; /* dojazd niskiej klasy do drogi wyzszej: zwykle T, bez wyspy slip lane */
@@ -968,7 +967,7 @@ function drawNodeDash() {
       const qs = []; for (const r of roads) for (let z = 1; z < r.E0.length; z++) qs.push([r.E0[z - 1], r.E0[z], r.E1[z], r.E1[z - 1]]);
       const fm = (c, list, clip, sw) => { const g2 = c.getContext('2d'); g2.save(); g2.setTransform(DPR, 0, 0, DPR, 0, 0); if (clip) g2.clip(clip, 'evenodd'); g2.beginPath(); for (const q of list) { const Wq = q.map(w2s); let ar = 0; for (let z = 0; z < Wq.length; z++) { const a = Wq[z], b = Wq[(z + 1) % Wq.length]; ar += a[0] * b[1] - b[0] * a[1]; } if (ar < 0) Wq.reverse(); Wq.forEach((p, z) => z ? g2.lineTo(p[0], p[1]) : g2.moveTo(p[0], p[1])); g2.closePath(); } g2.fillStyle = '#000'; g2.fill(); if (sw) { g2.strokeStyle = '#000'; g2.lineWidth = sw; g2.lineJoin = 'round'; g2.stroke(); } g2.restore(); };
       const nts = []; for (const nv of S.nodeViz || []) for (let z = 0; z < nv.poly.length; z++) nts.push([nv.o, nv.poly[z], nv.poly[(z + 1) % nv.poly.length]]);
-      for (const r of roads) { const q1 = []; for (let z = 1; z < r.E0.length; z++) q1.push([r.E0[z - 1], r.E0[z], r.E1[z], r.E1[z - 1]]); fm(M, q1, cutClip(r.ri, kk), Math.max(1.2, 0.04 * kk)); } { const g0 = M.getContext('2d'); g0.globalCompositeOperation = 'destination-out'; fm(M, nts, false); g0.globalCompositeOperation = 'source-over'; } fm(M, nts, false, Math.max(1.4, 0.05 * kk));
+      for (const r of roads) { const q1 = []; for (let z = 1; z < r.E0.length; z++) q1.push([r.E0[z - 1], r.E0[z], r.E1[z], r.E1[z - 1]]); fm(M, q1, cutClip(r.ri, kk)); } { const g0 = M.getContext('2d'); g0.globalCompositeOperation = 'destination-out'; fm(M, nts, false); g0.globalCompositeOperation = 'source-over'; } fm(M, nts, false, Math.max(1.4, 0.05 * kk));
       const grow = (src, px) => { const T = mk(), t = T.getContext('2d'); for (let a = 0; a < 16; a++) { const an = a * Math.PI / 8; t.drawImage(src, Math.cos(an) * px * DPR, Math.sin(an) * px * DPR); } return T; };
       const shrink = (src, px) => { const T = mk(), t = T.getContext('2d'); t.drawImage(src, 0, 0); t.globalCompositeOperation = 'destination-in'; for (let a = 0; a < 16; a++) { const an = a * Math.PI / 8; t.drawImage(src, Math.cos(an) * px * DPR, Math.sin(an) * px * DPR); } return T; };
       const tint = (src, col) => { const T = mk(), t = T.getContext('2d'); t.drawImage(src, 0, 0); t.globalCompositeOperation = 'source-in'; t.fillStyle = col; t.fillRect(0, 0, Wd, Hd); return T; };

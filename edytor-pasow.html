@@ -69,6 +69,7 @@
       <b>Podkład</b>
       <label><input type="radio" name="bmr" value="osm"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> OSM</label>
       <label><input type="radio" name="bmr" value="topo"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> OpenTopo</label>
+      <label><input type="radio" name="bmr" value="orto"><svg class="ic" style="color:#2e7d32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg> Geoportal</label>
       <label><input type="checkbox" id="cTileV" checked> Pokaż podkład</label>
       <hr><b>Warstwy</b>
       <label><input type="checkbox" id="cNodeRend" checked onchange="if(typeof touch==='function')touch()"> Render dróg (asfalt, linie, strzałki)</label>
@@ -106,7 +107,7 @@
     <div class="row"><button id="bImp" class="on" title="Pobiera drogi widoczne na ekranie">Wczytaj drogi z widoku</button><button id="bLive" title="Pobiera aktualne dane OSM (API na żywo) dla widocznego obszaru i podmienia drogi, których układ węzłów się zmienił; drogi z Twoimi ręcznymi zmianami zostają">Odśwież z OSM (na żywo)</button></div>
     <div class="row"><button id="bRst" title="Przywraca oryginalną geometrię i parametry z OSM dla dróg widocznych na ekranie">Przywróć OSM: widok</button><button id="bRstSel" title="Przywraca oryginalną geometrię zaznaczonej drogi">Przywróć OSM: zaznaczona</button></div>
     </div>
-    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm" selected>OSM</option><option value="topo">OpenTopo</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
+    <div style="display:none"><input type="checkbox" id="cTile" checked><select id="bm"><option value="osm" selected>OSM</option><option value="topo">OpenTopo</option><option value="orto">Geoportal</option></select><input type="checkbox" id="cSm" checked><input type="checkbox" id="cBlue"><input type="number" id="fP" value="0"><input type="number" id="fRo" value="12"><input type="range" id="fT2" min="25" max="160" value="80"><span id="fT2v">80</span></div>
     <div class="tab-off" style="display:none">
     <h4 style="margin-top:14px">Wybrana droga</h4>
     <div id="props"></div>

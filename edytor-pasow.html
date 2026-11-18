@@ -685,6 +685,12 @@ function layout() {
     }
     lines.length = 0; lines.push(...rest, ...sol);
   }
+  for (const [k, G] of ends) { /* Node Controller: reczne poszerzenie wezla (suwak 'Szerokosc wezla') - asfaltowy krazek wokol wezla, krawedzie drog wewnatrz znikaja */
+    const ex = S.nodeW && S.nodeW[k]; if (!(ex > 0.05) || (nodeRoads.get(k) || []).length < 2) continue;
+    const c0 = orient(C[G[0].i], G[0].st).Q[0], rr = Math.max(...G.map(e => rw(R[e.i]))) / 2 + ex, lyN = Math.max(...G.map(e => R[e.i].ly | 0)), ring = []; for (let q = 0; q < 36; q++) ring.push([c0[0] + rr * Math.cos(q * Math.PI / 18), c0[1] + rr * Math.sin(q * Math.PI / 18)]);
+    for (const l of lines.slice()) { if (l.st !== 'p2' || (l.ly | 0) !== lyN) continue; let run = []; const out = []; for (const p of l.P) { if (dist(p, c0) < rr - 0.3) { if (run.length) out.push(run); run = []; } else run.push(p); } if (run.length) out.push(run); if (out.length === 1 && out[0].length === l.P.length) continue; l.P = out[0] || []; for (let q = 1; q < out.length; q++) lines.push({ P: out[q], st: 'p2', ly: l.ly }); }
+    for (let q = lines.length - 1; q >= 0; q--) if (lines[q].P.length < 2) lines.splice(q, 1);
+    polys.push({ P: ring, L: ring.concat([ring[0]]), R: [], kerb: true, ly: lyN, br: false, ed: true }); }
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], unit = a => { const l = Math.hypot(a[0], a[1]); return l > 1e-9 ? [a[0] / l, a[1] / l] : null; };
   const krn = [];
   for (const l of lines) { /* zaokraglenie ostrych/sfazowanych naroznikow krawedzi (krotki odcinek <1,2 m laczacy dwa prawie prostopadle kierunki -> luk) */
@@ -894,17 +900,21 @@ function render() {
 function drawScale() { const k = S.view.k, bar = k > 40 ? 1 : k > 8 ? 5 : k > 2 ? 20 : k > 0.3 ? 100 : k > 0.08 ? 500 : 2000; ctx.fillStyle = '#222'; ctx.fillRect(12, H - 16, bar * k, 3); ctx.font = '11px system-ui'; ctx.fillText(bar >= 1000 ? bar / 1000 + ' km' : bar + ' m', 12, H - 22); }
 /* Node Controller: reczny promien rogow skrzyzowania T (suwak po zaznaczeniu wezla), zapis w localStorage */
 try { S.nodeR = JSON.parse(localStorage.getItem('edNodeR') || '{}') || {}; } catch (e) { S.nodeR = {}; }
+try { S.nodeW = JSON.parse(localStorage.getItem('edNodeW') || '{}') || {}; } catch (e) { S.nodeW = {}; }
 function updNr() {
   let bar = document.getElementById('nrbar');
   if (!bar) { bar = document.createElement('div'); bar.id = 'nrbar'; bar.style.cssText = 'position:fixed;left:10px;bottom:10px;z-index:30;background:rgba(30,34,40,.92);color:#fff;font:12px system-ui,sans-serif;padding:7px 10px;border-radius:8px;display:none;align-items:center;gap:8px';
-    bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button>'; document.body.appendChild(bar);
+    bar.style.flexWrap = 'wrap'; bar.style.maxWidth = '340px'; bar.innerHTML = 'Promień rogów <input type="range" id="nrv" min="0" max="8" step="0.5" style="width:120px"> <b id="nrt" style="min-width:42px;display:inline-block"></b> <button id="nra" style="font:inherit;padding:2px 6px">auto</button><br>Szerokość węzła <input type="range" id="nwv" min="0" max="12" step="0.5" style="width:110px"> <b id="nwt" style="min-width:42px;display:inline-block"></b> <button id="nwa" style="font:inherit;padding:2px 6px">0</button>'; document.body.appendChild(bar);
     const save = () => { try { localStorage.setItem('edNodeR', JSON.stringify(S.nodeR)); } catch (e) {} };
     bar.querySelector('#nrv').oninput = e => { if (bar.dataset.k) { S.nodeR[bar.dataset.k] = +e.target.value; save(); touch(); } };
+    const saveW = () => { try { localStorage.setItem('edNodeW', JSON.stringify(S.nodeW)); } catch (e) {} };
+    bar.querySelector('#nwv').oninput = e => { if (bar.dataset.k) { S.nodeW[bar.dataset.k] = +e.target.value; saveW(); touch(); } };
+    bar.querySelector('#nwa').onclick = () => { if (bar.dataset.k) { delete S.nodeW[bar.dataset.k]; saveW(); touch(); } };
     bar.querySelector('#nra').onclick = () => { if (bar.dataset.k) { delete S.nodeR[bar.dataset.k]; save(); touch(); } }; }
   const r = S.doc && S.doc.road && S.doc.road[S.sel], k = r && S.vsel >= 0 ? r.nk[S.vsel] : null;
-  let show = false; if (k) { let deg = 0; for (const q of S.doc.road) if (q.nk.includes(k)) deg++; show = deg === 3; }
+  let show = false; if (k) { let deg = 0; for (const q of S.doc.road) if (q.nk.includes(k)) deg++; show = deg >= 2; }
   bar.style.display = show ? 'flex' : 'none'; if (!show) { bar.dataset.k = ''; return; }
-  const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v)) { bar.dataset.k = k; bar.dataset.v = String(v); bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
+  const v = S.nodeR[k], cur = v != null ? v : 3.5; if (bar.dataset.k !== k || bar.dataset.v !== String(v) + '|' + String(S.nodeW[k])) { bar.dataset.k = k; bar.dataset.v = String(v) + '|' + String(S.nodeW[k]); const w = S.nodeW[k] || 0; bar.querySelector('#nwv').value = w; bar.querySelector('#nwt').textContent = w ? '+' + w + ' m' : '0'; bar.querySelector('#nrv').value = cur; bar.querySelector('#nrt').textContent = v != null ? cur + ' m' : 'auto'; }
 }
 function touch() { S.dirty = true; render(); }
 function say(t) { $('st').textContent = t; }

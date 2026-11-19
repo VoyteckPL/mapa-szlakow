@@ -45,9 +45,27 @@ viewer = r"""<style>
   function evict() { if (tiles.size <= MAXT) return; var v = viewLL(), cx = (v.lo0 + v.lo1) / 2 / TW, cy = (v.la0 + v.la1) / 2 / TH, arr = Array.from(tiles.entries()).sort(function (a, b) { return Math.hypot(b[1].ix + 0.5 - cx, b[1].iy + 0.5 - cy) - Math.hypot(a[1].ix + 0.5 - cx, a[1].iy + 0.5 - cy); });
     while (tiles.size > MAXT - 6 && arr.length) tiles.delete(arr.shift()[0]);
     var keep = new Set(); tiles.forEach(function (t) { t.ids.forEach(function (id) { keep.add(id); }); }); Array.from(S.osm.ways.keys()).forEach(function (id) { if (!keep.has(id)) S.osm.ways.delete(id); }); built = null; }
+  /* LICZENIE UKLADU DROG W TLE (Web Worker): ten sam silnik co na glownym watku; interfejs rysuje stary uklad, az nowy bedzie gotowy */
+  var wk = null, wJob = 0, wBusy = false, wPending = null, wFail = false, wMeta = null;
+  function workerSrc() { var big = '', A = 'function render', B = '() {', C = 'const $ = id => document.getElementById(id);'; Array.prototype.forEach.call(document.scripts, function (sc) { var t = sc.textContent; if (!sc.src && t.length > big.length && t.indexOf(A + B) >= 0 && t.indexOf(C) >= 0) big = t; });
+    var eng = big.slice(0, big.indexOf(A + B)), STUB = "const STUBV = { cLay: 1, rA: 0.85, fT: 45, fT2: 80, fR: 60, bm: 0, cAx: 0, cAn: 0, cTile: 0, cSm: 1, cBlue: 0 }, STUB = {}; const $ = id => STUB[id] || (STUB[id] = id === 'cv' ? new OffscreenCanvas(1, 1) : { checked: !!STUBV[id], value: STUBV[id] === undefined ? '' : STUBV[id], style: {}, classList: { add() {}, remove() {}, toggle() {} }, set onclick(f) {}, set oninput(f) {}, set onchange(f) {}, getBoundingClientRect: () => ({ width: 800, height: 600 }) });";
+    var pre = "var window = self; var document = { createElement: () => new OffscreenCanvas(1, 1), getElementById: () => null, querySelector: () => null, addEventListener() {}, documentElement: { style: {} } }; var localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} }; var location = { hash: '', search: '' }; var navigator = {}; var devicePixelRatio = 1;\n",
+      post = "\nself.onmessage = e => { const d = e.data; try { Object.assign(self, d.flags); S.arcMode = d.arc; S.org = d.org; S.view = d.view; S.nodeR = {}; S.nodeP = {}; S.osm.ways = new Map(d.ways); S.doc = { road: d.roads }; S.dirty = true; const L = layout(); self.postMessage({ id: d.id, L, CC: S.CC, nodeViz: S.nodeViz, forks: S.forks, forks3: S.forks3, roads: S.doc.road }); } catch (err) { self.postMessage({ id: d.id, err: String(err && err.stack || err) }); } };";
+    return pre + eng.replace(C, STUB) + post; }
+  function applyResult(d) { S.doc.road = d.roads; S.CC = d.CC; S.nodeViz = d.nodeViz; S.forks = d.forks; S.forks3 = d.forks3; L = d.L; DUP = []; PZI = []; S.sel = -1; S.vsel = -1; S.dirty = false; if (wMeta) built = wMeta; showLink(); render(); }
+  function sendJob(roads, meta) { var ids = new Set(roads.map(function (r) { return r.osm; })), ways = []; S.osm.ways.forEach(function (o, id) { if (ids.has(id)) ways.push([id, o]); }); var flags = {}; Object.keys(window).forEach(function (k) { if (k.indexOf('__') === 0 && ['number', 'boolean', 'string'].indexOf(typeof window[k]) >= 0) flags[k] = window[k]; });
+    wBusy = true; wMeta = meta; wk.postMessage({ id: ++wJob, flags: flags, arc: S.arcMode, org: S.org, view: S.view, ways: ways, roads: roads }); }
+  function startWorker() { try { wk = new Worker(URL.createObjectURL(new Blob([workerSrc()], { type: 'text/javascript' })));
+    wk.onmessage = function (e) { var d = e.data; wBusy = false; if (d.err) { wFail = true; st.textContent = 'Błąd liczenia w tle – tryb zwykły.'; if (wPending) { S.doc.road = wPending.roads; S.dirty = true; L = null; touch(); wPending = null; } return; } if (d.id === wJob) applyResult(d); if (wPending) { var q = wPending; wPending = null; sendJob(q.roads, q.meta); } };
+    wk.onerror = function () { wFail = true; wBusy = false; };
+  } catch (e) { wFail = true; } }
+  var __ol = layout; layout = function () { return L || __ol(); }; /* w podgladzie uklad liczy worker; glowny watek tylko rysuje */
   function ensureDoc(force) { var a = s2w([0, 0]), b = s2w([W, H]), x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
-    if (!force && built && built.x0 <= x0 && built.x1 >= x1 && built.y0 <= y0 && built.y1 >= y1) return; var m = 0.25 * Math.max(x1 - x0, y1 - y0);
-    S.doc.road = []; S.sel = -1; S.vsel = -1; importView(m); built = { x0: x0 - m, x1: x1 + m, y0: y0 - m, y1: y1 + m }; S.dirty = true; L = null; touch(); showLink(); }
+    if (!force && built && built.x0 <= x0 && built.x1 >= x1 && built.y0 <= y0 && built.y1 >= y1) return; var m = 0.25 * Math.max(x1 - x0, y1 - y0), meta = { x0: x0 - m, x1: x1 + m, y0: y0 - m, y1: y1 + m };
+    var old = S.doc.road; S.doc.road = []; importView(m); var next = S.doc.road; S.doc.road = old;
+    if (wFail || typeof Worker === 'undefined') { S.doc.road = next; S.sel = -1; S.vsel = -1; built = meta; S.dirty = true; L = null; touch(); showLink(); return; }
+    if (!wk) startWorker(); if (wFail) { S.doc.road = next; S.sel = -1; S.vsel = -1; built = meta; S.dirty = true; L = null; touch(); showLink(); return; }
+    built = meta; if (wBusy) wPending = { roads: next, meta: meta }; else sendJob(next, meta); }
   async function run() { if (running) return; running = true; try {
     var z = zoomNow(), wm = W / S.view.k, hm = H / S.view.k;
     if (z < MINZ) { st.textContent = 'Przybliż do zoomu ' + MINZ + ', żeby wczytać drogi (teraz ' + z.toFixed(1) + ').'; return; }
@@ -58,7 +76,7 @@ viewer = r"""<style>
     evict(); ensureDoc(); doneSig = mySig; st.textContent = 'Wczytano ' + S.doc.road.length + ' odcinków dróg · kafelków w pamięci: ' + tiles.size;
   } finally { running = false; } }
   setInterval(function () { var s0 = sig(); if (s0 !== lastSig) { lastSig = s0; stableAt = Date.now(); return; } if (running || doneSig === s0 || Date.now() - stableAt < 700) return; if (backoff > Date.now()) return; run(); }, 400);
-  clr.onclick = function () { tiles.clear(); built = null; S.osm.ways.clear(); S.osm.tiles.clear(); S.doc = { road: [] }; S.sel = -1; S.vsel = -1; S.undo = []; S.redo = []; S.dirty = true; L = null; doneSig = ''; touch(); showLink(); st.textContent = 'Usunięto wszystkie drogi (po chwili wczytają się ponownie dla widoku).'; };
+  clr.onclick = function () { wJob++; wPending = null; tiles.clear(); built = null; S.osm.ways.clear(); S.osm.tiles.clear(); S.doc = { road: [] }; S.sel = -1; S.vsel = -1; S.undo = []; S.redo = []; S.dirty = true; L = null; doneSig = ''; touch(); showLink(); st.textContent = 'Usunięto wszystkie drogi (po chwili wczytają się ponownie dla widoku).'; };
   var lk = document.createElement('a'); lk.id = 'vWay'; lk.target = '_blank'; lk.rel = 'noopener'; document.body.appendChild(lk);
   function showLink() { var r = S.doc.road[S.sel]; if (!r || !r.osm) { lk.style.display = 'none'; return; } lk.href = 'https://www.openstreetmap.org/way/' + r.osm; lk.textContent = '↗ Otwórz way ' + r.osm + ' w OSM'; var tp = document.getElementById('tagPop'), b = tp && tp.style.display !== 'none' ? tp.getBoundingClientRect().bottom + 6 : 116; lk.style.top = Math.round(b) + 'px'; lk.style.display = 'block'; } /* link do zaznaczonej drogi w OSM */
   var cv = document.getElementById('cv'), dn = null;

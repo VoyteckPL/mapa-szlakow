@@ -452,7 +452,8 @@ function layout() {
   const R = S.doc.road, ends = new Map(), nodeRoads = new Map();
   { /* koncowki dwoch drog w tym samym miejscu bez wspolnego wezla: polacz (tylko gdy koniec nie ma klucza) */
     const E = []; R.forEach((r, i) => [0, r.pts.length - 1].forEach(j => E.push({ r, j, p: r.pts[j] })));
-    for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) { const A = E[x], B = E[y]; if (A.r === B.r || dist(A.p, B.p) > 0.4 || (A.r.nk[A.j] && B.r.nk[B.j])) continue; const k = A.r.nk[A.j] || B.r.nk[B.j] || 'n' + Math.random().toString(36).slice(2, 9); A.r.nk[A.j] = k; B.r.nk[B.j] = k; }
+    const _g = new Map(), _ck = (cx, cy) => cx + ',' + cy; E.forEach((e, i) => { e.i = i; const cx = Math.floor(e.p[0] / 0.5), cy = Math.floor(e.p[1] / 0.5), kk = _ck(cx, cy); (_g.get(kk) || _g.set(kk, []).get(kk)).push(i); e.cx = cx; e.cy = cy; }); /* siatka 0,5 m: porownujemy tylko sasiednie komorki (zamiast wszystkich par) */
+    for (let x = 0; x < E.length; x++) { const cand = []; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const l = _g.get(_ck(E[x].cx + dx, E[x].cy + dy)); if (l) for (const y of l) if (y > x) cand.push(y); } cand.sort((a, b) => a - b); for (const y of cand) { const A = E[x], B = E[y]; if (A.r === B.r || dist(A.p, B.p) > 0.4 || (A.r.nk[A.j] && B.r.nk[B.j])) continue; const k = A.r.nk[A.j] || B.r.nk[B.j] || 'n' + Math.random().toString(36).slice(2, 9); A.r.nk[A.j] = k; B.r.nk[B.j] = k; } }
   }
   R.forEach((r, i) => { r.nk.forEach(k => { if (k) (nodeRoads.get(k) || nodeRoads.set(k, []).get(k)).push(i); }); [[0, true], [r.pts.length - 1, false]].forEach(([j, st]) => { const k = r.nk[j]; if (k) (ends.get(k) || ends.set(k, []).get(k)).push({ i, st }); }); });
   { // strona dodatkowego pasa nieparzystej jezdni jednokierunkowej: z turn:lanes (skrajny pas skreca w lewo/prawo), dalej wzdluz lancucha jezdni; domyslnie po prawej
@@ -561,6 +562,7 @@ function layout() {
       const wt = (wa + wb) / 2, dt2 = (da + db) / 2;
       for (const [c, i0, w0, d0, st] of [[ca, ia, wa, da, a.st], [cb, ib, wb, db, b.st]]) { const cm = cumOf(c.Q), Lq = cm[cm.length - 1], Lb = Math.min(25, 0.45 * Lq); if (Lb < 3) continue; for (let j = 0; j < c.w.length; j++) { const sv = st ? cm[j] : Lq - cm[j]; if (sv >= Lb) continue; const f = 1 - sm5(sv / Lb); c.w[j] += (wt - w0) * f; c.d[j] += (dt2 - d0) * f; } } } }
   const polys = [], lines = [], arrows = preAr.slice();
+  const _lm = new Map(), lineIdx = l => { let j = _lm.get(l); if (j === undefined || lines[j] !== l) { _lm.clear(); for (let i = 0; i < lines.length; i++) if (!_lm.has(lines[i])) _lm.set(lines[i], i); j = _lm.get(l); } return j === undefined ? -1 : j; }; /* indeks linii z pamiecia (zamiast indexOf w petlach - O(n^2)) */
   forkLinks.forEach(l => lines.push(l));
   // obrysy jezdni (do ukrywania linii krawedzi wewnatrz asfaltu sasiednich drog - zamiast kolowego wycinania wokol wezlow)
   const PO = C.map(c => { const ex = c.e.some(v => v > 0), eL = j => ex && c.side < 0 ? c.e[j] : 0, eR = j => ex && c.side > 0 ? c.e[j] : 0; const Lf = offsetPts(c.Q, c.d.map((v, j) => v - c.w[j] / 2 - eL(j))), Rt = offsetPts(c.Q, c.d.map((v, j) => v + c.w[j] / 2 + eR(j))); return Lf.concat(Rt.slice().reverse()); });
@@ -685,10 +687,11 @@ function layout() {
       }
     }
   }
+  const _rol1 = new Map(); /* pamiec: droga danej linii (liczona raz) */
   for (const [k, G] of ends) { /* zlacze dwoch drog: krawedziowe linie ciagle laczymy odcinkami (bez luk i uskokow na zakretach) */
     if (!(G.length === 2 && nodeRoads.get(k).length === 2 && G[0].i !== G[1].i)) continue;
     const nd = orient(C[G[0].i], G[0].st).Q[0], E = [];
-    const roadOfLine = l => { const j = lines.indexOf(l); for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) return i; return -1; };
+    const roadOfLine = l => { let v = _rol1.get(l); if (v !== undefined) return v; const j = lineIdx(l); v = -1; for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) { v = i; break; } _rol1.set(l, v); return v; };
     lines.forEach(l => { if (l.st !== 'p2' || l.arc || l.P.length < 2) return; const eg = G.find(g => g.i === roadOfLine(l)); if (!eg) return; const j = eg.st ? 0 : l.P.length - 1; if (dist(l.P[j], nd) < 5) E.push({ l, j, p: l.P[j] }); }); /* tylko koniec krawedzi lezacy przy TYM wezle */ /* nie lacz dwoch krawedzi tej samej drogi (waski most: krawedzie leza blizej niz 4,5 m) */
     const pairs = []; for (let x = 0; x < E.length; x++) for (let y = x + 1; y < E.length; y++) if (E[x].l !== E[y].l && (E[x].l.ly | 0) === (E[y].l.ly | 0) && roadOfLine(E[x].l) !== roadOfLine(E[y].l)) { const d = dist(E[x].p, E[y].p); if (d > 0.02 && d < 4.5) pairs.push([d, x, y]); } /* mosty/wiadukty (inna warstwa) nie lacza sie krawedziami ze zwykla droga: tam sa barierki */
     pairs.sort((u, v) => u[0] - v[0]); const used = new Set();
@@ -700,8 +703,9 @@ function layout() {
   }
   { /* wezly 3+ drog (rozgalezienia, zmiany szerokosci): wolne konce bialych krawedzi sasiednich drog lacze sie plynna krzywa (Bezier styczny do obu krawedzi) zamiast uskoku */
     const sb_ = (p, q) => [p[0] - q[0], p[1] - q[1]], uu_ = v => { const l = Math.hypot(v[0], v[1]); return l > 1e-9 ? [v[0] / l, v[1] / l] : null; }; const ends2 = []; for (const l of lines) if (l.st === 'p2' && l.P.length >= 2) { ends2.push({ l, j: 0 }); ends2.push({ l, j: l.P.length - 1 }); }
-    const free = ends2.filter(e => !ends2.some(o => o !== e && dist(o.l.P[o.j], e.l.P[e.j]) < 0.12));
-    const roadOf = l => { const j = lines.indexOf(l); for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) return i; return -1; };
+    const gridE = new Map(); ends2.forEach(e => { const p = e.l.P[e.j], k = Math.floor(p[0] / 0.25) + ',' + Math.floor(p[1] / 0.25); (gridE.get(k) || gridE.set(k, []).get(k)).push(e); }); /* siatka zamiast wszystkich par */
+    const free = ends2.filter(e => { const p = e.l.P[e.j], cx = Math.floor(p[0] / 0.25), cy = Math.floor(p[1] / 0.25); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const l = gridE.get((cx + dx) + ',' + (cy + dy)); if (l) for (const o of l) if (o !== e && dist(o.l.P[o.j], p) < 0.12) return false; } return true; });
+    const _rol2 = new Map(), roadOf = l => { let v = _rol2.get(l); if (v !== undefined) return v; const j = lineIdx(l); v = -1; for (let i = R.length - 1; i >= 0; i--) if (rng[i] && j >= rng[i][0]) { v = i; break; } _rol2.set(l, v); return v; };
     for (const [k, G] of ends) {
       if (forkDone.has(k) || (nodeRoads.get(k) || []).length < 3 || new Set(G.map(e => e.i)).size < 3) continue;
       const nd = orient(C[G[0].i], G[0].st).Q[0], F = [];
@@ -1072,7 +1076,7 @@ function drawNodeDash() {
         for (let i = 0; i < inf.length; i++) { const A0 = inf[i]; if (!A0) continue; for (let j = i + 1; j < inf.length; j++) { const B0 = inf[j]; if (!B0 || A0.r.ly !== B0.r.ly) continue; const a = A0.bb, b = B0.bb; if (a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]) continue;
           for (const EA of [A0.r.E0, A0.r.E1]) for (const EB of [B0.r.E0, B0.r.E1]) { let run = [];
             const flush = () => { if (run.length >= 4) { let len = 0; for (let z = 1; z < run.length; z++) len += dist(run[z - 1].m, run[z].m); if (len > 2) out.push({ ly: A0.r.ly, A: run.map(x => x.p), B: run.map(x => x.q), mid: run.map(x => x.m) }); } run = []; };
-            for (let k = 0; k < EA.length; k++) { const p = EA[k]; let bd = 1e9, bq = null, bt = null; for (let z = 1; z < EB.length; z++) { const x0 = EB[z - 1], dx = EB[z][0] - x0[0], dy = EB[z][1] - x0[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - x0[0]) * dx + (p[1] - x0[1]) * dy) / L2)), qx = x0[0] + dx * t, qy = x0[1] + dy * t, d = Math.hypot(qx - p[0], qy - p[1]); if (d < bd) { bd = d; bq = [qx, qy]; bt = [dx / Math.sqrt(L2), dy / Math.sqrt(L2)]; } }
+            for (let k = 0; k < EA.length; k++) { const p = EA[k]; if (p[0] < b[0] || p[0] > b[2] || p[1] < b[1] || p[1] > b[3]) { flush(); continue; } let bd = 1e9, bq = null, bt = null; for (let z = 1; z < EB.length; z++) { const x0 = EB[z - 1]; if (p[0] < Math.min(x0[0], EB[z][0]) - 1.7 || p[0] > Math.max(x0[0], EB[z][0]) + 1.7 || p[1] < Math.min(x0[1], EB[z][1]) - 1.7 || p[1] > Math.max(x0[1], EB[z][1]) + 1.7) continue; const dx = EB[z][0] - x0[0], dy = EB[z][1] - x0[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - x0[0]) * dx + (p[1] - x0[1]) * dy) / L2)), qx = x0[0] + dx * t, qy = x0[1] + dy * t, d = Math.hypot(qx - p[0], qy - p[1]); if (d < bd) { bd = d; bq = [qx, qy]; bt = [dx / Math.sqrt(L2), dy / Math.sqrt(L2)]; } }
               const ta = tg(EA, k), ok = bq && bd < 1.6 && ta[0] * bt[0] + ta[1] * bt[1] > 0.97; if (ok) run.push({ p, q: bq, m: [(p[0] + bq[0]) / 2, (p[1] + bq[1]) / 2] }); else flush(); } flush(); } } }
         return (L.__seams = out); })();
       window.__busPts = [];

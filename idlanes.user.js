@@ -484,12 +484,12 @@ function layout() {
     }
     if (r.tl) { // strzałki P-8 z turn:lanes
       const parts = r.tl.split('|'), len = c.cum[n - 1]; const NL = Math.max(1, r.lanes | 0), nb = NL - (r.oneway ? NL : r.nf);
-      if (parts.length === (r.oneway ? NL : r.nf) && len > 25) {
-        for (let sa = 9, cnt = 0; sa < len - 8 && cnt < 60; sa += (c.skipIn ? 38 : 21), cnt++) { // strzałki co ok. 21 m na calym odcinku z pelna liczba pasow, liczac od konca drogi
+      if (parts.length === (r.oneway ? NL : r.nf) && len > 14) { /* krotkie odcinki: jedna strzalka w srodku */
+        for (let sa = len > 25 ? 9 : len / 2, cnt = 0; sa < len - Math.min(8, len / 4) && cnt < 60; sa += (c.skipIn ? 38 : 21), cnt++) { // strzałki co ok. 21 m na calym odcinku z pelna liczba pasow, liczac od konca drogi
           const s = len - sa, p = atS(Q, c.cum, s), p2 = atS(Q, c.cum, s + 1), dx = p2[0] - p[0], dy = p2[1] - p[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l, ny = dx / l, ang = Math.atan2(dy, dx) * 180 / Math.PI + 90;
           let jn = 0, bd = 1e9; for (let j = 0; j < n; j++) { const dd = Math.abs(c.cum[j] - s); if (dd < bd) { bd = dd; jn = j; } }
           const exj = c.e[jn] > 0, eLj = exj && c.side < 0 ? c.e[jn] : 0, leftLat = c.d[jn] - c.w[jn] / 2 - eLj; // krawędź lewa wg faktycznej geometrii (offset, poszerzenie)
-          if (Math.abs(c.w[jn] / (r.lw || 3.75) - NL) > 0.1) continue; // tylko tam, gdzie sa juz pelne pasy (nie w zwezeniu)
+          if (Math.abs(c.w[jn] / (r.lw || 3.75) - NL) > (len > 25 ? 0.1 : 0.4)) continue; // tylko tam, gdzie sa juz pelne pasy (nie w zwezeniu)
           parts.forEach((v, k) => {
             const set = new Set(v.split(';').map(x => x.replace('slight_', '').replace('sharp_', ''))); let key = ['through', 'left', 'right', 'reverse'].filter(x => set.has(x)).join('-'); if (set.has('merge_to_left')) key = 'p9a'; else if (set.has('merge_to_right')) key = 'p9b'; /* strzalki zbiegu pasow */
             if (key === 'through-left-right' || ARR.has(key)) { const lat = leftLat + (nb + k + 0.5) * r.lw; arrows.push({ x: p[0] + nx * lat, y: p[1] + ny * lat, rot: ang, type: key, lw: r.lw }); }

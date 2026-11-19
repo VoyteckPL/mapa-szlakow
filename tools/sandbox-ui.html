@@ -151,7 +151,7 @@ window.__cutHandles = () => cutHandles();
 /* ---------- pasy przez wezly: kazdy pas = os (Bezier) ze stala szerokoscia; z nich tez asfalt wezla ---------- */
 const LCOL = i => `hsl(${(i * 67) % 360},85%,42%)`; window.__nodeLaneList = [];
 function nodeLaneGeo(nv) { const o = nv.o, ten = (+q('sxTen').value || 40) / 100, A = [];
-  nv.lanes.forEach((m, j) => { const c = nv.cuts && nv.cuts[j], r = roads()[m.ri]; if (!c || !r) return; A.push({ j, m, c, r, nl: Math.max(1, r.lanes | 0), u: m.u, e1: c[1], e2: c[2] }); });
+  nv.lanes.forEach((m, j) => { const c = nv.cuts && nv.cuts[j], r = roads()[m.ri]; if (!c || !r) return; A.push({ j, m, c, r, nl: Math.max(1, r.lanes | 0), u: c.u || m.u, e1: c[1], e2: c[2] }); });
   if (A.length < 2) return null; let ref = null; const lat = p => ref[0] * (p[1] - o[1]) - ref[1] * (p[0] - o[0]);
   const slots = a => { const L = lat(a.e1) <= lat(a.e2) ? [a.e1, a.e2] : [a.e2, a.e1], out = []; for (let i = 0; i < a.nl; i++) { const t = (i + .5) / a.nl; out.push([L[0][0] + (L[1][0] - L[0][0]) * t, L[0][1] + (L[1][1] - L[0][1]) * t]); } return out; };
   const lanes = [], X = A.length === 3 ? A.reduce((a, b) => b.nl > a.nl ? b : a) : null;

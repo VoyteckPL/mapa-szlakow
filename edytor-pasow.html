@@ -59,7 +59,7 @@
   #oSend { padding:5px 8px; font-size:12px; font-weight:600; color:#fff !important; background:#1e88e5 !important; border:0 !important; border-radius:4px; } #oSend.blink { animation:blk .5s ease-in-out 3; }
   #oSt { margin-top:4px; color:#555; }
   #panel { display:none !important; } /* lewy panel Narzedzia usuniety: narzedzia w menu Edytor */
-  #lcLoad:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
+  #lcLoad:disabled, #lcLoadOv:disabled { opacity:.35; filter:grayscale(1); cursor:not-allowed; }
   /* panele przyklejone do prawej: zmienny tekst nie moze zmieniac szerokosci (suwaki nie skacza) */
   #smWrap label b[id], #nrt, #npTt, #npSt { display:inline-block; min-width:4.2em; text-align:right; font-variant-numeric:tabular-nums; }
   #smWrap #diag { width:0; min-width:100%; overflow-wrap:anywhere; }
@@ -87,7 +87,7 @@
       <label><input type="checkbox" id="cNodeLanes" onchange="if(typeof touch==='function')touch()"> Obrysy pasów jezdni (osobna warstwa)</label>
       <label><input type="checkbox" id="cNodeBord" onchange="if(typeof touch==='function')touch()"> Granice węzłów (żółte/niebieskie)</label>
       <hr><b>Edycja</b>
-      <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button><button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#e53935"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button id="lcSend" title="Wyślij zmiany do OSM"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M12 20V8M7 13l5-5 5 5M5 4h14"/></svg></button></div>
+      <div class="eb"><button id="lcLoad" title="Wczytaj aktualne dane z OSM dla tego widoku"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#43a047"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button><button id="lcLoadOv" title="Pobierz szybciej: tylko drogi, przez Overpass (overpass.private.coffee, z zapasowymi serwerami)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg></button><button id="lcUndo" title="Cofnij"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#fb8c00"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button><button id="lcRedo" title="Przywróć"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button><button id="lcClr" title="Wyczyść mapę (można cofnąć)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#e53935"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button><button id="lcSend" title="Wyślij zmiany do OSM"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;color:#1e88e5"><path d="M12 20V8M7 13l5-5 5 5M5 4h14"/></svg></button></div>
       
       
       <div id="osmSub" style="display:none">
@@ -1074,7 +1074,7 @@ function drawNodeDash() {
 function render() {
   const k = S.view.k, D = S.doc;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = '#e9ecdf'; ctx.fillRect(0, 0, W, H);
-  { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } } }
+  { const zz = Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k), lb = $('lcLoad'); if (lb) { const off = zz < 16; if (lb.disabled !== off) { lb.disabled = off; lb.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Wczytaj aktualne dane z OSM dla tego widoku'; } const lo2 = $('lcLoadOv'); if (lo2 && lo2.disabled !== off) { lo2.disabled = off; lo2.title = off ? 'Przybliż do zoomu 16, żeby pobrać dane z OSM' : 'Pobierz szybciej: tylko drogi, przez Overpass'; } } }
   drawTiles(); try { updNr(); } catch (e) {}
   if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * k) < 15) { drawScale(); return; } /* warstwy (drogi, pasy) tylko od zoomu 15; dalej sam podklad */
   if (S.dirty || !L) { L = layout(); S.dirty = false; try { DUP = dupScan(); } catch (e) { DUP = []; console.warn('dupScan', e); } try { PZI = pzScan(); } catch (e) { PZI = []; console.warn('pzScan', e); } }
@@ -1474,10 +1474,10 @@ $('bRst').onclick = () => {
 };
 $('bRstSel').onclick = () => { if (S.sel < 0) { say('Zaznacz najpierw drogę.'); return; } push(); const n = resetFromOsm([S.sel]); save(); ui(); touch(); say(n ? 'Przywrócono zaznaczoną drogę z OSM (cofnij: ↶).' : 'Nie znaleziono tej drogi w danych OSM.'); };
 function liveLog(m) { console.log('[OSM live]', m); const L = window.__ll = (m.startsWith('start') ? [] : (window.__ll || [])); L.push(new Date().toISOString().slice(11, 19) + ' ' + m); if (!m.startsWith('BLAD')) return; /* okno logu tylko przy bledzie */ let b = document.getElementById('liveLog'); if (!b) { b = document.createElement('div'); b.id = 'liveLog'; b.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99;max-width:min(560px,92vw);background:#111d;color:#cfc;font:11px/1.35 monospace;padding:6px 8px;border-radius:6px;white-space:pre-wrap;max-height:40vh;overflow:auto'; b.innerHTML = '<div style="text-align:right"><button id="llC">kopiuj</button> <button id="llX">×</button></div><pre id="llT" style="margin:0;white-space:pre-wrap;user-select:text"></pre>'; document.body.appendChild(b); b.querySelector('#llX').onclick = () => { b.remove(); }; b.querySelector('#llC').onclick = () => { try { navigator.clipboard.writeText(b.querySelector('#llT').textContent); } catch (e) {} }; } b.querySelector('#llT').textContent = L.join('\n'); }
-async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmienia drogi o zmienionym ukladzie wezlow (bez nowych/recznych wezlow)
+async function refreshLive(bb, src) { // aktualne dane z API OSM dla widoku; podmienia drogi o zmienionym ukladzie wezlow (bez nowych/recznych wezlow)
   const a = bb ? { lon: bb[0], lat: bb[1] } : unproj(s2w([0, 0])), b = bb ? { lon: bb[2], lat: bb[3] } : unproj(s2w([W, H])), lo = Math.min(a.lon, b.lon), hi = Math.max(a.lon, b.lon), la0 = Math.min(a.lat, b.lat), la1 = Math.max(a.lat, b.lat);
   if ((hi - lo) * (la1 - la0) > 0.04) { say('Za duży obszar – przybliż widok i spróbuj ponownie.'); return false; }
-  say('Pobieram aktualne dane z OSM…');
+  say(src === 'overpass' ? 'Pobieram drogi z Overpass…' : 'Pobieram aktualne dane z OSM…');
   const url = `https://api.openstreetmap.org/api/0.6/map.json?bbox=${lo.toFixed(6)},${la0.toFixed(6)},${hi.toFixed(6)},${la1.toFixed(6)}`; liveLog('start, bbox=' + [lo, la0, hi, la1].map(v => v.toFixed(5)).join(',') + ' pole=' + ((hi - lo) * (la1 - la0)).toFixed(5)); liveLog('GET ' + url);
   /* pobieranie z ponawianiem (429/5xx/timeout) i dzieleniem obszaru na 4 czesci, gdy API odmawia: "too many nodes" (limit 50000 wezlow) */
   const getMap = async (x0, y0, x1, y1, depth) => {
@@ -1493,7 +1493,23 @@ async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmieni
     }
     throw last || new Error('nieznany błąd');
   };
-  let j; try { const els = await getMap(lo, la0, hi, la1, 0), seen = new Set(), uniq = els.filter(e => { const k = e.type + e.id; if (seen.has(k)) return false; seen.add(k); return true; }); j = { elements: uniq }; liveLog('razem elementow: ' + uniq.length); } catch (e) { liveLog('BLAD: ' + (e && e.stack || e)); say('Nie udało się pobrać z OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
+  /* Overpass: tylko drogi (highway) z pelna geometria + ich wezly, jeden maly POST; lista serwerow z przelaczaniem przy bledzie / limicie / przeciazeniu */
+  const OVP = ['https://overpass.private.coffee/api/interpreter', 'https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  const getOverpass = async (x0, y0, x1, y1) => {
+    const hw = [...OKHW].join('|') + '|[a-z_]+_link', q = `[out:json][timeout:25];way["highway"~"^(${hw})$"](${y0.toFixed(6)},${x0.toFixed(6)},${y1.toFixed(6)},${x1.toFixed(6)});(._;>;);out body qt;`;
+    const start = window.__ovEp || 0; let last = null;
+    for (let k = 0; k < OVP.length; k++) {
+      const ei = (start + k) % OVP.length, ep = OVP[ei], ac = new AbortController(), to = setTimeout(() => ac.abort(), 30000), t0 = performance.now();
+      try { say('Overpass (' + ep.split('/')[2] + ')…'); const rr = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(q), signal: ac.signal }); const tx = await rr.text(); clearTimeout(to);
+        liveLog('Overpass ' + ep.split('/')[2] + ' HTTP ' + rr.status + ' ' + tx.length + ' znakow, ' + Math.round(performance.now() - t0) + ' ms');
+        if (!rr.ok) { last = new Error('HTTP ' + rr.status); continue; }
+        const j0 = JSON.parse(tx); if (j0.remark && /runtime error|timed out|out of memory/i.test(j0.remark)) { last = new Error(j0.remark.slice(0, 120)); continue; }
+        window.__ovEp = ei; return j0.elements || []; /* ten serwer dziala: nastepnym razem zaczynamy od niego */
+      } catch (e) { clearTimeout(to); last = e.name === 'AbortError' ? new Error('przekroczono czas odpowiedzi (30 s)') : e; liveLog('Overpass ' + ep.split('/')[2] + ' blad: ' + last.message); }
+    }
+    throw new Error('żaden serwer Overpass nie odpowiedział (' + (last && last.message) + ')');
+  };
+  let j; try { const els = src === 'overpass' ? await getOverpass(lo, la0, hi, la1) : await getMap(lo, la0, hi, la1, 0), seen = new Set(), uniq = els.filter(e => { const k = e.type + e.id; if (seen.has(k)) return false; seen.add(k); return true; }); j = { elements: uniq }; liveLog('razem elementow: ' + uniq.length); } catch (e) { liveLog('BLAD: ' + (e && e.stack || e)); say('Nie udało się pobrać z OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
   liveLog('elementy: ' + j.elements.length + ' (wezly ' + j.elements.filter(e => e.type === 'node').length + ', drogi ' + j.elements.filter(e => e.type === 'way' && e.tags && e.tags.highway).length + ')');
   try {
   const nodes = new Map(); for (const e of j.elements) if (e.type === 'node') nodes.set(e.id, [e.lon, e.lat]);
@@ -1517,16 +1533,16 @@ async function refreshLive(bb) { // aktualne dane z API OSM dla widoku; podmieni
   } catch (e) { liveLog('BLAD przetwarzania: ' + (e && e.stack || e)); try { const bad = []; S.doc.road.forEach((r, i) => { const nul = (r.pts || []).filter(q => !q || !isFinite(q[0]) || !isFinite(q[1])).length, cq = S.CC && S.CC[i] ? S.CC[i].Q : null; if (nul || !r.pts || r.pts.length < 2 || (r.rp && r.rp.length !== r.pts.length) || (r.nk && r.nk.length !== r.pts.length) || !cq || cq.length < 2 || cq.some(q => !q)) bad.push(`#${i} way ${r.osm} ${r.hw} lanes=${r.lanes} pts=${(r.pts || []).length} rp=${r.rp ? r.rp.length : '-'} nk=${r.nk ? r.nk.length : '-'} puste=${nul} Q=${cq ? cq.length : '-'}`); }); liveLog('BLAD diagnoza (drogi z problemem): ' + (bad.length ? '\n' + bad.slice(0, 12).join('\n') : 'brak')); } catch (e2) { liveLog('BLAD diagnoza nie powiodla sie: ' + e2.message); } say('Błąd przetwarzania danych OSM: ' + e.message + ' (szczegóły w oknie logu)'); return false; }
 }
 $('bLive').onclick = () => refreshLive();
-async function loadFresh() { if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k) < 16) { say('Przybliż mapę do zoomu 16, żeby pobrać dane.'); return; } const un = window.__unsent ? window.__unsent() : 0; if (un && !confirm('Masz niewysłane zmiany w edytorze (' + un + '). Pobranie od nowa wczyta czysty stan z OSM dla tego widoku i je usunie.\n\nKontynuować?')) return;
-  if (!(await refreshLive())) return; push();
+async function loadFresh(src) { if (src !== 'overpass') src = null; if (Math.log2(156543.03 * Math.cos(S.org.lat * Math.PI / 180) * S.view.k) < 16) { say('Przybliż mapę do zoomu 16, żeby pobrać dane.'); return; } const un = window.__unsent ? window.__unsent() : 0; if (un && !confirm('Masz niewysłane zmiany w edytorze (' + un + '). Pobranie od nowa wczyta czysty stan z OSM dla tego widoku i je usunie.\n\nKontynuować?')) return;
+  if (!(await refreshLive(null, src))) return; push();
   { /* pobranie = wczytanie od nowa: drogi OSM z tego widoku sa usuwane i importowane ze swiezych danych (bez duplikatow); sandbox i wlasne drogi zostaja */
     const a = s2w([0, 0]), b = s2w([W, H]), m = 40, x0 = Math.min(a[0], b[0]) - m, x1 = Math.max(a[0], b[0]) + m, y0 = Math.min(a[1], b[1]) - m, y1 = Math.max(a[1], b[1]) + m, n0 = S.doc.road.length;
     const before = S.doc.road.slice(), inV = r => r.osm && !r.sb && r.pts.some(q => q[0] >= x0 && q[0] <= x1 && q[1] >= y0 && q[1] <= y1);
     S.doc.road = S.doc.road.filter(r => !inV(r)); S.sel = -1; S.vsel = -1; liveLog('wczytanie od nowa: usunieto ' + (n0 - S.doc.road.length) + ' dr. z widoku');
     let ok = true; try { importView(); } catch (e) { ok = false; liveLog('BLAD importu: ' + (e && e.stack || e)); }
     if (!ok || (n0 > S.doc.road.length && !S.doc.road.some(inV))) { S.doc.road = before; save(); ui(); touch(); say('Nie udało się wczytać dróg od nowa – zostawiłem poprzedni stan (szczegóły w oknie logu).'); return; } }
-  save(); ui(); touch(); say('Wczytano od nowa aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
-window.__loadFresh = loadFresh; $('lcLoad').onclick = loadFresh; $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
+  save(); ui(); touch(); say(src === 'overpass' ? 'Wczytano drogi z Overpass dla tego widoku.' : 'Wczytano od nowa aktualne dane z OSM dla tego widoku.'); const lb = $('lcLoad'); lb.classList.remove('blink'); void lb.offsetWidth; lb.classList.add('blink'); }
+window.__loadFresh = loadFresh; $('lcLoad').onclick = () => loadFresh(); $('lcLoadOv').onclick = () => loadFresh('overpass'); $('lcSend').onclick = () => { const o = $('osmSub'); const on = o.style.display === 'none'; o.style.display = on ? 'block' : 'none'; $('lcSend').classList.toggle('act', on); if (on && window.__oList) window.__oList(); }; $('lcClr').onclick = () => $('bClr').click(); $('lcUndo').onclick = () => $('bUndo').click(); $('lcRedo').onclick = () => $('bRedo').click();
 $('bImp').onclick = async () => {
   const a = unproj(s2w([0, 0])), b = unproj(s2w([W, H])), m = 0.0005, lo = Math.min(a.lon, b.lon) - m, hi = Math.max(a.lon, b.lon) + m, la = Math.min(a.lat, b.lat) - m, lb = Math.max(a.lat, b.lat) + m;
   const box = [Math.floor(lo / 0.02), Math.floor(hi / 0.02), Math.floor(la / 0.01), Math.floor(lb / 0.01)];

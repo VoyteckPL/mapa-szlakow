@@ -13,6 +13,7 @@ rep("  resize(); ui();\n  const h = decodeURIComponent(location.hash || '') + ' 
     "  resize(); ui();\n  { const p = parseLink(location.hash) || { z: 17, lat: 54.5073, lon: 18.5345 }; S.org = { lat: p.lat, lon: p.lon }; S.view = { x: 0, y: 0, k: Math.pow(2, p.z) / (156543.03 * Math.cos(p.lat * Math.PI / 180)) }; render(); say('Przybliż mapę i kliknij „Pobierz drogi”.'); return; } /* podglad: bez automatycznego pobierania */\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;")
 viewer = r"""<style>
 #edPop, #edP, #sbP, #nrbar, #offBar, #hint, #smWrap, #panel, #lcP label:has(#cAn), #lcP label:has(#cSn), #lcP label:has(#cNodeLanes), #lcP label:has(#cNodeBord), #lcP .vhide { display:none !important; }
+#vWay { display:none; position:fixed; left:10px; z-index:8; background:#fff; color:#1565c0; font:600 11px system-ui; padding:4px 8px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,.3); text-decoration:none; } #vWay:hover { background:#eef4fc; }
 #vBar { position:fixed; left:10px; top:10px; z-index:8; width:190px; background:rgba(255,255,255,.96); border-radius:8px; padding:6px 8px; box-shadow:0 1px 6px rgba(0,0,0,.35); border-top:3px solid #1e88e5; } #tagPop { top:116px !important; } #vBar #vLoad { display:block; width:100%; height:auto; margin:6px 0 2px; padding:6px 8px; font:600 12px system-ui; line-height:1.2; color:#fff; background:#1e88e5; border:0; border-radius:5px; cursor:pointer; } #vBar #vClr { display:block; width:100%; height:auto; margin:4px 0 2px; padding:5px 8px; font:600 12px system-ui; line-height:1.2; color:#c62828; background:#fff; border:1px solid #e57373; border-radius:5px; cursor:pointer; } #vBar #vLoad:disabled { opacity:.5; cursor:default; }
 #vSt { font:11px system-ui; color:#555; max-width:210px; white-space:normal; margin-top:3px; }
 </style>
@@ -33,9 +34,11 @@ viewer = r"""<style>
     try { await window.__loadFresh(); st.textContent = 'Wczytano ' + S.doc.road.length + ' odcinków dróg.'; } catch (e) { st.textContent = 'Błąd pobierania.'; }
     btn.disabled = false;
   };
+  var lk = document.createElement('a'); lk.id = 'vWay'; lk.target = '_blank'; lk.rel = 'noopener'; document.body.appendChild(lk);
+  function showLink() { var r = S.doc.road[S.sel]; if (!r || !r.osm) { lk.style.display = 'none'; return; } lk.href = 'https://www.openstreetmap.org/way/' + r.osm; lk.textContent = '↗ Otwórz way ' + r.osm + ' w OSM'; var tp = document.getElementById('tagPop'), b = tp && tp.style.display !== 'none' ? tp.getBoundingClientRect().bottom + 6 : 116; lk.style.top = Math.round(b) + 'px'; lk.style.display = 'block'; } /* link do zaznaczonej drogi w OSM */
   var cv = document.getElementById('cv'), dn = null;
   cv.addEventListener('pointerdown', function (e) { dn = [e.clientX, e.clientY]; });
-  cv.addEventListener('pointerup', function (e) { if (!dn) return; var mv = Math.hypot(e.clientX - dn[0], e.clientY - dn[1]); dn = null; if (mv > 5) return; var ns = hitRoad(s2w(evp(e))); S.sel = ns; S.vsel = -1; ui(); touch(); }); /* klik w droge: podswietlenie i tagi */
+  cv.addEventListener('pointerup', function (e) { if (!dn) return; var mv = Math.hypot(e.clientX - dn[0], e.clientY - dn[1]); dn = null; if (mv > 5) return; var ns = hitRoad(s2w(evp(e))); S.sel = ns; S.vsel = -1; ui(); touch(); showLink(); }); /* klik w droge: podswietlenie i tagi */
   setInterval(function () { try { var h = curHash(); if (h && h !== location.hash) history.replaceState(null, '', h); } catch (e) {} }, 1500); /* link do udostepnienia = biezacy widok */
 })();
 </script>

@@ -152,14 +152,16 @@ function drawNodeLanes() { if (!q('sxNL').checked) return; const k = S.view.k;
     const X = A.length === 3 ? A.reduce((a, b) => b.nl > a.nl ? b : a) : null; let ref = null;
     const lat = (p) => { const d = [p[0] - o[0], p[1] - o[1]]; return ref[0] * d[1] - ref[1] * d[0]; };
     const divs = a => { const L = lat(a.e1) <= lat(a.e2) ? [a.e1, a.e2] : [a.e2, a.e1], out = []; for (let i = 1; i < a.nl; i++) { const t = i / a.nl; out.push([L[0][0] + (L[1][0] - L[0][0]) * t, L[0][1] + (L[1][1] - L[0][1]) * t]); } return out; };
-    const line = (p, up, q, uq, mid) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]), h = Math.max(1, d * 0.4), P1 = w2s(p), P2 = w2s([p[0] + up[0] * h, p[1] + up[1] * h]), Q2 = w2s([q[0] + uq[0] * h, q[1] + uq[1] * h]), Q = w2s(q); ctx.beginPath(); ctx.moveTo(P1[0], P1[1]); ctx.bezierCurveTo(P2[0], P2[1], Q2[0], Q2[1], Q[0], Q[1]); ctx.strokeStyle = mid ? '#e8c000' : 'rgba(255,255,255,.9)'; ctx.setLineDash(mid ? [] : [2.5 * k, 5 * k]); ctx.stroke(); };
-    ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.lineWidth = Math.max(1, 0.14 * k);
-    const midIx = a => !a.ow && a.nl % 2 === 0 ? a.nl / 2 - 1 : -1;
+    const line = (p, up, q, uq, col) => { const d = Math.hypot(q[0] - p[0], q[1] - p[1]), h = Math.max(1, d * 0.4), P1 = w2s(p), P2 = w2s([p[0] - up[0] * h, p[1] - up[1] * h]), Q2 = w2s([q[0] - uq[0] * h, q[1] - uq[1] * h]), Q = w2s(q); ctx.beginPath(); ctx.moveTo(P1[0], P1[1]); ctx.bezierCurveTo(P2[0], P2[1], Q2[0], Q2[1], Q[0], Q[1]); ctx.strokeStyle = col; ctx.setLineDash([]); ctx.stroke(); };
+    ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.lineWidth = 2;
+    const cof = a => colOf((roads()[a.m.ri] || {}).hw || 'primary'), edges = a => { const L = lat(a.e1) <= lat(a.e2) ? [a.e1, a.e2] : [a.e2, a.e1]; return L; };
     if (X && A.filter(a => a !== X).every(a => a.nl <= X.nl)) { const Y = A.filter(a => a !== X); if (Y[0].nl + Y[1].nl >= X.nl && Y[0].nl + Y[1].nl <= X.nl + 1) {
       ref = [-X.u[0], -X.u[1]]; Y.sort((a, b) => lat([(a.e1[0] + a.e2[0]) / 2, (a.e1[1] + a.e2[1]) / 2]) - lat([(b.e1[0] + b.e2[0]) / 2, (b.e1[1] + b.e2[1]) / 2])); const dx = divs(X), dl = divs(Y[0]), dr = divs(Y[1]), n = X.nl;
-      for (let i = 0; i < n - 1; i++) { if (i + 1 <= Y[0].nl - 1) line(dx[i], X.u, dl[i], Y[0].u, i === midIx(X)); const s = i - (n - Y[1].nl); if (s >= 0 && i + 1 <= n - 1) line(dx[i], X.u, dr[s], Y[1].u, i === midIx(X)); }
+      for (let i = 0; i < n - 1; i++) { if (i + 1 <= Y[0].nl - 1) line(dx[i], X.u, dl[i], Y[0].u, cof(Y[0])); const s = i - (n - Y[1].nl); if (s >= 0 && i + 1 <= n - 1) line(dx[i], X.u, dr[s], Y[1].u, cof(Y[1])); }
+      if (Y[0].nl < n && Y[0].nl >= 1) line(dx[Y[0].nl - 1], X.u, edges(Y[0])[1], Y[0].u, cof(Y[0])); /* prawa krawedz lewej odnogi <- dzielnik drogi glownej */
+      if (Y[1].nl < n && Y[1].nl >= 1) line(dx[n - Y[1].nl - 1], X.u, edges(Y[1])[0], Y[1].u, cof(Y[1])); /* lewa krawedz prawej odnogi */
       ctx.restore(); continue; } }
-    for (let a = 0; a < A.length; a++) for (let b = a + 1; b < A.length; b++) { const p = A[a], q = A[b]; if (p.u[0] * q.u[0] + p.u[1] * q.u[1] > -0.94 || p.nl !== q.nl) continue; ref = [-p.u[0], -p.u[1]]; const dp = divs(p), dq = divs(q); dp.forEach((pt, i) => line(pt, p.u, dq[i], q.u, i === midIx(p))); }
+    for (let a = 0; a < A.length; a++) for (let b = a + 1; b < A.length; b++) { const p = A[a], q = A[b]; if (p.u[0] * q.u[0] + p.u[1] * q.u[1] > -0.94 || p.nl !== q.nl) continue; ref = [-p.u[0], -p.u[1]]; const dp = divs(p), dq = divs(q); dp.forEach((pt, i) => line(pt, p.u, dq[i], q.u, cof(p))); }
     ctx.restore(); } }
 
 function snapPoint(sx, sy) { const w = S2W(sx, sy), v = vertexAt(sx, sy); if (v) return { p: v.r.pts[v.i].slice(), key: v.key }; let bs = 9 / S.view.k, hit = null; for (const r of roads()) for (let i = 1; i < r.pts.length; i++) { const A = r.pts[i - 1], B = r.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], d = Math.hypot(w[0] - p[0], w[1] - p[1]); if (d < bs && t > 0.02 && t < 0.98) { bs = d; hit = { r, i, p }; } }

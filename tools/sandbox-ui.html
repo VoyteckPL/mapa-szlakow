@@ -238,7 +238,7 @@ q('sxCfg').onclick = () => { const cfg = { sandbox: 'sandbox-drog', roads: roads
 function fallbackCopy(txt, done) { const ta = document.createElement('textarea'); ta.value = txt; ta.style.cssText = 'position:fixed;left:8px;top:60px;width:min(90vw,500px);height:160px;z-index:99'; document.body.appendChild(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} if (ok) ta.remove(); else { ta.onblur = () => ta.remove(); } done(ok); }
 q('sxClr').onclick = () => { push(); S.doc.road = []; selR = null; changed(); }; q('sxExp').onclick = () => { try { navigator.clipboard.writeText(snap()); hint('Skopiowano JSON sceny'); } catch (e) {} };
 /* ---------- scenariusze ---------- */
-window.__forkNode = true; window.__noGapClose = true; window.__nodeRad = 8; /* bez domykania szczelin: osobne drogi blisko siebie sie nie zlewaja */ /* rozjazdy jako wezly (wielokat + luki) zamiast szkieletu */
+window.__forkNode = true; window.__noGapClose = true; window.__noSeams = true; window.__nodeRad = 8; /* bez domykania szczelin: osobne drogi blisko siebie sie nie zlewaja */ /* rozjazdy jako wezly (wielokat + luki) zamiast szkieletu */
 /* ---- generator scenariuszy: grupy, do 6 pasów ---- */
 const SC = {}, SCG = []; const grp = (g, items) => { SCG.push({ g, names: items.map(([n, f]) => { SC[g + ' · ' + n] = f; return g + ' · ' + n; }) }); };
 const ST = (hw, o, pts) => [hw, o, pts]; /* odcinek: klasa, opcje, punkty */

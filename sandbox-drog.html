@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sandbox dróg</title>
+<style>
+  :root { --bg:#e9ecdf; --pn:#fff; --tx:#1d2330; --mu:#667085; --ac:#1e88e5; --ok:#2e9d4d; --wr:#e08a00; --er:#d32f2f; --bd:#d8dce3; }
+  @media (prefers-color-scheme: dark) { :root { --pn:#1b212b; --tx:#e6e9ef; --mu:#97a1b3; --bd:#2f3745; } }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--tx); }
+  #map { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; }
+  .panel { position:fixed; top:8px; bottom:8px; width:262px; background:var(--pn); border-radius:10px; box-shadow:0 1px 8px rgba(0,0,0,.3); padding:8px 10px; overflow:auto; }
+  #left { left:8px; } #right { right:8px; width:290px; }
+  h4 { margin:10px 0 4px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:#3949ab; } h4:first-child { margin-top:0; }
+  button, select, input { font:inherit; color:var(--tx); background:var(--pn); border:1px solid var(--bd); border-radius:6px; padding:3px 7px; }
+  button { cursor:pointer; } button:hover { background:#eef4fc; } button.on { background:#e8eaf6; border-color:#3949ab; font-weight:600; }
+  .row { display:flex; flex-wrap:wrap; gap:4px; margin:3px 0; align-items:center; }
+  .types button { display:flex; align-items:center; gap:6px; width:100%; text-align:left; margin:2px 0; }
+  .sw { width:22px; height:9px; border-radius:2px; flex:none; background:#6b6e74; }
+  label.chk { display:flex; align-items:center; gap:5px; margin:2px 0; }
+  .lane { display:flex; align-items:center; gap:4px; margin:2px 0; font-size:12px; } .lane span { width:46px; color:var(--mu); }
+  .lane select { flex:1; min-width:0; }
+  .rep { margin:2px 0; padding:4px 6px; border-radius:6px; border-left:4px solid; cursor:pointer; background:rgba(128,128,128,.07); font-size:12px; }
+  .rep.ok { border-color:var(--ok); } .rep.wr { border-color:var(--wr); } .rep.er { border-color:var(--er); } .rep small { color:var(--mu); display:block; }
+  .cnt { display:flex; gap:6px; margin:3px 0 6px; } .cnt b { padding:1px 8px; border-radius:10px; color:#fff; font-size:12px; } .cnt .ok { background:var(--ok); } .cnt .wr { background:var(--wr); } .cnt .er { background:var(--er); }
+  #hint { position:fixed; left:50%; bottom:10px; transform:translateX(-50%); background:rgba(20,24,32,.85); color:#fff; padding:4px 12px; border-radius:14px; font-size:12px; pointer-events:none; }
+  .mu { color:var(--mu); font-size:11px; }
+  @media (max-width:900px) { #right { top:auto; height:34vh; left:8px; width:auto; } #left { bottom:36vh; width:200px; } }
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="left" class="panel">
+  <h4>Narzędzie</h4>
+  <div class="row"><button id="tSel" class="on">Zaznacz</button><button id="tDraw">Rysuj</button><button id="tDel">Usuń</button><button id="tUndo">Cofnij</button></div>
+  <h4>Rysuj: typ drogi</h4>
+  <div class="types" id="types"></div>
+  <div class="mu">Klik = punkt, dwuklik / Enter = koniec, Esc = anuluj. Klik w istniejącą drogę tworzy skrzyżowanie, klik w jej koniec łączy.</div>
+  <h4>Widok</h4>
+  <label class="chk"><input type="checkbox" id="cOut" checked> obrysy pasów</label>
+  <label class="chk"><input type="checkbox" id="cLn" checked> linie pasów</label>
+  <label class="chk"><input type="checkbox" id="cArr" checked> strzałki</label>
+  <label class="chk"><input type="checkbox" id="cDot" checked> znaczniki węzłów (raport)</label>
+  <h4>Scenariusze</h4>
+  <div class="row"><select id="scen"></select><button id="scenGo">Wczytaj</button></div>
+  <div class="row"><button id="clr">Wyczyść wszystko</button><button id="exp">Kopiuj JSON</button></div>
+</div>
+<div id="right" class="panel">
+  <h4>Edycja drogi</h4>
+  <div id="edit" class="mu">Zaznacz drogę (narzędzie „Zaznacz”), aby zmienić typ, liczbę pasów, szerokość i turn:lanes.</div>
+  <h4>Raport połączeń</h4>
+  <div class="cnt" id="cnt"></div>
+  <div id="rep"></div>
+</div>
+<div id="hint"></div>
+<script>
+'use strict';
+/* ---------- konfiguracja (wszystkie progi w jednym miejscu) ---------- */
+const CFG = {
+  tile: { dLon: 0.02, dLat: 0.01, url: (x, y) => `data/roads/gdynia/${x}_${y}.json` },
+  zoom: { kMin: 0.0014, kMax: 300, loadK: 0.5, maxWays: 2500 },
+  through: { maxDev: 0.65, nameBonus: 2, classBonus: 1, lanesBonus: 0.5 },   // rad (~37°)
+  taper: { max: 22, frac: 0.4 },
+  junction: { cutMin: 2, cutMax: 9, filletMaxFactor: 3, straightAbove: 2.6 }, // rad: powyżej kąta (≈150°) bez łuku
+  chaikin: 2,
+  line: { edge: 0.2, lane: 0.14, dash: [3, 9] },
+  colors: { asphalt: '#6b6e74', edge: '#e6e7e3', lane: '#eeeeee', center: '#f0d44a', bridge: '#8d9197' },
+};
+/* klasy dróg: szerokość pasa, ranga, oznakowanie */
+const HW = {
+  motorway:     { w: 3.75, rank: 9, marks: 1, edge: 1, def: 2 }, trunk:        { w: 3.6,  rank: 8.5, marks: 1, edge: 1, def: 2 },
+  primary:      { w: 3.5,  rank: 8, marks: 1, edge: 1, def: 1 }, secondary:    { w: 3.4,  rank: 7, marks: 1, edge: 1, def: 1 },
+  tertiary:     { w: 3.25, rank: 6, marks: 1, edge: 1, def: 1 }, unclassified: { w: 3.0,  rank: 5, marks: 1, edge: 0, def: 1 },
+  residential:  { w: 2.75, rank: 4, marks: 0, edge: 0, def: 1 }, living_street:{ w: 2.5,  rank: 3, marks: 0, edge: 0, def: 1 },
+  service:      { w: 2.5,  rank: 2, marks: 0, edge: 0, def: 1 }, road:         { w: 3.0,  rank: 3, marks: 0, edge: 0, def: 1 },
+};
+const hwInfo = h => HW[(h || '').replace('_link', '')] || null;
+
+/* ---------- 1) graf: węzły i krawędzie ---------- */
+function buildGraph(list) {
+  const use = new Map(); for (const w of list) { const seen = new Set(); w.k.forEach((k, i) => { if (!seen.has(k)) { seen.add(k); use.set(k, (use.get(k) || 0) + 1); } if (i === 0 || i === w.k.length - 1) use.set(k, (use.get(k) || 0) + 1); }); }
+  const nodes = new Map(), edges = [];
+  const node = (k, p) => { let n = nodes.get(k); if (!n) nodes.set(k, n = { k, x: p[0], y: p[1], arms: [] }); return n; };
+  for (const w of list) {
+    const hw = w.t.highway; if (!hwInfo(hw) || w.t.area === 'yes') continue;
+    let cut = [0]; for (let i = 1; i < w.k.length - 1; i++) if (use.get(w.k[i]) > 1) cut.push(i); cut.push(w.k.length - 1);
+    for (let c = 0; c + 1 < cut.length; c++) {
+      let pts = w.g.slice(cut[c], cut[c + 1] + 1), ka = w.k[cut[c]], kb = w.k[cut[c + 1]]; if (pts.length < 2 || ka === kb && pts.length < 3) continue;
+      if (w.t.oneway === '-1') { pts = pts.slice().reverse(); [ka, kb] = [kb, ka]; }
+      const e = { id: w.id + ':' + c, way: w.id, t: w.t, hw, info: hwInfo(hw), raw: pts, a: ka, b: kb, ly: layerOf(w.t) };
+      e.na = node(ka, pts[0]); e.nb = node(kb, pts[pts.length - 1]); edges.push(e);
+    }
+  }
+  return { nodes, edges };
+}
+function layerOf(t) { let l = parseInt(t.layer, 10) || 0; if (t.bridge && t.bridge !== 'no' && l < 1) l = 1; if (t.tunnel && t.tunnel !== 'no' && l > -1) l = -1; return l; }
+
+/* ---------- 2) model pasów krawędzi ---------- */
+const tokens = (s, n) => { const a = (s || '').split('|').map(x => x.replace(/slight_|sharp_/g, '')); while (a.length < n) a.push(''); return a.slice(0, n); };
+function laneModel(e) {
+  const t = e.t, info = e.info, ow = ['yes', '1', 'true', '-1'].includes(t.oneway) || /^(motorway|trunk)$/.test(e.hw) && t.oneway !== 'no' && false;
+  let total = parseInt(t.lanes, 10), lanes = [], w = info.w;
+  const tw = parseFloat(String(t.width || '').replace(',', '.'));
+  if (ow) {
+    const n = total > 0 ? total : info.def; const tk = tokens(t['turn:lanes'], n); for (let i = 0; i < n; i++) lanes.push({ dir: 1, tok: tk[i] });
+    if (tw > 0) w = Math.max(2.2, Math.min(5, tw / n));
+    const thr = lanes.map((l, i) => /through|^$|none/.test(l.tok) ? i : -1).filter(i => i >= 0);
+    const turnish = lanes.some(l => l.tok && !/^(through|none)$/.test(l.tok)); e.anchor = turnish && thr.length && thr.length < n ? (thr[0] + thr[thr.length - 1] + 1) / 2 : n / 2; /* oś: środek pasów „na wprost” */
+  } else {
+    let nf = parseInt(t['lanes:forward'], 10), nb = parseInt(t['lanes:backward'], 10);
+    if (!(total > 0)) total = (nf >= 0 ? nf : 0) + (nb >= 0 ? nb : 0) || (info.marks ? 2 : (info.rank >= 4 ? 2 : 1));
+    if (!(nf >= 0) && !(nb >= 0)) { nf = Math.ceil(total / 2); nb = total - nf; } else if (!(nf >= 0)) nf = total - nb; else if (!(nb >= 0)) nb = total - nf;
+    if (total === 1 && nf + nb !== 1) { nf = 1; nb = 0; }
+    const tf = tokens(t['turn:lanes:forward'], nf), tb = tokens(t['turn:lanes:backward'], nb);
+    for (let j = nb - 1; j >= 0; j--) lanes.push({ dir: -1, tok: tb[j] }); for (let j = 0; j < nf; j++) lanes.push({ dir: 1, tok: tf[j] });
+    if (tw > 0 && lanes.length) w = Math.max(2.2, Math.min(5, tw / lanes.length));
+    e.anchor = nf && nb ? nb : lanes.length / 2; /* oś w linii środkowej między kierunkami */
+  }
+  e.lanes = lanes; e.lw = w; e.oneway = ow;
+  const n = lanes.length; e.oL = -e.anchor * w; e.oR = (n - e.anchor) * w;
+}
+
+/* ---------- 3) trasy: pary przelotowe w węźle + dopasowanie położenia ---------- */
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], nrm = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; };
+function smoothLine(pts, it) { let P = pts; for (let r = 0; r < it; r++) { if (P.length < 3) break; const Q = [P[0]]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; Q.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); } Q.push(P[P.length - 1]); P = Q; } return P; }
+function prepEdge(e) {
+  e.pts = smoothLine(e.raw, CFG.chaikin); const c = [0]; for (let i = 1; i < e.pts.length; i++) c.push(c[i - 1] + Math.hypot(e.pts[i][0] - e.pts[i - 1][0], e.pts[i][1] - e.pts[i - 1][1])); e.cum = c; e.len = c[c.length - 1];
+  laneModel(e); e.offA = [e.oL, e.oR]; e.offB = [e.oL, e.oR];
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of e.pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); } const m = Math.max(Math.abs(e.oL), Math.abs(e.oR)) + 3; e.bb = [x0 - m, y0 - m, x1 + m, y1 + m];
+}
+function outward(e, end) { const P = e.pts, n = P.length; if (end === 'a') { const q = atS(e, Math.min(6, e.len * 0.6)); return nrm(sub(q, P[0])); } const q = atS(e, Math.max(e.len - 6, e.len * 0.4)); return nrm(sub(q, P[n - 1])); }
+function atS(e, s) { const c = e.cum, P = e.pts; if (s <= 0) return P[0]; if (s >= e.len) return P[P.length - 1]; let i = 1; while (i < c.length - 1 && c[i] < s) i++; const f = (s - c[i - 1]) / ((c[i] - c[i - 1]) || 1); return [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f]; }
+function tanAt(e, s) { const a = atS(e, Math.max(0, s - 0.5)), b = atS(e, Math.min(e.len, s + 0.5)); return nrm(sub(b, a)); }
+function matchNodes(G) {
+  for (const n of G.nodes.values()) n.arms = [];
+  for (const e of G.edges) { e.na.arms.push({ e, end: 'a' }); e.nb.arms.push({ e, end: 'b' }); }
+  for (const n of G.nodes.values()) {
+    const arms = n.arms; if (arms.length < 2) continue;
+    for (const a of arms) { a.d = outward(a.e, a.end); a.ang = Math.atan2(a.d[1], a.d[0]); a.off = a.end === 'a' ? a.e.offA : a.e.offB; }
+    const cand = []; for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) { const A = arms[i], B = arms[j], dev = Math.PI - Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); if (dev > CFG.through.maxDev) continue;
+      const same = (A.e.t.name && A.e.t.name === B.e.t.name) || (A.e.t.ref && A.e.t.ref === B.e.t.ref); cand.push({ A, B, sc: (same ? CFG.through.nameBonus : 0) + (Math.floor(A.e.info.rank) === Math.floor(B.e.info.rank) ? CFG.through.classBonus : 0) + (A.e.lanes.length === B.e.lanes.length ? CFG.through.lanesBonus : 0) - dev * 2 }); }
+    cand.sort((p, q) => q.sc - p.sc); const used = new Set(); n.pairs = [];
+    for (const c of cand) { if (used.has(c.A) || used.has(c.B)) continue; used.add(c.A); used.add(c.B); n.pairs.push(c);
+      /* ramię w układzie trasy: początek krawędzi = kierunek przeciwny do trasy => odbicie lewo/prawo */
+      const fr = (arm, route) => (arm.end === 'a') === route ? [-arm.off[1], -arm.off[0]] : [arm.off[0], arm.off[1]]; /* route=true dla ramienia A (trasa wchodzi) */
+      const a = fr(c.A, true), b = fr(c.B, false), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const back = (arm, route) => (arm.end === 'a') === route ? [-m[1], -m[0]] : [m[0], m[1]]; const va = back(c.A, true), vb = back(c.B, false);
+      if (c.A.end === 'a') c.A.e.offA = va; else c.A.e.offB = va; if (c.B.end === 'a') c.B.e.offA = vb; else c.B.e.offB = vb; c.A.off = va; c.B.off = vb; }
+    n.cut = Math.max(CFG.junction.cutMin, Math.min(CFG.junction.cutMax, Math.max(...arms.map(a => Math.max(Math.abs(a.off[0]), Math.abs(a.off[1])))) * 0.9));
+  }
+}
+
+/* ---------- 4) geometria krawędzi i węzłów (Path2D w metrach) ---------- */
+function inStrip(e, p, pad) { /* czy punkt leży wewnątrz asfaltu krawędzi e (na jej szerokości); pad > 0 zwęża pas */
+  if (p[0] < e.bb[0] || p[0] > e.bb[2] || p[1] < e.bb[1] || p[1] > e.bb[3]) return false; const P = e.pts; let bd = 1e9, bs = 0, bn = 0;
+  for (let i = 1; i < P.length; i++) { const A = P[i - 1], B = P[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - A[0]) * dx + (p[1] - A[1]) * dy) / L2)), qx = A[0] + dx * t, qy = A[1] + dy * t, d = Math.hypot(p[0] - qx, p[1] - qy); if (d < bd) { bd = d; bs = e.cum[i - 1] + (e.cum[i] - e.cum[i - 1]) * t; const L = Math.sqrt(L2); bn = ((p[0] - qx) * -dy + (p[1] - qy) * dx) / L; } }
+  const l = lat(e, bs); return bn > l[0] + pad && bn < l[1] - pad && bs > 0.3 && bs < e.len - 0.3; }
+function neighbors(e) { /* krawędzie, które mogą zakrywać krawędzie e (nie para przelotowa, ta sama warstwa) */
+  const out = []; for (const o of G.edges) { if (o === e || o.ly !== e.ly) continue; if (o.bb[2] < e.bb[0] || o.bb[0] > e.bb[2] || o.bb[3] < e.bb[1] || o.bb[1] > e.bb[3]) continue;
+    let partner = false; for (const n of [e.na, e.nb]) for (const c of n.pairs || []) if ((c.A.e === e && c.B.e === o) || (c.B.e === e && c.A.e === o)) partner = true; if (!partner) out.push(o); } return out; }
+const sm = t => t * t * (3 - 2 * t);
+function lat(e, s) { /* położenie lewej i prawej krawędzi na długości s (zwężenie przy końcach do wartości z węzła) */
+  const T = Math.min(CFG.taper.max, e.len * CFG.taper.frac), wa = 1 - sm(Math.max(0, Math.min(1, s / T))), wb = 1 - sm(Math.max(0, Math.min(1, (e.len - s) / T)));
+  return [e.oL + (e.offA[0] - e.oL) * wa + (e.offB[0] - e.oL) * wb, e.oR + (e.offA[1] - e.oR) * wa + (e.offB[1] - e.oR) * wb];
+}
+function buildEdgeGeo(e) {
+  const P = e.pts, n = P.length, L = [], R = [], N = [], S = e.cum, cutA = e.na.arms.length >= 3 ? (e.na.cut || 0) : 0, cutB = e.nb.arms.length >= 3 ? (e.nb.cut || 0) : 0;
+  const T = []; for (let i = 0; i < n; i++) { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], d = nrm(sub(b, a)); T.push(d); N.push([-d[1], d[0]]); }
+  /* dogęszczenie na długich odcinkach, żeby zwężenia były gładkie */
+  const dense = []; for (let i = 0; i < n; i++) { dense.push({ p: P[i], nn: N[i], s: S[i] }); if (i + 1 < n) { const seg = S[i + 1] - S[i], m = Math.floor(seg / 4); for (let q = 1; q <= m; q++) { const f = q / (m + 1); dense.push({ p: [P[i][0] + (P[i + 1][0] - P[i][0]) * f, P[i][1] + (P[i + 1][1] - P[i][1]) * f], nn: nrm([N[i][0] * (1 - f) + N[i + 1][0] * f, N[i][1] * (1 - f) + N[i + 1][1] * f]), s: S[i] + seg * f }); } } }
+  for (const q of dense) { const l = lat(e, q.s); q.l = [q.p[0] + q.nn[0] * l[0], q.p[1] + q.nn[1] * l[0]]; q.r = [q.p[0] + q.nn[0] * l[1], q.p[1] + q.nn[1] * l[1]]; q.lo = l; }
+  const asphalt = new Path2D(); asphalt.moveTo(dense[0].l[0], dense[0].l[1]); for (const q of dense) asphalt.lineTo(q.l[0], q.l[1]); for (let i = dense.length - 1; i >= 0; i--) asphalt.lineTo(dense[i].r[0], dense[i].r[1]); asphalt.closePath();
+  const info = e.info, nL = e.lanes.length, edge = new Path2D(), dash = new Path2D(), solid = new Path2D(), dbl = new Path2D(), bridge = new Path2D();
+  const nb2 = e.info.edge ? neighbors(e) : [], covered = pt => nb2.some(o => inStrip(o, pt, 0.15)), inside = q => q.s >= cutA && q.s <= e.len - cutB, line = (path, f, chk) => { let on = false; for (const q of dense) { const ok = inside(q); if (!ok) { on = false; continue; } const pt = f(q); if (chk && covered(pt)) { on = false; continue; } if (!on) { path.moveTo(pt[0], pt[1]); on = true; } else path.lineTo(pt[0], pt[1]); } };
+  if (info.edge) { line(edge, q => q.l, true); line(edge, q => q.r, true); }
+  if (info.marks && nL >= 2) for (let i = 1; i < nL; i++) { const opp = e.lanes[i - 1].dir !== e.lanes[i].dir, f = q => [q.p[0] + q.nn[0] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL), q.p[1] + q.nn[1] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL)];
+    if (opp) { if (nL >= 4 && info.rank >= 7) { line(dbl, q => { const c = f(q); return [c[0] + q.nn[0] * 0.12, c[1] + q.nn[1] * 0.12]; }); line(dbl, q => { const c = f(q); return [c[0] - q.nn[0] * 0.12, c[1] - q.nn[1] * 0.12]; }); } else line(solid, f); } else line(dash, f); }
+  if (e.ly > 0) { line(bridge, q => [q.l[0] - q.nn[0] * 0.25, q.l[1] - q.nn[1] * 0.25]); line(bridge, q => [q.r[0] + q.nn[0] * 0.25, q.r[1] + q.nn[1] * 0.25]); }
+  e.geo = { asphalt, edge, dash, solid, dbl, bridge, dense };
+  /* strzałki z turn:lanes: 10 m przed końcem (dla pasów w kierunku +) lub za początkiem (dla pasów -) */
+  e.arrows = []; if (e.len >= 30) for (let i = 0; i < nL; i++) { const tok = e.lanes[i].tok; if (!tok || tok === 'none') continue; const fwd = e.lanes[i].dir > 0, s = fwd ? e.len - Math.max(9, cutB + 5) : Math.max(9, cutA + 5); if (s < 4 || s > e.len - 4) continue; const q = lat(e, s), c = (q[0] + (q[1] - q[0]) * (i + 0.5) / nL), p = atS(e, s), d = tanAt(e, s), nn = [-d[1], d[0]]; e.arrows.push({ x: p[0] + nn[0] * c, y: p[1] + nn[1] * c, a: Math.atan2(d[1], d[0]) + (fwd ? 0 : Math.PI), tok }); }
+}
+function buildNodeGeo(n) {
+  const arms = n.arms; if (arms.length < 2) { n.geo = null; return; }
+  const c = n.cut, pts = [];
+  for (const a of arms) { const e = a.e, s = a.end === 'a' ? c : e.len - c; const p = atS(e, Math.max(0, Math.min(e.len, s))), d = tanAt(e, Math.max(0, Math.min(e.len, s))), nn = [-d[1], d[0]], l = lat(e, Math.max(0, Math.min(e.len, s)));
+    const Lp = [p[0] + nn[0] * l[0], p[1] + nn[1] * l[0]], Rp = [p[0] + nn[0] * l[1], p[1] + nn[1] * l[1]], o = a.d; /* lewa/prawa względem kierunku NA ZEWNĄTRZ węzła */
+    const cr = q => o[0] * (q[1] - n.y) - o[1] * (q[0] - n.x); a.pl = cr(Lp) > cr(Rp) ? [Lp, Rp] : [Rp, Lp]; /* [po lewej od ramienia, po prawej] */ }
+  const order = arms.slice().sort((p, q) => p.ang - q.ang), fill = new Path2D(), edge = new Path2D(); let first = true;
+  const add = (pp, mv) => { if (mv) fill.moveTo(pp[0], pp[1]); else fill.lineTo(pp[0], pp[1]); };
+  for (let i = 0; i < order.length; i++) { const A = order[i], B = order[(i + 1) % order.length]; /* narożnik: lewa krawędź ramienia A -> prawa krawędź ramienia B */
+    const p0 = A.pl[0], p1 = B.pl[1]; if (first) { add(A.pl[1], true); first = false; } add(A.pl[1], false); add(p0, false);
+    const ang = Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); let ctrl = null;
+    if (order.length > 1 && ang < CFG.junction.straightAbove) { const r = isect(p0, A.d, p1, B.d); /* prosta kierunkowa każdej krawędzi: przecięcie = punkt kontrolny łuku */ if (r && Math.hypot(r[0] - p0[0], r[1] - p0[1]) < c * CFG.junction.filletMaxFactor && Math.hypot(r[0] - p1[0], r[1] - p1[1]) < c * CFG.junction.filletMaxFactor) ctrl = r; }
+    const cp = [p0]; if (ctrl) { for (let q = 1; q <= 10; q++) { const t = q / 10, m = 1 - t; cp.push([m * m * p0[0] + 2 * m * t * ctrl[0] + t * t * p1[0], m * m * p0[1] + 2 * m * t * ctrl[1] + t * t * p1[1]]); } } else cp.push(p1);
+    for (let q = 1; q < cp.length; q++) fill.lineTo(cp[q][0], cp[q][1]);
+    let on = false; for (let q = 1; q < cp.length; q++) { const mid = [(cp[q - 1][0] + cp[q][0]) / 2, (cp[q - 1][1] + cp[q][1]) / 2], hid = arms.some(a => inStrip(a.e, mid, 0.2)); if (hid) { on = false; continue; } if (!on) { edge.moveTo(cp[q - 1][0], cp[q - 1][1]); on = true; } edge.lineTo(cp[q][0], cp[q][1]); } }
+  fill.closePath(); n.geo = { fill, edge, info: arms.reduce((m, a) => Math.max(m, a.e.info.edge ? 1 : 0), 0) };
+  n.ly = layerOfNode(arms);
+}
+function isect(p, d, q, e) { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-6) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; }
+function layerOfNode(arms) { const ls = arms.map(a => a.e.ly), mx = Math.max(...ls), mn = Math.min(...ls); return mx > mn && mx > 0 && ls.filter(v => v === mx).length >= 2 ? mx : mn; }
+
+
+/* =====================  SANDBOX: dane, rysowanie, edycja, raport  ===================== */
+const cv = document.getElementById('map'), ctx = cv.getContext('2d'), $ = id => document.getElementById(id);
+const V = { x: 0, y: 0, k: 6 }; let W = 0, H = 0, DPR = 1, dirty = true;
+const s2w = (sx, sy) => [(sx - W / 2) / V.k + V.x, (sy - H / 2) / V.k + V.y], w2s = p => [(p[0] - V.x) * V.k + W / 2, (p[1] - V.y) * V.k + H / 2];
+function resize() { DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); dirty = true; } addEventListener('resize', resize);
+let G = { nodes: new Map(), edges: [] }, ways = new Map(), nid = 1, wid = 1, hist = [], sel = null, tool = 'sel', drawPts = [], drawHw = 'secondary', pointer = [0, 0], report = [], lastMs = 0;
+const nk = () => 'n' + (nid++);
+const TYPES = [['motorway', 'Autostrada', { oneway: 'yes', lanes: '3' }], ['trunk', 'Droga ekspresowa', { oneway: 'yes', lanes: '2' }], ['primary', 'Droga krajowa (primary)', { lanes: '2' }], ['secondary', 'Wojewódzka (secondary)', { lanes: '2' }], ['tertiary', 'Powiatowa (tertiary)', { lanes: '2' }], ['unclassified', 'Gminna (unclassified)', { lanes: '2' }], ['residential', 'Osiedlowa (residential)', { lanes: '2' }], ['living_street', 'Strefa zamieszkania', { lanes: '2' }], ['service', 'Dojazd (service)', { lanes: '1' }], ['motorway_link', 'Łącznica autostrady', { oneway: 'yes', lanes: '1' }], ['primary_link', 'Łącznica (primary_link)', { oneway: 'yes', lanes: '1' }], ['secondary_link', 'Łącznica (secondary_link)', { oneway: 'yes', lanes: '1' }]];
+const COL = { motorway: '#c6504a', trunk: '#d4793a', primary: '#d9a62f', secondary: '#6bb36b', tertiary: '#5d9bd5', unclassified: '#8c98a8', residential: '#a8b0bb', living_street: '#b9a3d0', service: '#c8ccd2' };
+const colOf = hw => COL[hw.replace('_link', '')] || '#888';
+/* ---------- historia ---------- */
+const snap = () => JSON.stringify({ ways: [...ways.values()], nid, wid });
+function push() { hist.push(snap()); if (hist.length > 80) hist.shift(); }
+function undo() { const s = hist.pop(); if (!s) return; const o = JSON.parse(s); ways = new Map(o.ways.map(w => [w.id, w])); nid = o.nid; wid = o.wid; sel = null; changed(false); }
+/* ---------- przebudowa układu i raport ---------- */
+function changed(rec = true) { rebuild(); analyze(); renderEdit(); renderReport(); dirty = true; }
+function rebuild() {
+  const t0 = performance.now(); G = buildGraph([...ways.values()]); for (const e of G.edges) prepEdge(e); matchNodes(G);
+  for (const n of G.nodes.values()) if (n.arms.length >= 2) buildNodeGeo(n); for (const e of G.edges) buildEdgeGeo(e); for (const e of G.edges) outlineGeo(e);
+  G.layers = [...new Set(G.edges.map(e => e.ly))].sort((p, q) => p - q); lastMs = performance.now() - t0; $('hint').textContent = tool === 'draw' ? 'Rysowanie: ' + hwName(drawHw) : 'Układ: ' + Math.round(lastMs) + ' ms · dróg ' + G.edges.length;
+}
+const hwName = h => (TYPES.find(t => t[0] === h) || [0, h])[1];
+function outlineGeo(e) { /* obrysy pasów: każda granica pasa od lewej do prawej krawędzi, w kolorze kierunku */
+  const out = []; const nL = e.lanes.length, dense = e.geo.dense; for (let i = 0; i <= nL; i++) { const p = new Path2D(); dense.forEach((q, j) => { const l = q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL, x = q.p[0] + q.nn[0] * l, y = q.p[1] + q.nn[1] * l; j ? p.lineTo(x, y) : p.moveTo(x, y); }); out.push(p); } e.geo.outline = out; }
+/* ---------- raport: czy połączenie jest dobre ---------- */
+function dirOf(arm) { return arm.end === 'a' ? 'out' : 'in'; } /* względem węzła: początek krawędzi = wyjazd z węzła (kierunek jazdy w + ) */
+function analyze() {
+  report = []; const add = (n, lvl, msg, detail) => report.push({ x: n.x, y: n.y, lvl, msg, detail: detail || '', n });
+  for (const n of G.nodes.values()) {
+    const arms = n.arms; if (arms.length === 1) continue; if (arms.length < 1) continue; const items = [];
+    for (const c of n.pairs || []) { const A = c.A.e, B = c.B.e, nA = A.lanes.length, nB = B.lanes.length, wA = A.oR - A.oL, wB = B.oR - B.oL;
+      const frA = c.A.end === 'a' ? [-c.A.off[1], -c.A.off[0]] : c.A.off; /* po dopasowaniu */
+      const rawA = c.A.end === 'a' ? [-A.oR, -A.oL] : [A.oL, A.oR], rawB = c.B.end === 'a' ? [B.oL, B.oR] : [-B.oR, -B.oL];
+      const jump = Math.max(Math.abs(rawA[0] - rawB[0]), Math.abs(rawA[1] - rawB[1]));
+      if (nA === nB && Math.abs(A.lw - B.lw) < 0.05 && jump < 0.15) items.push(['ok', 'Przelot: ' + nA + ' pasy → ' + nB + ' pasy, bez uskoku']);
+      else if (nA === nB) items.push([jump > 1.5 ? 'er' : 'wr', 'Przelot: ten sam układ pasów (' + nA + '), ale uskok osi ' + jump.toFixed(1) + ' m (różne turn:lanes / szerokość)']);
+      else if (Math.abs(nA - nB) === 1) items.push([Math.min(A.len, B.len) < 22 ? 'wr' : 'ok', 'Przelot: zmiana ' + nA + ' → ' + nB + ' pasów (zwężenie/poszerzenie o 1)' + (Math.min(A.len, B.len) < 22 ? ' – za krótki odcinek na płynne przejście' : '')]);
+      else items.push(['wr', 'Przelot: skok liczby pasów ' + nA + ' → ' + nB]);
+      /* turn:lanes: czy pasy „na wprost” się zgadzają */
+      const thr = e => e.lanes.filter(l => /through|^$|none/.test(l.tok) && l.dir > 0).length; if (arms.length === 2 && A.oneway && B.oneway && thr(A) > 0 && thr(B) > 0 && thr(A) > nB) items.push(['wr', 'Wjeżdża ' + thr(A) + ' pasy „na wprost”, a za węzłem jest ' + nB + ' pasów']); }
+    const unp = arms.filter(a => !(n.pairs || []).some(c => c.A === a || c.B === a));
+    if (arms.length === 2 && !(n.pairs || []).length) { const A = arms[0], B = arms[1], ang = Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))) * 180 / Math.PI; items.push([ang < 50 ? 'er' : 'wr', 'Ostry zakręt ' + ang.toFixed(0) + '° (ramiona nie są przelotowe)']); }
+    if (unp.length && arms.length >= 3) { /* rozgałęzienie: bilans pasów dla jednokierunkowych */
+      const oneAll = arms.every(a => a.e.oneway); if (oneAll) { const inL = arms.filter(a => dirOf(a) === 'in').reduce((s, a) => s + a.e.lanes.length, 0), outL = arms.filter(a => dirOf(a) === 'out').reduce((s, a) => s + a.e.lanes.length, 0);
+        if (inL === outL) items.push(['ok', 'Bilans pasów: wjazd ' + inL + ' = wyjazd ' + outL]); else if (Math.abs(inL - outL) === 1) items.push(['wr', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' (różnica 1 – wspólny/dodatkowy pas)']); else items.push(['er', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' – niespójne']); }
+      for (const u of unp) { const best = Math.min(...arms.filter(a => a !== u).map(a => Math.acos(Math.max(-1, Math.min(1, u.d[0] * a.d[0] + u.d[1] * a.d[1]))) * 180 / Math.PI)); if (best < 25) items.push(['wr', 'Ostry kąt ' + best.toFixed(0) + '° między ramionami (łącznica pod małym kątem)']); }
+      /* skręty z turn:lanes bez drogi w tę stronę */
+      for (const a of arms) { if (dirOf(a) !== 'in' || !a.e.oneway) continue; const left = a.e.lanes.some(l => /left/.test(l.tok)), right = a.e.lanes.some(l => /right/.test(l.tok)); const others = arms.filter(o => o !== a); const cross = o => a.d[0] * o.d[1] - a.d[1] * o.d[0]; const hasL = others.some(o => dirOf(o) === 'out' && cross(o) < -0.25), hasR = others.some(o => dirOf(o) === 'out' && cross(o) > 0.25);
+        if (left && !hasL) items.push(['wr', 'Pas „w lewo” bez drogi w lewo (turn:lanes)']); if (right && !hasR) items.push(['wr', 'Pas „w prawo” bez drogi w prawo (turn:lanes)']); } }
+    if (!items.length) { if (arms.length >= 2) items.push(['ok', arms.length + ' ramiona, brak uwag']); }
+    const worst = items.some(i => i[0] === 'er') ? 'er' : items.some(i => i[0] === 'wr') ? 'wr' : 'ok'; add(n, worst, (arms.length > 2 ? 'Skrzyżowanie (' + arms.length + ')' : 'Połączenie') + ' · ' + arms.map(a => a.e.lanes.length).join('/') + ' pasów', items.map(i => (i[0] === 'ok' ? '✓ ' : i[0] === 'wr' ? '⚠ ' : '✗ ') + i[1]).join('\n')); n.rep = worst; }
+}
+function renderReport() {
+  const c = { ok: 0, wr: 0, er: 0 }; for (const r of report) c[r.lvl]++;
+  $('cnt').innerHTML = `<b class="ok">${c.ok} dobre</b><b class="wr">${c.wr} uwagi</b><b class="er">${c.er} błędy</b>`;
+  const order = { er: 0, wr: 1, ok: 2 }; $('rep').innerHTML = report.slice().sort((a, b) => order[a.lvl] - order[b.lvl]).map((r, i) => `<div class="rep ${r.lvl}" data-i="${report.indexOf(r)}">${esc(r.msg)}<small>${esc(r.detail).replace(/\n/g, '<br>')}</small></div>`).join('') || '<div class="mu">Brak połączeń – narysuj dwie drogi stykające się w węźle.</div>';
+  for (const el of document.querySelectorAll('.rep')) el.onclick = () => { const r = report[+el.dataset.i]; V.x = r.x; V.y = r.y; V.k = Math.max(V.k, 10); dirty = true; };
+}
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+/* ---------- edycja zaznaczonej drogi ---------- */
+const TOKS = ['', 'through', 'left', 'right', 'through;left', 'through;right', 'left;right', 'slight_left', 'slight_right', 'merge_to_left', 'merge_to_right'];
+function renderEdit() {
+  const el = $('edit'); const w = sel && ways.get(sel); if (!w) { el.innerHTML = 'Zaznacz drogę (narzędzie „Zaznacz”), aby zmienić typ, liczbę pasów, szerokość i turn:lanes.'; el.className = 'mu'; return; } el.className = ''; const t = w.t, e = G.edges.find(x => x.way === sel); const ow = ['yes', '1', 'true', '-1'].includes(t.oneway), n = e ? e.lanes.length : 1;
+  let h = `<div class="row"><b>way ${w.id}</b><button id="eDel">Usuń drogę</button></div><div class="row"><select id="eHw">${TYPES.map(x => `<option value="${x[0]}"${x[0] === t.highway ? ' selected' : ''}>${x[1]}</option>`).join('')}</select></div>
+  <label class="chk"><input type="checkbox" id="eOw"${ow ? ' checked' : ''}> jednokierunkowa</label>`;
+  if (ow) h += `<div class="row">pasy <input id="eN" type="number" min="1" max="8" value="${n}" style="width:52px"></div>`; else h += `<div class="row">w przód <input id="eF" type="number" min="0" max="6" value="${e ? e.lanes.filter(l => l.dir > 0).length : 1}" style="width:48px"> w tył <input id="eB" type="number" min="0" max="6" value="${e ? e.lanes.filter(l => l.dir < 0).length : 1}" style="width:48px"></div>`;
+  h += `<div class="row">szerokość pasa <input id="eW" type="number" step="0.05" min="2" max="5" value="${e ? e.lw.toFixed(2) : ''}" style="width:64px"> m <button id="eWr">auto</button></div>`;
+  h += `<h4>turn:lanes (od lewej)</h4>`; if (e) e.lanes.forEach((l, i) => { h += `<div class="lane"><span>${l.dir > 0 ? '→ pas ' : '← pas '}${i + 1}</span><select data-i="${i}" class="eT">${TOKS.map(k => `<option value="${k}"${(l.tok || '') === k ? ' selected' : ''}>${k || '(brak)'}</option>`).join('')}</select></div>`; });
+  el.innerHTML = h;
+  $('eDel').onclick = () => { push(); ways.delete(sel); sel = null; changed(); };
+  $('eHw').onchange = () => { push(); w.t.highway = $('eHw').value; const d = (TYPES.find(x => x[0] === w.t.highway) || [0, 0, {}])[2]; if (d.oneway) w.t.oneway = d.oneway; changed(); };
+  $('eOw').onchange = () => { push(); if ($('eOw').checked) { w.t.oneway = 'yes'; w.t.lanes = String(Math.max(1, Math.round(n))); delete w.t['lanes:forward']; delete w.t['lanes:backward']; delete w.t['turn:lanes:forward']; delete w.t['turn:lanes:backward']; } else { delete w.t.oneway; w.t.lanes = String(Math.max(2, n)); w.t['lanes:forward'] = String(Math.ceil(Math.max(2, n) / 2)); w.t['lanes:backward'] = String(Math.floor(Math.max(2, n) / 2)); delete w.t['turn:lanes']; } changed(); };
+  const setTurn = (key, arr) => { const v = arr.some(x => x) ? arr.join('|') : null; if (v) w.t[key] = v; else delete w.t[key]; };
+  const setLanes = () => { push(); if (ow) { const k = Math.max(1, Math.min(8, +$('eN').value || 1)); w.t.lanes = String(k); const old = (w.t['turn:lanes'] || '').split('|'); setTurn('turn:lanes', Array.from({ length: k }, (_, i) => old[i] || '')); } else { const f = Math.max(0, Math.min(6, +$('eF').value || 0)), b = Math.max(0, Math.min(6, +$('eB').value || 0)); if (f + b < 1) return; w.t.lanes = String(f + b); w.t['lanes:forward'] = String(f); w.t['lanes:backward'] = String(b); } changed(); };
+  if (ow) $('eN').onchange = setLanes; else { $('eF').onchange = setLanes; $('eB').onchange = setLanes; }
+  $('eW').onchange = () => { push(); const v = parseFloat($('eW').value); if (v > 0) w.t.width = String((v * (e ? e.lanes.length : 1)).toFixed(2)); changed(); }; $('eWr').onclick = () => { push(); delete w.t.width; changed(); };
+  for (const s of document.querySelectorAll('.eT')) s.onchange = () => { push(); const i = +s.dataset.i; if (ow) { const arr = tokens(w.t['turn:lanes'], n); arr[i] = s.value; setTurn('turn:lanes', arr); } else { const l = e.lanes[i], keyF = 'turn:lanes:forward', keyB = 'turn:lanes:backward'; const nf = e.lanes.filter(x => x.dir > 0).length, nb = e.lanes.filter(x => x.dir < 0).length; const af = tokens(w.t[keyF], nf), ab = tokens(w.t[keyB], nb); if (l.dir > 0) af[i - nb] = s.value; else ab[nb - 1 - i] = s.value; setTurn(keyF, af); setTurn(keyB, ab); } changed(); };
+}
+/* ---------- rysowanie dróg: przyciąganie i skrzyżowania ---------- */
+function snapPoint(sx, sy) { /* zwraca {p, key} : istniejący węzeł, punkt na drodze (nowe skrzyżowanie) albo nowy punkt */
+  const w = s2w(sx, sy), tolV = 12 / V.k, tolS = 9 / V.k; let best = null, bd = tolV;
+  for (const wy of ways.values()) for (let i = 0; i < wy.g.length; i++) { const d = Math.hypot(wy.g[i][0] - w[0], wy.g[i][1] - w[1]); if (d < bd) { bd = d; best = { p: wy.g[i].slice(), key: wy.k[i] }; } } if (best) return best;
+  let bs = tolS, hit = null; for (const wy of ways.values()) for (let i = 1; i < wy.g.length; i++) { const A = wy.g[i - 1], B = wy.g[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), q = [A[0] + dx * t, A[1] + dy * t], d = Math.hypot(w[0] - q[0], w[1] - q[1]); if (d < bs && t > 0.02 && t < 0.98) { bs = d; hit = { wy, i, q }; } }
+  if (hit) { const key = nk(); hit.wy.g.splice(hit.i, 0, hit.q); hit.wy.k.splice(hit.i, 0, key); return { p: hit.q, key, split: true }; }
+  return { p: w, key: nk() }; }
+function finishDraw() { if (drawPts.length < 2) { drawPts = []; dirty = true; return; } const def = (TYPES.find(x => x[0] === drawHw) || [0, 0, {}])[2], t = Object.assign({ highway: drawHw }, def); push(); /* punkty przycięte w snapPoint już zmodyfikowały inne drogi – historia po fakcie */
+  const id = wid++; ways.set(id, { id, t, g: drawPts.map(p => p.p), k: drawPts.map(p => p.key) }); drawPts = []; sel = id; changed(); }
+/* ---------- rysowanie sceny ---------- */
+function draw() {
+  dirty = false; const k = V.k; ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg'); ctx.fillRect(0, 0, W, H);
+  /* siatka 10 m */ ctx.setTransform(DPR * k, 0, 0, DPR * k, DPR * (W / 2 - V.x * k), DPR * (H / 2 - V.y * k)); const a = s2w(0, 0), b = s2w(W, H); ctx.strokeStyle = 'rgba(120,130,140,.18)'; ctx.lineWidth = 1 / k; const g = k > 3 ? 10 : 50; ctx.beginPath(); for (let x = Math.floor(a[0] / g) * g; x <= b[0]; x += g) { ctx.moveTo(x, a[1]); ctx.lineTo(x, b[1]); } for (let y = Math.floor(a[1] / g) * g; y <= b[1]; y += g) { ctx.moveTo(a[0], y); ctx.lineTo(b[0], y); } ctx.stroke();
+  ctx.lineJoin = 'round'; const px = 1 / k, pat = pattern(), showLn = $('cLn').checked, showAr = $('cArr').checked;
+  for (const ly of G.layers || []) { const es = G.edges.filter(e => e.ly === ly), ns = [...G.nodes.values()].filter(n => n.geo && n.ly === ly);
+    ctx.fillStyle = pat; for (const e of es) ctx.fill(e.geo.asphalt); for (const n of ns) ctx.fill(n.geo.fill); ctx.lineWidth = Math.max(CFG.line.edge, 1.3 * px); ctx.strokeStyle = CFG.colors.edge; for (const e of es) ctx.stroke(e.geo.edge); for (const n of ns) ctx.stroke(n.geo.edge);
+    if (showLn) { ctx.lineWidth = Math.max(CFG.line.lane, px); ctx.strokeStyle = CFG.colors.lane; ctx.setLineDash(CFG.line.dash); for (const e of es) ctx.stroke(e.geo.dash); ctx.setLineDash([]); for (const e of es) ctx.stroke(e.geo.solid); ctx.strokeStyle = CFG.colors.center; for (const e of es) ctx.stroke(e.geo.dbl); }
+    if (showAr) { ctx.fillStyle = '#dcdcd8'; for (const e of es) for (const ar of e.arrows) { ctx.save(); ctx.translate(ar.x, ar.y); ctx.rotate(ar.a); arrowPath(ctx, ar.tok); ctx.restore(); } } }
+  if ($('cOut').checked) { ctx.lineWidth = Math.max(0.05, 1.1 * px); for (const e of G.edges) { e.geo.outline.forEach((p, i) => { ctx.strokeStyle = i === 0 || i === e.lanes.length ? '#00b8d4' : (e.lanes[i - 1].dir !== e.lanes[i].dir ? '#ff6d00' : '#00e676'); ctx.stroke(p); }); } }
+  if (sel) { ctx.lineWidth = Math.max(0.3, 2.5 * px); ctx.strokeStyle = '#ffd23f'; for (const e of G.edges) if (e.way === sel) ctx.stroke(e.geo.asphalt); }
+  if ($('cDot').checked) for (const r of report) { ctx.beginPath(); ctx.arc(r.x, r.y, 7 * px, 0, 7); ctx.fillStyle = r.lvl === 'ok' ? '#2e9d4d' : r.lvl === 'wr' ? '#e08a00' : '#d32f2f'; ctx.globalAlpha = 0.9; ctx.fill(); ctx.globalAlpha = 1; ctx.lineWidth = 1.5 * px; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+  if (tool === 'draw' && drawPts.length) { ctx.lineWidth = Math.max(0.3, 2 * px); ctx.strokeStyle = colOf(drawHw); ctx.setLineDash([6 * px, 4 * px]); ctx.beginPath(); drawPts.forEach((p, i) => i ? ctx.lineTo(p.p[0], p.p[1]) : ctx.moveTo(p.p[0], p.p[1])); const pw = s2w(pointer[0], pointer[1]); ctx.lineTo(pw[0], pw[1]); ctx.stroke(); ctx.setLineDash([]); for (const p of drawPts) { ctx.beginPath(); ctx.arc(p.p[0], p.p[1], 4 * px, 0, 7); ctx.fillStyle = colOf(drawHw); ctx.fill(); } }
+}
+function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
+/* ---------- interakcja ---------- */
+const ptrs = new Map(); let moved = 0;
+function zoomAt(sx, sy, f) { const w = s2w(sx, sy), k = Math.max(0.3, Math.min(300, V.k * f)); V.x = w[0] - (sx - W / 2) / k; V.y = w[1] - (sy - H / 2) / k; V.k = k; dirty = true; }
+cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); moved = 0; });
+cv.addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; if (tool === 'draw' && drawPts.length) dirty = true; if (!ptrs.has(e.pointerId)) return; const p = ptrs.get(e.pointerId);
+  if (ptrs.size === 1) { const dx = e.clientX - p[0], dy = e.clientY - p[1]; moved += Math.abs(dx) + Math.abs(dy); if (moved > 6 || tool === 'sel' || tool === 'del') { V.x -= dx / V.k; V.y -= dy / V.k; dirty = true; } }
+  else if (ptrs.size === 2) { const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1], d0 = Math.hypot(p[0] - o[0], p[1] - o[1]), d1 = Math.hypot(e.clientX - o[0], e.clientY - o[1]); if (d0 > 0) zoomAt((e.clientX + o[0]) / 2, (e.clientY + o[1]) / 2, d1 / d0); moved += 10; }
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+cv.addEventListener('pointerup', e => { if (ptrs.size === 1 && moved < 6) click(e.clientX, e.clientY, e.detail); ptrs.delete(e.pointerId); }); cv.addEventListener('pointercancel', e => ptrs.delete(e.pointerId));
+cv.addEventListener('dblclick', e => { if (tool === 'draw') { drawPts.pop(); finishDraw(); } });
+function pickWay(sx, sy) { const w = s2w(sx, sy); let best = null, bd = 1e9; for (const e of G.edges) { if (w[0] < e.bb[0] || w[0] > e.bb[2] || w[1] < e.bb[1] || w[1] > e.bb[3]) continue; for (let i = 1; i < e.pts.length; i++) { const A = e.pts[i - 1], B = e.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), d = Math.hypot(w[0] - A[0] - dx * t, w[1] - A[1] - dy * t); if (d < bd) { bd = d; best = e; } } } return best && bd < Math.max(10 / V.k, (best.oR - best.oL) / 2 + 0.8) ? best.way : null; }
+function click(sx, sy, detail) { if (tool === 'draw') { if (detail >= 2) return; const sp = snapPoint(sx, sy); drawPts.push(sp); dirty = true; } else if (tool === 'del') { const id = pickWay(sx, sy); if (id) { push(); ways.delete(id); if (sel === id) sel = null; changed(); } } else { sel = pickWay(sx, sy); renderEdit(); dirty = true; } }
+function setTool(t) { tool = t; drawPts = []; for (const id of ['Sel', 'Draw', 'Del']) $('t' + id).classList.toggle('on', 't' + id === 't' + t[0].toUpperCase() + t.slice(1)); $('hint').textContent = t === 'draw' ? 'Rysowanie: ' + hwName(drawHw) + ' – klikaj punkty, dwuklik kończy' : t === 'del' ? 'Kliknij drogę, aby ją usunąć' : 'Zaznacz drogę, aby ją edytować'; dirty = true; }
+$('tSel').onclick = () => setTool('sel'); $('tDraw').onclick = () => setTool('draw'); $('tDel').onclick = () => setTool('del'); $('tUndo').onclick = undo;
+addEventListener('keydown', e => { if (e.key === 'Enter' && tool === 'draw') finishDraw(); else if (e.key === 'Escape') { drawPts = []; dirty = true; } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); } else if (e.key === 'Delete' && sel && document.activeElement.tagName !== 'INPUT') { push(); ways.delete(sel); sel = null; changed(); } });
+for (const id of ['cOut', 'cLn', 'cArr', 'cDot']) $(id).onchange = () => { dirty = true; };
+$('types').innerHTML = TYPES.map(t => `<button data-h="${t[0]}"><span class="sw" style="background:${colOf(t[0])}"></span>${t[1]}</button>`).join(''); for (const b of $('types').children) b.onclick = () => { drawHw = b.dataset.h; for (const x of $('types').children) x.classList.toggle('on', x === b); setTool('draw'); };
+$('clr').onclick = () => { push(); ways = new Map(); sel = null; changed(); }; $('exp').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(snap()); $('hint').textContent = 'Skopiowano JSON sceny'; };
+/* ---------- scenariusze (typowe i nietypowe węzły) ---------- */
+const SC = {
+  'T: droga główna + dojazd': () => [[ 'secondary', { lanes: '2' }, [[-60, 0], [0, 0], [60, 0]] ], [ 'residential', { lanes: '2' }, [[0, 0], [0, 50]] ]],
+  'Skrzyżowanie X (4 ramiona)': () => [[ 'secondary', { lanes: '2' }, [[-60, 0], [0, 0], [60, 0]] ], [ 'secondary', { lanes: '2' }, [[0, -60], [0, 0], [0, 60]] ]],
+  'Zmiana 3 → 2 pasy (jednokier.)': () => [[ 'primary', { oneway: 'yes', lanes: '3' }, [[-70, 0], [0, 0]] ], [ 'primary', { oneway: 'yes', lanes: '2' }, [[0, 0], [70, 0]] ]],
+  'Zmiana 2 → 4 pasy (2-kier.)': () => [[ 'primary', { lanes: '2' }, [[-70, 0], [0, 0]] ], [ 'primary', { lanes: '4' }, [[0, 0], [70, 0]] ]],
+  'Rozjazd 3 → 2 + 1 (łącznica)': () => [[ 'primary', { oneway: 'yes', lanes: '3' }, [[-80, 0], [0, 0]] ], [ 'primary', { oneway: 'yes', lanes: '2' }, [[0, 0], [80, 0]] ], [ 'primary_link', { oneway: 'yes', lanes: '1' }, [[0, 0], [30, 14], [80, 40]] ]],
+  'Rozjazd 5 → 5 + boczna (bez wyłączania)': () => [[ 'primary', { oneway: 'yes', lanes: '5', 'turn:lanes': 'left|left|through|through|through' }, [[-90, 0], [0, 0]] ], [ 'primary', { oneway: 'yes', lanes: '5', 'turn:lanes': 'left|left|through|through|through' }, [[0, 0], [90, 0]] ], [ 'tertiary', { oneway: 'yes', lanes: '1' }, [[0, 0], [40, -25], [90, -35]] ]],
+  'Włączenie 2 + 1 → 3': () => [[ 'primary', { oneway: 'yes', lanes: '2' }, [[-80, 0], [0, 0]] ], [ 'primary_link', { oneway: 'yes', lanes: '1' }, [[-80, 40], [-30, 14], [0, 0]] ], [ 'primary', { oneway: 'yes', lanes: '3' }, [[0, 0], [80, 0]] ]],
+  'Skrzyżowanie z pasami skrętu': () => [[ 'secondary', { oneway: 'yes', lanes: '3', 'turn:lanes': 'left|through|right' }, [[-70, 0], [0, 0]] ], [ 'secondary', { oneway: 'yes', lanes: '2' }, [[0, 0], [70, 0]] ], [ 'residential', { lanes: '2' }, [[0, 0], [0, 50]] ], [ 'residential', { lanes: '2' }, [[0, 0], [0, -50]] ]],
+  'Ostry kąt (Y)': () => [[ 'secondary', { lanes: '2' }, [[-70, 0], [0, 0]] ], [ 'secondary', { lanes: '2' }, [[0, 0], [60, 20]] ], [ 'secondary', { lanes: '2' }, [[0, 0], [60, -20]] ]],
+  'Dwie jezdnie + łącznice': () => [[ 'motorway', { oneway: 'yes', lanes: '3' }, [[-100, -6], [100, -6]] ], [ 'motorway', { oneway: 'yes', lanes: '3' }, [[100, 6], [-100, 6]] ], [ 'motorway_link', { oneway: 'yes', lanes: '1' }, [[-20, -6], [10, -30], [60, -60]] ]],
+};
+function loadScenario(name) { const f = SC[name]; if (!f) return; push(); ways = new Map(); const byPt = new Map(), keyAt = p => { const k = p[0].toFixed(2) + ',' + p[1].toFixed(2); if (!byPt.has(k)) byPt.set(k, nk()); return byPt.get(k); };
+  for (const [hw, tags, pts] of f()) { const id = wid++; ways.set(id, { id, t: Object.assign({ highway: hw }, tags), g: pts.map(p => p.slice()), k: pts.map(keyAt) }); } sel = null; V.x = 0; V.y = 0; V.k = 6; changed(); }
+$('scen').innerHTML = Object.keys(SC).map(k => `<option>${k}</option>`).join(''); $('scenGo').onclick = () => loadScenario($('scen').value);
+resize(); changed(); loadScenario(Object.keys(SC)[0]); setTool('sel'); requestAnimationFrame(frame);
+function pattern() { if (window.__pat) return window.__pat; const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = CFG.colors.asphalt; g.fillRect(0, 0, 128, 128); for (let i = 0; i < 1600; i++) { const v = 90 + Math.random() * 50 | 0; g.fillStyle = `rgba(${v},${v},${v + 4},.35)`; g.fillRect(Math.random() * 128, Math.random() * 128, 1.2, 1.2); } const p = ctx.createPattern(c, 'repeat'); p.setTransform(new DOMMatrix().scale(4 / 128)); return window.__pat = p; }
+function arrowPath(ctx2, tok) { const one = kind => { ctx2.beginPath(); if (kind === 'through') { ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.7, -0.09); ctx2.lineTo(0.7, -0.4); ctx2.lineTo(1.5, 0); ctx2.lineTo(0.7, 0.4); ctx2.lineTo(0.7, 0.09); ctx2.lineTo(-1.4, 0.09); } else { const sg = kind === 'left' ? -1 : 1; ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.2, -0.09); ctx2.lineTo(0.2, sg * 0.9); ctx2.lineTo(-0.15, sg * 0.9); ctx2.lineTo(0.35, sg * 1.5); ctx2.lineTo(0.85, sg * 0.9); ctx2.lineTo(0.5, sg * 0.9); ctx2.lineTo(0.5, 0.09); ctx2.lineTo(-1.4, 0.09); } ctx2.closePath(); ctx2.fill(); }; const parts = tok.split(';'); if (parts.includes('through')) one('through'); for (const p of parts) if (p === 'left' || p === 'right') one(p); }
+</script>
+</body>
+</html>

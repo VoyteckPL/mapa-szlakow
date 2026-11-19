@@ -18,7 +18,7 @@
   .sxfab { position:fixed; top:8px; z-index:40; width:40px; height:40px; font-size:18px; border-radius:10px; box-shadow:0 1px 6px rgba(0,0,0,.35); padding:0; display:grid; place-items:center; background:#fff; border:1px solid #d8dce3; cursor:pointer; }
   #sxbL { left:8px; } #sxbR { right:8px; }
   #sxHint { position:fixed; left:50%; bottom:10px; transform:translateX(-50%); background:rgba(20,24,32,.85); color:#fff; padding:4px 12px; border-radius:14px; font:12px system-ui; pointer-events:none; z-index:50; max-width:90vw; text-align:center; }
-  @media (max-width:900px) { .sx { width:min(300px, calc(100vw - 16px)); } }
+  @media (max-width:900px) { .sx { width:min(300px, 76vw); } #sxR { width:min(320px, 80vw); } }
 </style>
 <button id="sxbL" class="sxfab" title="Narzędzia">☰</button><button id="sxbR" class="sxfab" title="Edycja i raport">▤</button>
 <div id="sxL" class="sx">
@@ -45,7 +45,7 @@ const q = id => document.getElementById(id), esc = s => String(s).replace(/&/g, 
 const TYPES = [['motorway', 'Autostrada', { oneway: true, lanes: 3 }], ['trunk', 'Droga ekspresowa', { oneway: true, lanes: 2 }], ['primary', 'Droga krajowa (primary)', { lanes: 2 }], ['secondary', 'Wojewódzka (secondary)', { lanes: 2 }], ['tertiary', 'Powiatowa (tertiary)', { lanes: 2 }], ['unclassified', 'Gminna (unclassified)', { lanes: 2 }], ['residential', 'Osiedlowa (residential)', { lanes: 2 }], ['living_street', 'Strefa zamieszkania', { lanes: 2 }], ['service', 'Dojazd (service)', { lanes: 1 }], ['motorway_link', 'Łącznica autostrady', { oneway: true, lanes: 1 }], ['primary_link', 'Łącznica (primary_link)', { oneway: true, lanes: 1 }], ['secondary_link', 'Łącznica (secondary_link)', { oneway: true, lanes: 1 }]];
 const COL = { motorway: '#c6504a', trunk: '#d4793a', primary: '#d9a62f', secondary: '#6bb36b', tertiary: '#5d9bd5', unclassified: '#8c98a8', residential: '#a8b0bb', living_street: '#b9a3d0', service: '#c8ccd2' }, colOf = h => COL[h.replace('_link', '')] || '#888', hwName = h => (TYPES.find(t => t[0] === h) || [0, h])[1];
 let tool = 'sel', drawHw = 'secondary', drawPts = [], selR = null, selV = null, drag = null, joinA = null, hist = [], nid = 1, rid = 1, report = [], pointer = [0, 0], moved = 0;
-const roads = () => S.doc.road, nk = () => 'n' + (nid++), hint = t => { q('sxHint').textContent = t; };
+const S2W = (x, y) => s2w([x, y]); const roads = () => S.doc.road, nk = () => 'n' + (nid++), hint = t => { q('sxHint').textContent = t; };
 $('cTile').checked = false; $('cNodeLanes').checked = true; $('cAx').checked = false; S.tool = 'pan';
 /* ---------- historia ---------- */
 const snap = () => JSON.stringify({ r: roads(), nid, rid }); function push() { hist.push(snap()); if (hist.length > 80) hist.shift(); }
@@ -93,10 +93,10 @@ function renderEdit() { const el = q('sxEdit'), r = selR && roads().includes(sel
   for (const s of el.querySelectorAll('.sxeT')) s.onchange = () => mut(() => { const i = +s.dataset.i, nbk = n - nf; if (r.oneway) { const a = (r.tl || '').split('|'); while (a.length < n) a.push(''); a[i] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else if (L[i].dir > 0) { const a = (r.tl || '').split('|'); while (a.length < nf) a.push(''); a[i - nbk] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else { const a = (r.tlb || '').split('|'); while (a.length < nbk) a.push(''); a[nbk - 1 - i] = s.value; r.tlb = a.some(x => x) ? a.join('|') : ''; } r.tlM = true; }); }
 /* ---------- punkty, węzły, skrzyżowania ---------- */
 function vertexAt(sx, sy) { let best = null, bd = 13; for (const r of roads()) for (let i = 0; i < r.pts.length; i++) { const p = w2s(r.pts[i]), d = Math.hypot(p[0] - sx, p[1] - sy); if (d < bd) { bd = d; best = { r, i, key: r.nk[i] }; } } return best; }
-function midAt(sx, sy) { const r = selR; if (!r) return null; for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (Math.hypot(m[0] - sx, m[1] - sy) < 10 && Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) return { r, at: i, p: s2w(m[0], m[1]) }; } return null; }
+function midAt(sx, sy) { const r = selR; if (!r) return null; for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (Math.hypot(m[0] - sx, m[1] - sy) < 10 && Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) return { r, at: i, p: S2W(m[0], m[1]) }; } return null; }
 function moveKey(key, w) { for (const r of roads()) r.nk.forEach((k, j) => { if (k === key) { r.pts[j] = w.slice(); if (r.rp) r.rp = null; } }); }
 function rekey(from, to, pos) { for (const r of roads()) r.nk.forEach((k, j) => { if (k === from) { r.nk[j] = to; if (pos) r.pts[j] = pos.slice(); } }); for (const r of roads()) for (let j = r.nk.length - 1; j > 0; j--) if (r.nk[j] === r.nk[j - 1]) { r.nk.splice(j, 1); r.pts.splice(j, 1); } S.doc.road = roads().filter(r => r.pts.length >= 2); }
-function snapPoint(sx, sy) { const w = s2w(sx, sy), v = vertexAt(sx, sy); if (v) return { p: v.r.pts[v.i].slice(), key: v.key }; let bs = 9 / S.view.k, hit = null; for (const r of roads()) for (let i = 1; i < r.pts.length; i++) { const A = r.pts[i - 1], B = r.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], d = Math.hypot(w[0] - p[0], w[1] - p[1]); if (d < bs && t > 0.02 && t < 0.98) { bs = d; hit = { r, i, p }; } }
+function snapPoint(sx, sy) { const w = S2W(sx, sy), v = vertexAt(sx, sy); if (v) return { p: v.r.pts[v.i].slice(), key: v.key }; let bs = 9 / S.view.k, hit = null; for (const r of roads()) for (let i = 1; i < r.pts.length; i++) { const A = r.pts[i - 1], B = r.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], d = Math.hypot(w[0] - p[0], w[1] - p[1]); if (d < bs && t > 0.02 && t < 0.98) { bs = d; hit = { r, i, p }; } }
   if (hit) { const key = nk(); hit.r.pts.splice(hit.i, 0, hit.p); hit.r.nk.splice(hit.i, 0, key); return { p: hit.p, key }; } return { p: w, key: nk() }; }
 function finishDraw() { if (drawPts.length < 2) { drawPts = []; render(); return; } push(); const r = mkRoad(drawHw, drawPts.map(p => p.p), drawPts.map(p => p.key)); S.doc.road.push(r); drawPts = []; selR = r; changed(); }
 function delVertex() { if (!selV || !selR) return; const i = selR.nk.indexOf(selV); if (i < 0 || selR.pts.length <= 2) { hint('Droga musi mieć co najmniej 2 punkty'); return; } push(); selR.pts.splice(i, 1); selR.nk.splice(i, 1); selV = null; changed(); }
@@ -105,7 +105,7 @@ function splitVertex() { if (!selV) return; const us = []; for (const r of roads
 function overlay() { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); const dot = (p, rd, f, st, lw) => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], rd, 0, 7); ctx.fillStyle = f; ctx.fill(); ctx.lineWidth = lw || 1.5; ctx.strokeStyle = st || '#1d2330'; ctx.stroke(); };
   if (q('sxDot').checked) for (const r of report) dot([r.x, r.y], 7, r.lvl === 'ok' ? '#2e9d4d' : r.lvl === 'wr' ? '#e08a00' : '#d32f2f', '#fff', 1.5);
   if (selR) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd23f'; ctx.beginPath(); selR.pts.forEach((p, i) => { const s = w2s(p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.stroke(); }
-  if (tool === 'sel') for (const r of roads()) { const sw = r === selR; r.pts.forEach((p, i) => dot(p, sw ? 6 : 3.5, selV && selV === r.nk[i] ? '#ff5a36' : sw ? '#fff' : 'rgba(255,255,255,.8)')); if (sw) for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]); if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) dot(s2w((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), 4.5, 'rgba(30,136,229,.9)', '#fff', 1.2); } }
+  if (tool === 'sel') for (const r of roads()) { const sw = r === selR; r.pts.forEach((p, i) => dot(p, sw ? 6 : 3.5, selV && selV === r.nk[i] ? '#ff5a36' : sw ? '#fff' : 'rgba(255,255,255,.8)')); if (sw) for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]); if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) dot(S2W((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), 4.5, 'rgba(30,136,229,.9)', '#fff', 1.2); } }
   if (tool === 'join') for (const r of roads()) r.pts.forEach((p, i) => dot(p, joinA && joinA.key === r.nk[i] ? 8 : 5, joinA && joinA.key === r.nk[i] ? '#ffd23f' : 'rgba(255,255,255,.85)'));
   if (tool === 'draw' && drawPts.length) { ctx.lineWidth = 2; ctx.strokeStyle = colOf(drawHw); ctx.setLineDash([6, 4]); ctx.beginPath(); drawPts.forEach((p, i) => { const s = w2s(p.p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.lineTo(pointer[0], pointer[1]); ctx.stroke(); ctx.setLineDash([]); drawPts.forEach(p => dot(p.p, 4, colOf(drawHw))); }
   ctx.restore(); }
@@ -115,14 +115,14 @@ const stage = cv; let down = null;
 stage.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; moved = 0; if (tool !== 'sel' || e.pointerType === 'touch' && false) return;
   const m = midAt(e.clientX, e.clientY); if (m) { e.stopImmediatePropagation(); push(); const key = nk(); m.r.pts.splice(m.at, 0, m.p); m.r.nk.splice(m.at, 0, key); drag = { r: m.r, key, fresh: true }; selV = key; changed(false); return; }
   const h = vertexAt(e.clientX, e.clientY); if (h) { e.stopImmediatePropagation(); push(); selR = h.r; selV = h.key; drag = { r: h.r, key: h.key }; renderEdit(); render(); } }, true);
-addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; if (down) moved += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (drag) { moveKey(drag.key, s2w(e.clientX, e.clientY)); S.dirty = true; touch(); analyze(); } else if (tool === 'draw' && drawPts.length) render(); }, true);
-addEventListener('pointerup', e => { const was = down; down = null; if (drag) { const d = drag; drag = null; let joined = false; const w = s2w(e.clientX, e.clientY); let best = null, bd = 13 / S.view.k; for (const r of roads()) r.pts.forEach((p, i) => { if (r.nk[i] === d.key) return; const dd = Math.hypot(p[0] - w[0], p[1] - w[1]); if (dd < bd) { bd = dd; best = { key: r.nk[i], p }; } }); if (best) { rekey(d.key, best.key, best.p); selV = best.key; joined = true; } if (moved > 4 || d.fresh || joined) changed(); else { hist.pop(); renderEdit(); render(); } return; }
+addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; if (down) moved += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (drag) { moveKey(drag.key, S2W(e.clientX, e.clientY)); S.dirty = true; touch(); analyze(); } else if (tool === 'draw' && drawPts.length) render(); }, true);
+addEventListener('pointerup', e => { const was = down; down = null; if (drag) { const d = drag; drag = null; let joined = false; const w = S2W(e.clientX, e.clientY); let best = null, bd = 13 / S.view.k; for (const r of roads()) r.pts.forEach((p, i) => { if (r.nk[i] === d.key) return; const dd = Math.hypot(p[0] - w[0], p[1] - w[1]); if (dd < bd) { bd = dd; best = { key: r.nk[i], p }; } }); if (best) { rekey(d.key, best.key, best.p); selV = best.key; joined = true; } if (moved > 4 || d.fresh || joined) changed(); else { hist.pop(); renderEdit(); render(); } return; }
   if (!was || moved > 6 || e.target !== cv) return; tap(e.clientX, e.clientY); });
 cv.addEventListener('dblclick', e => { if (tool === 'draw') { drawPts.pop(); finishDraw(); } });
 function tap(sx, sy) {
   if (tool === 'draw') { drawPts.push(snapPoint(sx, sy)); render(); return; }
   if (tool === 'join') { const h = vertexAt(sx, sy); if (!h) { joinA = null; render(); return; } if (!joinA) { joinA = h; hint('Teraz kliknij drugi węzeł (zostanie dołączony do pierwszego)'); render(); return; } if (joinA.key === h.key) { joinA = null; render(); return; } push(); rekey(h.key, joinA.key, joinA.r.pts[joinA.r.nk.indexOf(joinA.key)]); joinA = null; changed(); hint('Połączono węzły'); return; }
-  const i = hitRoad(s2w(sx, sy)), r = i >= 0 ? roads()[i] : null;
+  const i = hitRoad(S2W(sx, sy)), r = i >= 0 ? roads()[i] : null;
   if (tool === 'del') { if (r) { push(); S.doc.road.splice(i, 1); if (selR === r) selR = null; changed(); } return; }
   selR = r; selV = null; renderEdit(); render(); if (r && innerWidth < 900) q('sxR').classList.remove('off'); }
 /* ---------- narzędzia i menu ---------- */
@@ -152,8 +152,6 @@ q('sxScen').innerHTML = Object.keys(SC).map(k => `<option>${k}</option>`).join('
 /* ---------- panele zwijane ---------- */
 const small = () => innerWidth < 900; if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); }
 q('sxbL').onclick = () => { q('sxL').classList.toggle('off'); if (small()) q('sxR').classList.add('off'); }; q('sxbR').onclick = () => { q('sxR').classList.toggle('off'); if (small()) q('sxL').classList.add('off'); };
-for (const id of ['sxSel', 'sxDraw', 'sxJoin', 'sxDel', 'sxGo']) q(id).addEventListener('click', () => { if (small()) q('sxL').classList.add('off'); }); for (const b of q('sxTypes').children) b.addEventListener('click', () => { if (small()) q('sxL').classList.add('off'); });
-cv.addEventListener('pointerdown', () => { if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); } });
 loadScenario(Object.keys(SC)[0]); setTool('sel');
 window.__sx = { get report() { return report; } };
 })();

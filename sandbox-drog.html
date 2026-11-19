@@ -2194,7 +2194,7 @@ function autoFork() { const by = new Map(); roads().forEach(r => { if (!r.nk || 
     const S2 = Ys.map(a => [a, side(a)]).sort((p, q) => p[1] - q[1]); /* lewa pierwsza */
     const bl = S2[0][0][0].lanes | 0, br = S2[1][0][0].lanes | 0; if (bl + br < ln || bl + br > ln + 1) continue;
     const want = new Map([[S2[0][0], L + bl / 2], [S2[1][0], L + ln - br / 2]]);
-    for (const [a, v] of want) { const [r, e] = a; if (r._man) continue; const oth = e ? 0 : 1, cv = +offAt(r, oth); r.off = ''; delete r.off; r[e ? 'offE' : 'offS'] = Math.round(v * 100) / 100; const fk = r.nk[e ? 0 : r.nk.length - 1], fr = fk && (by.get(fk) || []).length > 1; r[oth ? 'offE' : 'offS'] = fr ? cv : Math.round(v * 100) / 100; r._afo = 1; }
+    for (const [a, v] of want) { const [r, e] = a; if (r._man) continue; const oth = e ? 0 : 1, cv = +offAt(r, oth); r.off = ''; delete r.off; r[e ? 'offE' : 'offS'] = Math.round(v * 100) / 100; const fk = r.nk[e ? 0 : r.nk.length - 1], fr = fk && (by.get(fk) || []).length > 1; const big = Math.max(...Ys.map(y => y[0].lanes | 0)), tap = (r.lanes | 0) < big; r[oth ? 'offE' : 'offS'] = fr ? cv : (tap ? 0 : Math.round(v * 100) / 100); r._afo = 1; }
   } }
 function changed(rec = true) { try { autoFork(); } catch (e) { console.warn(e); } try { saveScene(); } catch (e) {} try { touch(); } catch (e) { console.warn(e); } analyze(); renderEdit(); renderReport(); try { popRender(); } catch (e) {} }
 /* ---------- raport: czy połączenie jest dobre ---------- */

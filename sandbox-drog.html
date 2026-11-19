@@ -26,11 +26,15 @@
   .cnt { display:flex; gap:6px; margin:3px 0 6px; } .cnt b { padding:1px 8px; border-radius:10px; color:#fff; font-size:12px; } .cnt .ok { background:var(--ok); } .cnt .wr { background:var(--wr); } .cnt .er { background:var(--er); }
   #hint { position:fixed; left:50%; bottom:10px; transform:translateX(-50%); background:rgba(20,24,32,.85); color:#fff; padding:4px 12px; border-radius:14px; font-size:12px; pointer-events:none; }
   .mu { color:var(--mu); font-size:11px; }
-  @media (max-width:900px) { #right { top:auto; height:34vh; left:8px; width:auto; } #left { bottom:36vh; width:200px; } }
+  .fab { position:fixed; top:8px; z-index:20; width:40px; height:40px; font-size:18px; border-radius:10px; box-shadow:0 1px 6px rgba(0,0,0,.35); padding:0; display:grid; place-items:center; }
+  #bL { left:8px; } #bR { right:8px; }
+  .panel { padding-top:52px; } .panel.off { display:none; }
+  @media (max-width:900px) { #left { width:min(300px, calc(100vw - 16px)); } #right { width:min(320px, calc(100vw - 16px)); } }
 </style>
 </head>
 <body>
 <canvas id="map"></canvas>
+<button id="bL" class="fab" title="Narzędzia">☰</button><button id="bR" class="fab" title="Edycja i raport">▤</button>
 <div id="left" class="panel">
   <h4>Narzędzie</h4>
   <div class="row"><button id="tSel" class="on">Zaznacz</button><button id="tDraw">Rysuj</button><button id="tJoin">Połącz węzły</button><button id="tDel">Usuń</button><button id="tUndo">Cofnij</button></div>
@@ -337,7 +341,7 @@ function click(sx, sy, detail) { if (tool === 'join') { const h = vertexAt(sx, s
     if (!joinA) { joinA = h; $('hint').textContent = 'Teraz kliknij drugi węzeł (zostanie dołączony do pierwszego)'; dirty = true; return; }
     if (joinA.key === h.key) { joinA = null; dirty = true; return; } push(); const keep = joinA.key, drop = h.key, pos = ways.get(joinA.way).g[ways.get(joinA.way).k.indexOf(keep)]; for (const wy of ways.values()) for (let j = 0; j < wy.k.length; j++) if (wy.k[j] === drop) { wy.k[j] = keep; wy.g[j] = pos.slice(); }
     /* usuń zdublowane kolejne punkty tej samej drogi */ for (const wy of ways.values()) for (let j = wy.k.length - 1; j > 0; j--) if (wy.k[j] === wy.k[j - 1]) { wy.k.splice(j, 1); wy.g.splice(j, 1); } for (const [id, wy] of [...ways]) if (wy.g.length < 2) ways.delete(id); joinA = null; changed(); $('hint').textContent = 'Połączono węzły'; return; }
-  if (tool === 'draw') { if (detail >= 2) return; const sp = snapPoint(sx, sy); drawPts.push(sp); dirty = true; } else if (tool === 'del') { const id = pickWay(sx, sy); if (id) { push(); ways.delete(id); if (sel === id) sel = null; changed(); } } else { sel = pickWay(sx, sy); selV = null; renderEdit(); dirty = true; } }
+  if (tool === 'draw') { if (detail >= 2) return; const sp = snapPoint(sx, sy); drawPts.push(sp); dirty = true; } else if (tool === 'del') { const id = pickWay(sx, sy); if (id) { push(); ways.delete(id); if (sel === id) sel = null; changed(); } } else { sel = pickWay(sx, sy); selV = null; renderEdit(); dirty = true; if (sel && innerWidth < 900) $('right').classList.remove('off'); } }
 function setTool(t) { tool = t; drawPts = []; joinA = null; $('drawBar').style.display = t === 'draw' ? 'flex' : 'none'; for (const id of ['Sel', 'Draw', 'Join', 'Del']) $('t' + id).classList.toggle('on', 't' + id === 't' + t[0].toUpperCase() + t.slice(1)); $('hint').textContent = t === 'draw' ? 'Rysowanie: ' + hwName(drawHw) + ' – klikaj punkty, dwuklik kończy' : t === 'join' ? 'Kliknij pierwszy węzeł, potem drugi – zostaną połączone' : t === 'del' ? 'Kliknij drogę, aby ją usunąć' : 'Zaznacz drogę, aby ją edytować'; dirty = true; }
 $('dFin').onclick = () => finishDraw(); $('dCan').onclick = () => { drawPts = []; dirty = true; };
 $('tSel').onclick = () => setTool('sel'); $('tDraw').onclick = () => setTool('draw'); $('tDel').onclick = () => setTool('del'); $('tJoin').onclick = () => setTool('join'); $('tUndo').onclick = undo;
@@ -361,6 +365,10 @@ const SC = {
 function loadScenario(name) { const f = SC[name]; if (!f) return; push(); ways = new Map(); const byPt = new Map(), keyAt = p => { const k = p[0].toFixed(2) + ',' + p[1].toFixed(2); if (!byPt.has(k)) byPt.set(k, nk()); return byPt.get(k); };
   for (const [hw, tags, pts] of f()) { const id = wid++; ways.set(id, { id, t: Object.assign({ highway: hw }, tags), g: pts.map(p => p.slice()), k: pts.map(keyAt) }); } sel = null; V.x = 0; V.y = 0; V.k = 6; changed(); }
 $('scen').innerHTML = Object.keys(SC).map(k => `<option>${k}</option>`).join(''); $('scenGo').onclick = () => loadScenario($('scen').value);
+const small = innerWidth < 900; if (small) { $('left').classList.add('off'); $('right').classList.add('off'); }
+$('bL').onclick = () => { $('left').classList.toggle('off'); if (innerWidth < 900) $('right').classList.add('off'); dirty = true; }; $('bR').onclick = () => { $('right').classList.toggle('off'); if (innerWidth < 900) $('left').classList.add('off'); dirty = true; };
+const closeSmall = () => { if (innerWidth < 900) { $('left').classList.add('off'); } }; for (const id of ['tSel', 'tDraw', 'tJoin', 'tDel', 'scenGo']) $(id).addEventListener('click', closeSmall); for (const b of $('types').children) b.addEventListener('click', closeSmall); /* na telefonie panel zamyka się po wyborze narzędzia, żeby było widać mapę */
+cv.addEventListener('pointerdown', () => { if (innerWidth < 900) { $('left').classList.add('off'); $('right').classList.add('off'); } });
 resize(); changed(); loadScenario(Object.keys(SC)[0]); setTool('sel'); requestAnimationFrame(frame);
 function pattern() { if (window.__pat) return window.__pat; const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = CFG.colors.asphalt; g.fillRect(0, 0, 128, 128); for (let i = 0; i < 1600; i++) { const v = 90 + Math.random() * 50 | 0; g.fillStyle = `rgba(${v},${v},${v + 4},.35)`; g.fillRect(Math.random() * 128, Math.random() * 128, 1.2, 1.2); } const p = ctx.createPattern(c, 'repeat'); p.setTransform(new DOMMatrix().scale(4 / 128)); return window.__pat = p; }
 function arrowPath(ctx2, tok) { const one = kind => { ctx2.beginPath(); if (kind === 'through') { ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.7, -0.09); ctx2.lineTo(0.7, -0.4); ctx2.lineTo(1.5, 0); ctx2.lineTo(0.7, 0.4); ctx2.lineTo(0.7, 0.09); ctx2.lineTo(-1.4, 0.09); } else { const sg = kind === 'left' ? -1 : 1; ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.2, -0.09); ctx2.lineTo(0.2, sg * 0.9); ctx2.lineTo(-0.15, sg * 0.9); ctx2.lineTo(0.35, sg * 1.5); ctx2.lineTo(0.85, sg * 0.9); ctx2.lineTo(0.5, sg * 0.9); ctx2.lineTo(0.5, 0.09); ctx2.lineTo(-1.4, 0.09); } ctx2.closePath(); ctx2.fill(); }; const parts = tok.split(';'); if (parts.includes('through')) one('through'); for (const p of parts) if (p === 'left' || p === 'right') one(p); }

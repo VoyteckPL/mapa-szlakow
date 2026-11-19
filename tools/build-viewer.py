@@ -12,7 +12,7 @@ rep("<title>Roads and Lanes</title>", "<title>Roads and Lanes – podgląd</titl
 rep("  resize(); ui();\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;",
     "  resize(); ui();\n  { const p = parseLink(location.hash) || { z: 17, lat: 54.5073, lon: 18.5345 }; S.org = { lat: p.lat, lon: p.lon }; S.view = { x: 0, y: 0, k: Math.pow(2, p.z) / (156543.03 * Math.cos(p.lat * Math.PI / 180)) }; render(); say('Przybliż mapę i kliknij „Pobierz drogi”.'); return; } /* podglad: bez automatycznego pobierania */\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;")
 viewer = r"""<style>
-#edPop, #edP, #tagPop, #sbP, #nrbar, #offBar, #hint, #smWrap, #panel, #lcP label:has(#cAx), #lcP label:has(#cAn), #lcP label:has(#cSn), #lcP label:has(#cNodeLanes), #lcP label:has(#cNodeBord), #lcP .vhide { display:none !important; }
+#edPop, #edP, #sbP, #nrbar, #offBar, #hint, #smWrap, #panel, #lcP label:has(#cAn), #lcP label:has(#cSn), #lcP label:has(#cNodeLanes), #lcP label:has(#cNodeBord), #lcP .vhide { display:none !important; }
 #lc #vLoad { display:block; width:100%; height:auto; margin:6px 0 2px; padding:6px 8px; font:600 12px system-ui; line-height:1.2; color:#fff; background:#1e88e5; border:0; border-radius:5px; cursor:pointer; } #lc #vClr { display:block; width:100%; height:auto; margin:4px 0 2px; padding:5px 8px; font:600 12px system-ui; line-height:1.2; color:#c62828; background:#fff; border:1px solid #e57373; border-radius:5px; cursor:pointer; } #lc #vLoad:disabled { opacity:.5; cursor:default; }
 #vSt { font:11px system-ui; color:#555; max-width:210px; white-space:normal; margin-top:3px; }
 </style>
@@ -33,10 +33,18 @@ viewer = r"""<style>
     try { await window.__loadFresh(); st.textContent = 'Wczytano ' + S.doc.road.length + ' odcinków dróg.'; } catch (e) { st.textContent = 'Błąd pobierania.'; }
     btn.disabled = false;
   };
+  var cv = document.getElementById('cv'), dn = null;
+  cv.addEventListener('pointerdown', function (e) { dn = [e.clientX, e.clientY]; });
+  cv.addEventListener('pointerup', function (e) { if (!dn) return; var mv = Math.hypot(e.clientX - dn[0], e.clientY - dn[1]); dn = null; if (mv > 5) return; var ns = hitRoad(s2w(evp(e))); S.sel = ns; S.vsel = -1; ui(); touch(); }); /* klik w droge: podswietlenie i tagi */
   setInterval(function () { try { var h = curHash(); if (h && h !== location.hash) history.replaceState(null, '', h); } catch (e) {} }, 1500); /* link do udostepnienia = biezacy widok */
 })();
 </script>
 """
+# nitki OSM w podgladzie: tylko linie (bez punktow i srodkow odcinkow), zaznaczona droga podswietlona
+rep("  if ($('cAx').checked) {\n    ctx.font = '10px system-ui'; ctx.textAlign = 'center';\n    D.road.forEach((r, i) => {\n      const c = HW_COL[(r.hw || '').replace('_link', '')] || '#6a7f94', isSel = i === S.sel;",
+    "  if ($('cAx').checked || S.sel >= 0) {\n    ctx.font = '10px system-ui'; ctx.textAlign = 'center';\n    D.road.forEach((r, i) => {\n      const isSel = S.sel >= 0 && (i === S.sel || (D.road[S.sel].osm && r.osm === D.road[S.sel].osm)); if (!$('cAx').checked && !isSel) return;\n      const c = HW_COL[(r.hw || '').replace('_link', '')] || '#6a7f94';")
+rep("      if (k > 6 || isSel) r.pts.forEach((p, vi) => {", "      if (false) r.pts.forEach((p, vi) => {")
+rep("      if (isSel && S.tool !== 'rend') for (let vi = 0; vi < r.pts.length - 1; vi++) {", "      if (false) for (let vi = 0; vi < r.pts.length - 1; vi++) {")
 rep("</body>", viewer + "</body>")
 open(root + '/podglad.html', 'w', encoding='utf-8').write(s)
 print('ok podglad.html', len(s))

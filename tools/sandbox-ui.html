@@ -1,0 +1,160 @@
+<style>
+  :root { --pn:#fff; --tx:#1d2330; --mu:#667085; --ok:#2e9d4d; --wr:#e08a00; --er:#d32f2f; --bd:#d8dce3; }
+  #lc, #edPop, #edP, #tagPop, #sbP, #nrbar, #offBar, #hint, #smWrap, #panel, #brand { display:none !important; }
+  .sx { position:fixed; top:8px; bottom:8px; width:270px; background:#fff; color:#1d2330; border-radius:10px; box-shadow:0 1px 8px rgba(0,0,0,.3); padding:52px 10px 8px; overflow:auto; z-index:30; font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  #sxL { left:8px; } #sxR { right:8px; width:300px; } .sx.off { display:none; }
+  .sx h4 { margin:10px 0 4px; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:#3949ab; } .sx h4:first-of-type { margin-top:0; }
+  .sx button, .sx select, .sx input { font:inherit; color:#1d2330; background:#fff; border:1px solid #d8dce3; border-radius:6px; padding:3px 7px; }
+  .sx button { cursor:pointer; } .sx button:hover { background:#eef4fc; } .sx button.on { background:#e8eaf6; border-color:#3949ab; font-weight:600; }
+  .sx .row { display:flex; flex-wrap:wrap; gap:4px; margin:3px 0; align-items:center; }
+  .sx .types button { display:flex; align-items:center; gap:6px; width:100%; text-align:left; margin:2px 0; }
+  .sx .sw { width:22px; height:9px; border-radius:2px; flex:none; }
+  .sx label.chk { display:flex; align-items:center; gap:5px; margin:2px 0; }
+  .sx .lane { display:flex; align-items:center; gap:4px; margin:2px 0; font-size:12px; } .sx .lane span { width:50px; color:#667085; } .sx .lane select { flex:1; min-width:0; }
+  .sx .rep { margin:2px 0; padding:4px 6px; border-radius:6px; border-left:4px solid; cursor:pointer; background:rgba(128,128,128,.07); font-size:12px; }
+  .sx .rep.ok { border-color:#2e9d4d; } .sx .rep.wr { border-color:#e08a00; } .sx .rep.er { border-color:#d32f2f; } .sx .rep small { color:#667085; display:block; }
+  .sx .cnt { display:flex; gap:6px; margin:3px 0 6px; } .sx .cnt b { padding:1px 8px; border-radius:10px; color:#fff; font-size:12px; } .cnt .ok { background:#2e9d4d; } .cnt .wr { background:#e08a00; } .cnt .er { background:#d32f2f; }
+  .sx .mu { color:#667085; font-size:11px; }
+  .sxfab { position:fixed; top:8px; z-index:40; width:40px; height:40px; font-size:18px; border-radius:10px; box-shadow:0 1px 6px rgba(0,0,0,.35); padding:0; display:grid; place-items:center; background:#fff; border:1px solid #d8dce3; cursor:pointer; }
+  #sxbL { left:8px; } #sxbR { right:8px; }
+  #sxHint { position:fixed; left:50%; bottom:10px; transform:translateX(-50%); background:rgba(20,24,32,.85); color:#fff; padding:4px 12px; border-radius:14px; font:12px system-ui; pointer-events:none; z-index:50; max-width:90vw; text-align:center; }
+  @media (max-width:900px) { .sx { width:min(300px, calc(100vw - 16px)); } }
+</style>
+<button id="sxbL" class="sxfab" title="Narzędzia">☰</button><button id="sxbR" class="sxfab" title="Edycja i raport">▤</button>
+<div id="sxL" class="sx">
+  <h4>Narzędzie</h4>
+  <div class="row"><button id="sxSel" class="on">Zaznacz</button><button id="sxDraw">Rysuj</button><button id="sxJoin">Połącz węzły</button><button id="sxDel">Usuń</button><button id="sxUndo">Cofnij</button></div>
+  <div class="row" id="sxBar" style="display:none"><button id="sxFin" class="on">Zakończ rysowanie</button><button id="sxCan">Anuluj</button></div>
+  <h4>Rysuj: typ drogi</h4><div class="types" id="sxTypes"></div>
+  <div class="mu">Rysuj: klik = punkt, „Zakończ” = koniec. Klik w drogę tworzy skrzyżowanie, klik w punkt łączy. Zaznacz: przeciągnij punkt; „+” na odcinku dodaje punkt.</div>
+  <h4>Widok</h4>
+  <label class="chk"><input type="checkbox" id="sxOut" checked> obrysy pasów</label>
+  <label class="chk"><input type="checkbox" id="sxDot" checked> znaczniki węzłów (raport)</label>
+  <h4>Scenariusze</h4><div class="row"><select id="sxScen" style="flex:1;min-width:0"></select><button id="sxGo">Wczytaj</button></div>
+  <div class="row"><button id="sxClr">Wyczyść wszystko</button><button id="sxExp">Kopiuj JSON</button></div>
+</div>
+<div id="sxR" class="sx">
+  <h4>Edycja drogi</h4><div id="sxEdit" class="mu">Zaznacz drogę, aby zmienić typ, liczbę pasów, szerokość i turn:lanes.</div>
+  <h4>Raport połączeń</h4><div class="cnt" id="sxCnt"></div><div id="sxRep"></div>
+</div>
+<div id="sxHint"></div>
+<script>
+(() => {
+'use strict';
+const q = id => document.getElementById(id), esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const TYPES = [['motorway', 'Autostrada', { oneway: true, lanes: 3 }], ['trunk', 'Droga ekspresowa', { oneway: true, lanes: 2 }], ['primary', 'Droga krajowa (primary)', { lanes: 2 }], ['secondary', 'Wojewódzka (secondary)', { lanes: 2 }], ['tertiary', 'Powiatowa (tertiary)', { lanes: 2 }], ['unclassified', 'Gminna (unclassified)', { lanes: 2 }], ['residential', 'Osiedlowa (residential)', { lanes: 2 }], ['living_street', 'Strefa zamieszkania', { lanes: 2 }], ['service', 'Dojazd (service)', { lanes: 1 }], ['motorway_link', 'Łącznica autostrady', { oneway: true, lanes: 1 }], ['primary_link', 'Łącznica (primary_link)', { oneway: true, lanes: 1 }], ['secondary_link', 'Łącznica (secondary_link)', { oneway: true, lanes: 1 }]];
+const COL = { motorway: '#c6504a', trunk: '#d4793a', primary: '#d9a62f', secondary: '#6bb36b', tertiary: '#5d9bd5', unclassified: '#8c98a8', residential: '#a8b0bb', living_street: '#b9a3d0', service: '#c8ccd2' }, colOf = h => COL[h.replace('_link', '')] || '#888', hwName = h => (TYPES.find(t => t[0] === h) || [0, h])[1];
+let tool = 'sel', drawHw = 'secondary', drawPts = [], selR = null, selV = null, drag = null, joinA = null, hist = [], nid = 1, rid = 1, report = [], pointer = [0, 0], moved = 0;
+const roads = () => S.doc.road, nk = () => 'n' + (nid++), hint = t => { q('sxHint').textContent = t; };
+$('cTile').checked = false; $('cNodeLanes').checked = true; $('cAx').checked = false; S.tool = 'pan';
+/* ---------- historia ---------- */
+const snap = () => JSON.stringify({ r: roads(), nid, rid }); function push() { hist.push(snap()); if (hist.length > 80) hist.shift(); }
+function undo() { const s = hist.pop(); if (!s) return; const o = JSON.parse(s); S.doc.road = o.r; nid = o.nid; rid = o.rid; selR = null; selV = null; changed(false); }
+/* ---------- model drogi (pola edytora) ---------- */
+function mkRoad(hw, pts, keys, opt) { const d = (TYPES.find(t => t[0] === hw) || [0, 0, {}])[2], base = Object.assign(newRoad(pts, keys), { hw, lanes: d.lanes || 2, oneway: !!d.oneway, lw: LW_CLASS[hw.replace('_link', '')] || 3.5, sb: true, name: '', tl: '', _id: rid++ }); if (!base.oneway) base.nf = Math.ceil(base.lanes / 2); return Object.assign(base, opt || {}); }
+function lanesOf(r) { const n = Math.max(1, r.lanes | 0), tok = s => (s || '').split('|').map(x => x.replace(/slight_|sharp_/g, '')); if (r.oneway) { const t = tok(r.tl); return Array.from({ length: n }, (_, i) => ({ dir: 1, tok: t[i] || '' })); } const nf = r.nf == null ? Math.ceil(n / 2) : Math.max(0, Math.min(n, r.nf)), nb = n - nf, tf = tok(r.tl), tb = tok(r.tlb), out = []; for (let j = nb - 1; j >= 0; j--) out.push({ dir: -1, tok: tb[j] || '' }); for (let j = 0; j < nf; j++) out.push({ dir: 1, tok: tf[j] || '' }); return out; }
+function changed(rec = true) { try { touch(); } catch (e) { console.warn(e); } analyze(); renderEdit(); renderReport(); }
+/* ---------- raport: czy połączenie jest dobre ---------- */
+function analyze() {
+  report = []; const nodes = new Map();
+  roads().forEach(r => { if (r.pts.length < 2) return; [[0, 'a'], [r.nk.length - 1, 'b']].forEach(([j, end]) => { const k = r.nk[j]; if (!k) return; (nodes.get(k) || nodes.set(k, { k, p: r.pts[j], arms: [] }).get(k)).arms.push({ r, end }); }); });
+  const outDir = a => { const P = a.r.pts, n = P.length, o = a.end === 'a' ? P[0] : P[n - 1]; let c = 0, prev = o; for (let i = 1; i < n; i++) { const p = a.end === 'a' ? P[i] : P[n - 1 - i]; c += Math.hypot(p[0] - prev[0], p[1] - prev[1]); prev = p; if (c >= 6 || i === n - 1) { const l = Math.hypot(p[0] - o[0], p[1] - o[1]) || 1; return [(p[0] - o[0]) / l, (p[1] - o[1]) / l]; } } return [1, 0]; };
+  const flow = a => a.r.oneway ? (a.end === 'a' ? 'out' : 'in') : 'both', rank = r => ({ motorway: 9, trunk: 8, primary: 7, secondary: 6, tertiary: 5, unclassified: 4, residential: 3, living_street: 2, service: 1 })[r.hw.replace('_link', '')] || 0;
+  for (const n of nodes.values()) { const arms = n.arms; if (arms.length < 2) continue; arms.forEach(a => { a.d = outDir(a); a.L = lanesOf(a.r); });
+    const items = [], cand = []; for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) { const A = arms[i], B = arms[j], dev = Math.PI - Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); if (dev > 0.65) continue; cand.push({ A, B, sc: (rank(A.r) === rank(B.r) ? 1 : 0) + (A.L.length === B.L.length ? 0.5 : 0) - dev * 2 }); }
+    cand.sort((x, y) => y.sc - x.sc); const used = new Set(), pairs = []; for (const c of cand) { if (used.has(c.A) || used.has(c.B)) continue; used.add(c.A); used.add(c.B); pairs.push(c); }
+    for (const c of pairs) { const A = c.A, B = c.B, nA = A.L.length, nB = B.L.length, sgn = (x, y) => (x.end === 'a') === (y.end === 'a') ? -1 : 1; /* przeciwne końce = ta sama orientacja trasy */
+      const oA = offAt(A.r, A.end === 'a' ? 0 : 1) * (A.r.lw || 3.5), oB = offAt(B.r, B.end === 'a' ? 0 : 1) * (B.r.lw || 3.5), jump = Math.abs(oA - (sgn(A, B) > 0 ? oB : -oB)) / (sgn(A, B) > 0 ? 1 : 1);
+      if (nA === nB && Math.abs((A.r.lw || 3.5) - (B.r.lw || 3.5)) < 0.05 && jump < 0.15) items.push(['ok', 'Przelot: ' + nA + ' → ' + nB + ' pasów, bez uskoku']); else if (nA === nB) items.push([jump > 1.5 ? 'er' : 'wr', 'Przelot: ten sam układ pasów (' + nA + '), ale oś/szerokość różni się o ' + jump.toFixed(1) + ' m (turn:lanes lub szerokość pasa)']); else if (Math.abs(nA - nB) === 1) items.push(['ok', 'Przelot: zmiana ' + nA + ' → ' + nB + ' pasów (o 1)']); else items.push(['wr', 'Przelot: skok liczby pasów ' + nA + ' → ' + nB]);
+      const thr = a => a.L.filter(l => /through|^$|none/.test(l.tok) && l.dir > 0).length; if (arms.length === 2 && A.r.oneway && B.r.oneway && thr(A) > nB) items.push(['wr', 'Wjeżdża ' + thr(A) + ' pasów „na wprost”, za węzłem ' + nB]); }
+    const unp = arms.filter(a => !pairs.some(c => c.A === a || c.B === a));
+    if (arms.length === 2 && !pairs.length) { const ang = Math.acos(Math.max(-1, Math.min(1, arms[0].d[0] * arms[1].d[0] + arms[0].d[1] * arms[1].d[1]))) * 180 / Math.PI; items.push([ang < 50 ? 'er' : 'wr', 'Ostry zakręt ' + ang.toFixed(0) + '° (ramiona nie są przelotowe)']); }
+    if (unp.length && arms.length >= 3) { if (arms.every(a => a.r.oneway)) { const inL = arms.filter(a => flow(a) === 'in').reduce((s, a) => s + a.L.length, 0), outL = arms.filter(a => flow(a) === 'out').reduce((s, a) => s + a.L.length, 0); items.push(inL === outL ? ['ok', 'Bilans pasów: wjazd ' + inL + ' = wyjazd ' + outL] : Math.abs(inL - outL) === 1 ? ['wr', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' (różnica 1: wspólny/dodatkowy pas)'] : ['er', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' – niespójne']); }
+      for (const u of unp) { const best = Math.min(...arms.filter(a => a !== u).map(a => Math.acos(Math.max(-1, Math.min(1, u.d[0] * a.d[0] + u.d[1] * a.d[1]))) * 180 / Math.PI)); if (best < 25) items.push(['wr', 'Ostry kąt ' + best.toFixed(0) + '° między ramionami']); }
+      for (const a of arms) { if (flow(a) !== 'in') continue; const left = a.L.some(l => /left/.test(l.tok)), right = a.L.some(l => /right/.test(l.tok)), others = arms.filter(o => o !== a && flow(o) === 'out'), cr = o => a.d[0] * o.d[1] - a.d[1] * o.d[0]; if (left && !others.some(o => cr(o) < -0.25)) items.push(['wr', 'Pas „w lewo” bez drogi w lewo (turn:lanes)']); if (right && !others.some(o => cr(o) > 0.25)) items.push(['wr', 'Pas „w prawo” bez drogi w prawo (turn:lanes)']); } }
+    if (!items.length) items.push(['ok', arms.length + ' ramiona, brak uwag']);
+    const worst = items.some(i => i[0] === 'er') ? 'er' : items.some(i => i[0] === 'wr') ? 'wr' : 'ok'; report.push({ x: n.p[0], y: n.p[1], lvl: worst, msg: (arms.length > 2 ? 'Skrzyżowanie (' + arms.length + ')' : 'Połączenie') + ' · ' + arms.map(a => a.L.length).join('/') + ' pasów', detail: items.map(i => (i[0] === 'ok' ? '✓ ' : i[0] === 'wr' ? '⚠ ' : '✗ ') + i[1]).join('\n') }); }
+}
+function renderReport() { const c = { ok: 0, wr: 0, er: 0 }; for (const r of report) c[r.lvl]++; q('sxCnt').innerHTML = `<b class="ok">${c.ok} dobre</b><b class="wr">${c.wr} uwagi</b><b class="er">${c.er} błędy</b>`; const ord = { er: 0, wr: 1, ok: 2 };
+  q('sxRep').innerHTML = report.map((r, i) => [r, i]).sort((a, b) => ord[a[0].lvl] - ord[b[0].lvl]).map(([r, i]) => `<div class="rep ${r.lvl}" data-i="${i}">${esc(r.msg)}<small>${esc(r.detail).replace(/\n/g, '<br>')}</small></div>`).join('') || '<div class="mu">Brak połączeń – narysuj dwie drogi stykające się w węźle.</div>';
+  for (const el of q('sxRep').querySelectorAll('.rep')) el.onclick = () => { const r = report[+el.dataset.i]; S.view.x = r.x; S.view.y = r.y; S.view.k = Math.max(S.view.k, 10); render(); }; }
+/* ---------- edycja zaznaczonej drogi ---------- */
+const TOKS = ['', 'through', 'left', 'right', 'through;left', 'through;right', 'left;right', 'slight_left', 'slight_right', 'merge_to_left', 'merge_to_right'];
+function renderEdit() { const el = q('sxEdit'), r = selR && roads().includes(selR) ? selR : null; if (!r) { selR = null; el.className = 'mu'; el.innerHTML = 'Zaznacz drogę, aby zmienić typ, liczbę pasów, szerokość i turn:lanes.'; return; } el.className = ''; const L = lanesOf(r), n = L.length, nf = L.filter(l => l.dir > 0).length;
+  let h = `<div class="row"><b>droga #${r._id || '?'}</b><button id="sxeDel">Usuń drogę</button>${selV ? '<button id="sxeDelV">Usuń punkt</button><button id="sxeSplit">Rozłącz węzeł</button>' : ''}</div><div class="row"><select id="sxeHw" style="flex:1">${TYPES.map(x => `<option value="${x[0]}"${x[0] === r.hw ? ' selected' : ''}>${x[1]}</option>`).join('')}</select></div><label class="chk"><input type="checkbox" id="sxeOw"${r.oneway ? ' checked' : ''}> jednokierunkowa</label>`;
+  h += r.oneway ? `<div class="row">pasy <input id="sxeN" type="number" min="1" max="8" value="${n}" style="width:54px"></div>` : `<div class="row">w przód <input id="sxeF" type="number" min="0" max="6" value="${nf}" style="width:50px"> w tył <input id="sxeB" type="number" min="0" max="6" value="${n - nf}" style="width:50px"></div>`;
+  h += `<div class="row">szerokość pasa <input id="sxeW" type="number" step="0.05" min="2" max="5" value="${(r.lw || 3.5).toFixed(2)}" style="width:64px"> m</div><h4>turn:lanes (od lewej)</h4>`; L.forEach((l, i) => { h += `<div class="lane"><span>${l.dir > 0 ? '→ pas ' : '← pas '}${i + 1}</span><select data-i="${i}" class="sxeT">${TOKS.map(k => `<option value="${k}"${l.tok === k ? ' selected' : ''}>${k || '(brak)'}</option>`).join('')}</select></div>`; }); el.innerHTML = h;
+  const mut = f => { push(); f(); changed(); }; q('sxeDel').onclick = () => mut(() => { S.doc.road.splice(roads().indexOf(r), 1); selR = null; });
+  if (q('sxeDelV')) { q('sxeDelV').onclick = delVertex; q('sxeSplit').onclick = splitVertex; }
+  q('sxeHw').onchange = () => mut(() => { r.hw = q('sxeHw').value; r.lw = LW_CLASS[r.hw.replace('_link', '')] || r.lw; const d = (TYPES.find(t => t[0] === r.hw) || [0, 0, {}])[2]; if (d.oneway) { r.oneway = true; } });
+  q('sxeOw').onchange = () => mut(() => { const k = Math.max(1, r.lanes | 0); if (q('sxeOw').checked) { r.oneway = true; delete r.nf; r.tlb = ''; } else { r.oneway = false; r.lanes = Math.max(2, k); r.nf = Math.ceil(r.lanes / 2); r.tlb = ''; r.tl = ''; } r.tlM = true; });
+  const setN = () => mut(() => { if (r.oneway) { const k = Math.max(1, Math.min(8, +q('sxeN').value || 1)); r.lanes = k; r.tl = (r.tl || '').split('|').slice(0, k).concat(Array(Math.max(0, k - (r.tl || '').split('|').length)).fill('')).join('|').replace(/^\|*$/, ''); } else { const f = Math.max(0, Math.min(6, +q('sxeF').value || 0)), b = Math.max(0, Math.min(6, +q('sxeB').value || 0)); if (f + b < 1) return; r.lanes = f + b; r.nf = f; } r.tlM = true; });
+  if (r.oneway) q('sxeN').onchange = setN; else { q('sxeF').onchange = setN; q('sxeB').onchange = setN; } q('sxeW').onchange = () => mut(() => { const v = parseFloat(q('sxeW').value); if (v >= 2 && v <= 5) { r.lw = v; r.lwM = true; } });
+  for (const s of el.querySelectorAll('.sxeT')) s.onchange = () => mut(() => { const i = +s.dataset.i, nbk = n - nf; if (r.oneway) { const a = (r.tl || '').split('|'); while (a.length < n) a.push(''); a[i] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else if (L[i].dir > 0) { const a = (r.tl || '').split('|'); while (a.length < nf) a.push(''); a[i - nbk] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else { const a = (r.tlb || '').split('|'); while (a.length < nbk) a.push(''); a[nbk - 1 - i] = s.value; r.tlb = a.some(x => x) ? a.join('|') : ''; } r.tlM = true; }); }
+/* ---------- punkty, węzły, skrzyżowania ---------- */
+function vertexAt(sx, sy) { let best = null, bd = 13; for (const r of roads()) for (let i = 0; i < r.pts.length; i++) { const p = w2s(r.pts[i]), d = Math.hypot(p[0] - sx, p[1] - sy); if (d < bd) { bd = d; best = { r, i, key: r.nk[i] }; } } return best; }
+function midAt(sx, sy) { const r = selR; if (!r) return null; for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; if (Math.hypot(m[0] - sx, m[1] - sy) < 10 && Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) return { r, at: i, p: s2w(m[0], m[1]) }; } return null; }
+function moveKey(key, w) { for (const r of roads()) r.nk.forEach((k, j) => { if (k === key) { r.pts[j] = w.slice(); if (r.rp) r.rp = null; } }); }
+function rekey(from, to, pos) { for (const r of roads()) r.nk.forEach((k, j) => { if (k === from) { r.nk[j] = to; if (pos) r.pts[j] = pos.slice(); } }); for (const r of roads()) for (let j = r.nk.length - 1; j > 0; j--) if (r.nk[j] === r.nk[j - 1]) { r.nk.splice(j, 1); r.pts.splice(j, 1); } S.doc.road = roads().filter(r => r.pts.length >= 2); }
+function snapPoint(sx, sy) { const w = s2w(sx, sy), v = vertexAt(sx, sy); if (v) return { p: v.r.pts[v.i].slice(), key: v.key }; let bs = 9 / S.view.k, hit = null; for (const r of roads()) for (let i = 1; i < r.pts.length; i++) { const A = r.pts[i - 1], B = r.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), p = [A[0] + dx * t, A[1] + dy * t], d = Math.hypot(w[0] - p[0], w[1] - p[1]); if (d < bs && t > 0.02 && t < 0.98) { bs = d; hit = { r, i, p }; } }
+  if (hit) { const key = nk(); hit.r.pts.splice(hit.i, 0, hit.p); hit.r.nk.splice(hit.i, 0, key); return { p: hit.p, key }; } return { p: w, key: nk() }; }
+function finishDraw() { if (drawPts.length < 2) { drawPts = []; render(); return; } push(); const r = mkRoad(drawHw, drawPts.map(p => p.p), drawPts.map(p => p.key)); S.doc.road.push(r); drawPts = []; selR = r; changed(); }
+function delVertex() { if (!selV || !selR) return; const i = selR.nk.indexOf(selV); if (i < 0 || selR.pts.length <= 2) { hint('Droga musi mieć co najmniej 2 punkty'); return; } push(); selR.pts.splice(i, 1); selR.nk.splice(i, 1); selV = null; changed(); }
+function splitVertex() { if (!selV) return; const us = []; for (const r of roads()) r.nk.forEach((k, j) => { if (k === selV) us.push([r, j]); }); if (us.length < 2) { hint('Ten punkt nie jest wspólny dla kilku dróg'); return; } push(); us.slice(1).forEach(([r, j], n) => { r.nk[j] = nk(); r.pts[j] = [r.pts[j][0] + 0.8 * (n + 1), r.pts[j][1] + 0.8 * (n + 1)]; }); selV = null; changed(); hint('Węzeł rozłączony (przesunięty o 0,8 m)'); }
+/* ---------- nakładka: uchwyty, podgląd rysowania, znaczniki raportu ---------- */
+function overlay() { ctx.save(); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); const dot = (p, rd, f, st, lw) => { const s = w2s(p); ctx.beginPath(); ctx.arc(s[0], s[1], rd, 0, 7); ctx.fillStyle = f; ctx.fill(); ctx.lineWidth = lw || 1.5; ctx.strokeStyle = st || '#1d2330'; ctx.stroke(); };
+  if (q('sxDot').checked) for (const r of report) dot([r.x, r.y], 7, r.lvl === 'ok' ? '#2e9d4d' : r.lvl === 'wr' ? '#e08a00' : '#d32f2f', '#fff', 1.5);
+  if (selR) { ctx.lineWidth = 3; ctx.strokeStyle = '#ffd23f'; ctx.beginPath(); selR.pts.forEach((p, i) => { const s = w2s(p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.stroke(); }
+  if (tool === 'sel') for (const r of roads()) { const sw = r === selR; r.pts.forEach((p, i) => dot(p, sw ? 6 : 3.5, selV && selV === r.nk[i] ? '#ff5a36' : sw ? '#fff' : 'rgba(255,255,255,.8)')); if (sw) for (let i = 1; i < r.pts.length; i++) { const a = w2s(r.pts[i - 1]), b = w2s(r.pts[i]); if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 28) dot(s2w((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), 4.5, 'rgba(30,136,229,.9)', '#fff', 1.2); } }
+  if (tool === 'join') for (const r of roads()) r.pts.forEach((p, i) => dot(p, joinA && joinA.key === r.nk[i] ? 8 : 5, joinA && joinA.key === r.nk[i] ? '#ffd23f' : 'rgba(255,255,255,.85)'));
+  if (tool === 'draw' && drawPts.length) { ctx.lineWidth = 2; ctx.strokeStyle = colOf(drawHw); ctx.setLineDash([6, 4]); ctx.beginPath(); drawPts.forEach((p, i) => { const s = w2s(p.p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.lineTo(pointer[0], pointer[1]); ctx.stroke(); ctx.setLineDash([]); drawPts.forEach(p => dot(p.p, 4, colOf(drawHw))); }
+  ctx.restore(); }
+const render0 = render; render = function () { render0.apply(this, arguments); try { overlay(); } catch (e) { console.warn('overlay', e); } };
+/* ---------- zdarzenia (przed edytorem: przesuwanie punktów) ---------- */
+const stage = cv; let down = null;
+stage.addEventListener('pointerdown', e => { down = [e.clientX, e.clientY]; moved = 0; if (tool !== 'sel' || e.pointerType === 'touch' && false) return;
+  const m = midAt(e.clientX, e.clientY); if (m) { e.stopImmediatePropagation(); push(); const key = nk(); m.r.pts.splice(m.at, 0, m.p); m.r.nk.splice(m.at, 0, key); drag = { r: m.r, key, fresh: true }; selV = key; changed(false); return; }
+  const h = vertexAt(e.clientX, e.clientY); if (h) { e.stopImmediatePropagation(); push(); selR = h.r; selV = h.key; drag = { r: h.r, key: h.key }; renderEdit(); render(); } }, true);
+addEventListener('pointermove', e => { pointer = [e.clientX, e.clientY]; if (down) moved += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (drag) { moveKey(drag.key, s2w(e.clientX, e.clientY)); S.dirty = true; touch(); analyze(); } else if (tool === 'draw' && drawPts.length) render(); }, true);
+addEventListener('pointerup', e => { const was = down; down = null; if (drag) { const d = drag; drag = null; let joined = false; const w = s2w(e.clientX, e.clientY); let best = null, bd = 13 / S.view.k; for (const r of roads()) r.pts.forEach((p, i) => { if (r.nk[i] === d.key) return; const dd = Math.hypot(p[0] - w[0], p[1] - w[1]); if (dd < bd) { bd = dd; best = { key: r.nk[i], p }; } }); if (best) { rekey(d.key, best.key, best.p); selV = best.key; joined = true; } if (moved > 4 || d.fresh || joined) changed(); else { hist.pop(); renderEdit(); render(); } return; }
+  if (!was || moved > 6 || e.target !== cv) return; tap(e.clientX, e.clientY); });
+cv.addEventListener('dblclick', e => { if (tool === 'draw') { drawPts.pop(); finishDraw(); } });
+function tap(sx, sy) {
+  if (tool === 'draw') { drawPts.push(snapPoint(sx, sy)); render(); return; }
+  if (tool === 'join') { const h = vertexAt(sx, sy); if (!h) { joinA = null; render(); return; } if (!joinA) { joinA = h; hint('Teraz kliknij drugi węzeł (zostanie dołączony do pierwszego)'); render(); return; } if (joinA.key === h.key) { joinA = null; render(); return; } push(); rekey(h.key, joinA.key, joinA.r.pts[joinA.r.nk.indexOf(joinA.key)]); joinA = null; changed(); hint('Połączono węzły'); return; }
+  const i = hitRoad(s2w(sx, sy)), r = i >= 0 ? roads()[i] : null;
+  if (tool === 'del') { if (r) { push(); S.doc.road.splice(i, 1); if (selR === r) selR = null; changed(); } return; }
+  selR = r; selV = null; renderEdit(); render(); if (r && innerWidth < 900) q('sxR').classList.remove('off'); }
+/* ---------- narzędzia i menu ---------- */
+function setTool(t) { tool = t; drawPts = []; joinA = null; q('sxBar').style.display = t === 'draw' ? 'flex' : 'none'; for (const [id, k] of [['sxSel', 'sel'], ['sxDraw', 'draw'], ['sxJoin', 'join'], ['sxDel', 'del']]) q(id).classList.toggle('on', k === t); hint(t === 'draw' ? 'Rysowanie: ' + hwName(drawHw) + ' – klikaj punkty, „Zakończ” kończy' : t === 'join' ? 'Kliknij pierwszy węzeł, potem drugi – zostaną połączone' : t === 'del' ? 'Kliknij drogę, aby ją usunąć' : 'Zaznacz drogę, aby ją edytować; przeciągnij punkt, aby go przesunąć'); render(); }
+q('sxSel').onclick = () => setTool('sel'); q('sxDraw').onclick = () => setTool('draw'); q('sxJoin').onclick = () => setTool('join'); q('sxDel').onclick = () => setTool('del'); q('sxUndo').onclick = undo; q('sxFin').onclick = finishDraw; q('sxCan').onclick = () => { drawPts = []; render(); };
+addEventListener('keydown', e => { if (e.key === 'Enter' && tool === 'draw') finishDraw(); else if (e.key === 'Escape') { drawPts = []; render(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); } else if (e.key === 'Delete' && selR && document.activeElement.tagName !== 'INPUT') { push(); S.doc.road.splice(roads().indexOf(selR), 1); selR = null; changed(); } });
+q('sxOut').onchange = () => { $('cNodeLanes').checked = q('sxOut').checked; touch(); }; q('sxDot').onchange = () => render();
+q('sxTypes').innerHTML = TYPES.map(t => `<button data-h="${t[0]}"><span class="sw" style="background:${colOf(t[0])}"></span>${t[1]}</button>`).join(''); for (const b of q('sxTypes').children) b.onclick = () => { drawHw = b.dataset.h; for (const x of q('sxTypes').children) x.classList.toggle('on', x === b); setTool('draw'); };
+q('sxClr').onclick = () => { push(); S.doc.road = []; selR = null; changed(); }; q('sxExp').onclick = () => { try { navigator.clipboard.writeText(snap()); hint('Skopiowano JSON sceny'); } catch (e) {} };
+/* ---------- scenariusze ---------- */
+const SC = {
+  'T: droga główna + dojazd': [['secondary', {}, [[-60, 0], [0, 0], [60, 0]]], ['residential', {}, [[0, 0], [0, 50]]]],
+  'Skrzyżowanie X (4 ramiona)': [['secondary', {}, [[-60, 0], [0, 0], [60, 0]]], ['secondary', {}, [[0, -60], [0, 0], [0, 60]]]],
+  'Zmiana 3 → 2 pasy (jednokier.)': [['primary', { oneway: true, lanes: 3 }, [[-70, 0], [0, 0]]], ['primary', { oneway: true, lanes: 2 }, [[0, 0], [70, 0]]]],
+  'Zmiana 2 → 4 pasy (dwukier.)': [['primary', { lanes: 2 }, [[-70, 0], [0, 0]]], ['primary', { lanes: 4 }, [[0, 0], [70, 0]]]],
+  'Rozjazd 3 → 2 + 1 (łącznica)': [['primary', { oneway: true, lanes: 3 }, [[-80, 0], [0, 0]]], ['primary', { oneway: true, lanes: 2 }, [[0, 0], [80, 0]]], ['primary_link', { oneway: true, lanes: 1 }, [[0, 0], [30, 14], [80, 40]]]],
+  'Rozjazd 5 → 5 + boczna (bez wyłączania)': [['primary', { oneway: true, lanes: 5, tl: 'left|left|through|through|through' }, [[-90, 0], [0, 0]]], ['primary', { oneway: true, lanes: 5, tl: 'left|left|through|through|through' }, [[0, 0], [90, 0]]], ['tertiary', { oneway: true, lanes: 1 }, [[0, 0], [40, -25], [90, -35]]]],
+  'Włączenie 2 + 1 → 3': [['primary', { oneway: true, lanes: 2 }, [[-80, 0], [0, 0]]], ['primary_link', { oneway: true, lanes: 1 }, [[-80, 40], [-30, 14], [0, 0]]], ['primary', { oneway: true, lanes: 3 }, [[0, 0], [80, 0]]]],
+  'Skrzyżowanie z pasami skrętu': [['secondary', { oneway: true, lanes: 3, tl: 'left|through|right' }, [[-70, 0], [0, 0]]], ['secondary', { oneway: true, lanes: 2 }, [[0, 0], [70, 0]]], ['residential', {}, [[0, 0], [0, 50]]], ['residential', {}, [[0, 0], [0, -50]]]],
+  'Ostry kąt (Y)': [['secondary', {}, [[-70, 0], [0, 0]]], ['secondary', {}, [[0, 0], [60, 20]]], ['secondary', {}, [[0, 0], [60, -20]]]],
+  'Dwie jezdnie + łącznica': [['motorway', { lanes: 3 }, [[-100, -6], [100, -6]]], ['motorway', { lanes: 3 }, [[100, 6], [-100, 6]]], ['motorway_link', { lanes: 1 }, [[-20, -6], [10, -30], [60, -60]]]],
+};
+function loadScenario(name) { const sc = SC[name]; if (!sc) return; push(); S.doc.road = []; const by = new Map(), key = p => { const k = p[0].toFixed(2) + ',' + p[1].toFixed(2); if (!by.has(k)) by.set(k, nk()); return by.get(k); };
+  for (const [hw, o, pts] of sc) { const r = mkRoad(hw, pts.map(p => p.slice()), pts.map(key), o.tl ? { tl: o.tl, tlM: true } : {}); if (o.lanes) { r.lanes = o.lanes; if (!r.oneway) r.nf = Math.ceil(o.lanes / 2); } if (o.oneway) { r.oneway = true; delete r.nf; } S.doc.road.push(r); }
+  selR = null; S.view.x = 0; S.view.y = 0; S.view.k = 6; changed(); }
+q('sxScen').innerHTML = Object.keys(SC).map(k => `<option>${k}</option>`).join(''); q('sxGo').onclick = () => loadScenario(q('sxScen').value);
+/* ---------- panele zwijane ---------- */
+const small = () => innerWidth < 900; if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); }
+q('sxbL').onclick = () => { q('sxL').classList.toggle('off'); if (small()) q('sxR').classList.add('off'); }; q('sxbR').onclick = () => { q('sxR').classList.toggle('off'); if (small()) q('sxL').classList.add('off'); };
+for (const id of ['sxSel', 'sxDraw', 'sxJoin', 'sxDel', 'sxGo']) q(id).addEventListener('click', () => { if (small()) q('sxL').classList.add('off'); }); for (const b of q('sxTypes').children) b.addEventListener('click', () => { if (small()) q('sxL').classList.add('off'); });
+cv.addEventListener('pointerdown', () => { if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); } });
+loadScenario(Object.keys(SC)[0]); setTool('sel');
+window.__sx = { get report() { return report; } };
+})();
+</script>

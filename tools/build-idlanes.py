@@ -36,3 +36,7 @@ out = out.replace('%VERSION%', time.strftime('%H%M'))
 open(root + '/idlanes.user.js', 'w', encoding='utf-8').write(out)
 print('ok', len(out))
 
+
+# razem z userscriptem budujemy tez sandbox-drog.html (silnik edytora + interaktywny interfejs)
+import subprocess
+subprocess.run([sys.executable, root + '/tools/build-sandbox.py'], check=True)

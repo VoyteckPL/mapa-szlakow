@@ -330,8 +330,8 @@ function skelFork(X, yl, yr, C, R, gores) {
   if (sA === sB) { const dA = Math.abs(lat(arms[0].D)), dB = Math.abs(lat(arms[1].D)); if (dA >= dB) sA = -sA; else sB = -sB; }
   arms[0].sg = sA; arms[1].sg = sB;
   const neg = arms.find(o => o.sg < 0) || arms[0], pos = arms.find(o => o !== neg);
-  let xN = nX * w / 2; if (nX % 2 === 1) { const extraNeg = neg.l < pos.l; xN = extraNeg ? w + (nX - 1) * w / 2 : (nX - 1) * w / 2; }
-  if ((nX % 2 === 1 && R[X.i]._edge) || hasOff(R[X.i]) || rightRule(R[X.i])) xN = (X.st ? 1 : -1) * ((X.st ? C[X.i].dS : C[X.i].dE) || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
+  let xN = nX * w / 2; if (nX % 2 === 1 && specOff(R[X.i])) { /* przesuniecie o pol pasa tylko dla drog z offsetem (_edge/_osg); wyrownana os = jezdnia symetryczna */ const extraNeg = neg.l < pos.l; xN = extraNeg ? w + (nX - 1) * w / 2 : (nX - 1) * w / 2; }
+  if ((nX % 2 === 1 && R[X.i]._edge) || hasOff(R[X.i]) || rightRule(R[X.i]) || lmRule(R[X.i])) xN = (X.st ? 1 : -1) * ((X.st ? C[X.i].dS : C[X.i].dE) || 0) + nX * w / 2; // turn:lanes: os na granicy pasa 'prosto' i pasow 'w prawo' - rozjazd liczony od tego offsetu
   neg.c = -xN + neg.l * w / 2; pos.c = -xN + neg.l * w + pos.l * w / 2;
   if (neg.l + pos.l === nX + 1) { xN = nX * w / 2; neg.c = -xN + neg.l * w / 2; pos.c = xN - pos.l * w / 2; } /* 3->2+2: wspolny pas srodkowy - odnogi startuja nakladajac sie o jeden pas */
   { const tkn = String(R[X.i].tl || '').split('|').filter(Boolean), nt = (!X.st && tkn.length === nX) ? tkn.filter(v => v.split(';').some(x => x === 'through')).length : 0; for (const o of arms) o.straight = nt > 0 && nt < nX && o.l === nt && arms.every(z => z === o || z.l !== nt); } /* turn:lanes: odnoga z pasami 'prosto' biegnie prosto, nie wg osi OSM */

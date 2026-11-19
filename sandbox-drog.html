@@ -870,7 +870,7 @@ function layout() {
       c.pts = pts; c.T1 = A; c.T2 = B; ca[3] = A; cb[0] = B; if (c.ai != null) arcList[c.ai] = pts; }
     for (let j = 0; j < N; j++) { if (cor[j]) poly.push(...cor[j].pts); const c2 = cuts[(j + 1) % N]; if (c2) poly.push(c2[1], c2[2]); }
     const edges = []; for (let j = 0; j < N; j++) { if (!cor[j]) continue; const cj = cuts[j], cn = cuts[(j + 1) % N]; edges.push((cj ? [cj[2]] : []).concat(cor[j].pts, cn ? [cn[1]] : [])); }
-    { const lyN = Math.max(...G.map(e => R[e.i].ly | 0)), PS = !miniSet.has(k) && window.__nodeAsph ? window.__nodeAsph({ k, o, cuts, lanes: arms.map(m => ({ ri: m.ri, u: m.u })) }) : null; /* piaskownica: asfalt wezla tylko pod pasami (pasy o stalej szerokosci) */ if (PS && PS.length) PS.forEach(P => polys.push({ P, L: [], R: [], kerb: false, ly: lyN, br: false, ed: false })); else polys.push({ P: poly, L: [], R: [], kerb: false, ly: lyN, br: false, ed: true }); var PS_ = PS && PS.length ? PS : null; } (S.nodeViz = S.nodeViz || []).push({ fkt: !!FKT, asph: PS_, k, mini: miniSet.has(k), poly, cuts, edges, arcs: arcList, o, lanes: arms.map(m => ({ ri: m.ri, u: m.u, n: m.n, h: m.h, nl: m.nl, len: Math.min(m.len, 6) })) });
+    { const lyN = Math.max(...G.map(e => R[e.i].ly | 0)), PS = !miniSet.has(k) && !FKT && window.__nodeAsph ? window.__nodeAsph({ k, o, cuts, lanes: arms.map(m => ({ ri: m.ri, u: m.u })) }) : null; /* piaskownica: asfalt wezla tylko pod pasami (pasy o stalej szerokosci) */ if (PS && PS.length) PS.forEach(P => polys.push({ P, L: [], R: [], kerb: false, ly: lyN, br: false, ed: false })); else polys.push({ P: poly, L: [], R: [], kerb: false, ly: lyN, br: false, ed: true }); var PS_ = PS && PS.length ? PS : null; } (S.nodeViz = S.nodeViz || []).push({ fkt: !!FKT, asph: PS_, k, mini: miniSet.has(k), poly, cuts, edges, arcs: arcList, o, lanes: arms.map(m => ({ ri: m.ri, u: m.u, n: m.n, h: m.h, nl: m.nl, len: Math.min(m.len, 6) })) });
   }
   S.CC = C; S.forks = forks; S.forks3 = forks3; return { polys, lines, gores, arrows };
 }
@@ -2292,7 +2292,7 @@ function drawGrid() { if (!q('sxGrid').checked) return; let g = gstep(); while (
 window.__cutHandles = () => cutHandles();
 /* ---------- pasy przez wezly: kazdy pas = os (Bezier) ze stala szerokoscia; z nich tez asfalt wezla ---------- */
 const LCOL = i => `hsl(${(i * 67) % 360},85%,42%)`; window.__nodeLaneList = [];
-function nodeLaneGeo(nv) { const o = nv.o, ten = 0.4, A = [];
+function nodeLaneGeo(nv) { if (nv.fkt) return null; const o = nv.o, ten = 0.4, A = [];
   nv.lanes.forEach((m, j) => { const c = nv.cuts && nv.cuts[j], r = roads()[m.ri]; if (!c || !r) return; A.push({ j, m, c, r, nl: Math.max(1, r.lanes | 0), u: c.u || m.u, e1: c[1], e2: c[2] }); });
   if (A.length < 2) return null; let ref = null; const lat = p => ref[0] * (p[1] - o[1]) - ref[1] * (p[0] - o[0]);
   const slots = a => { const L = lat(a.e1) <= lat(a.e2) ? [a.e1, a.e2] : [a.e2, a.e1], out = []; for (let i = 0; i < a.nl; i++) { const t = (i + .5) / a.nl; out.push([L[0][0] + (L[1][0] - L[0][0]) * t, L[0][1] + (L[1][1] - L[0][1]) * t]); } return out; };

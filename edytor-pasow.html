@@ -858,13 +858,15 @@ function layout() {
 function glyph(g, key) {
   if (key === 'p9a' || key === 'p9b') { const sg = key === 'p9a' ? -1 : 1; g.strokeStyle = g.fillStyle = '#f4f4f4'; g.lineWidth = 3.2; g.lineCap = 'butt'; const x0 = 6, y0 = 16 - sg * 6, x1 = 42, y1 = 16 + sg * 6, ang = Math.atan2(y1 - y0, x1 - x0); g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - Math.cos(ang) * 4, y1 - Math.sin(ang) * 4); g.stroke(); g.save(); g.translate(x1, y1); g.rotate(ang); g.beginPath(); g.moveTo(5, 0); g.lineTo(-5, -5.5); g.lineTo(-5, 5.5); g.closePath(); g.fill(); g.restore(); return; }
   const parts = key.split('-'), has = p => parts.includes(p);
-  g.strokeStyle = g.fillStyle = window.__arrCol || '#f4f4f4'; g.lineWidth = 4.2; g.lineCap = 'butt';
-  const head = (x, y, ang) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(8, 0); g.lineTo(-6, -8); g.lineTo(-6, 8); g.closePath(); g.fill(); g.restore(); }; /* grot P-8: wydluzony trojkat */
-  const only = parts.length === 1 && !has('through') && (has('left') || has('right')), osg = has('left') ? -1 : 1, ty = only ? 16 - osg * 3.5 : 16; /* strzalka tylko w bok: korpus przesuniety tak, by cala strzalka lezala symetrycznie na osi pasa (P-8b) */
-  const fork = has('through') ? 15 : 30; /* odgalezienie bocznego grotu dalej od grotu prosto (dawniej 26: groty zachodzily na siebie) */
-  g.beginPath(); g.moveTo(0, ty); g.lineTo(has('through') ? 36 : fork, ty); g.stroke();
-  if (has('through')) head(38, 16, 0);
-  for (const [p, sg] of [['left', -1], ['right', 1]]) if (has(p)) { g.beginPath(); g.moveTo(fork - 6, ty); g.quadraticCurveTo(fork + 2, ty, fork + 4, ty + sg * 7); g.stroke(); head(fork + 5, ty + sg * 9.5, sg * Math.PI / 2 - sg * 0.35); }
+  g.strokeStyle = g.fillStyle = window.__arrCol || '#f4f4f4'; g.lineCap = 'butt'; g.lineJoin = 'miter';
+  /* strzalki drogowe wg wzoru: cienki trzon, wydluzony trojkatny grot; skret = trzon zagiety w bok ze skosnym grotem; odgalezienie ze skosnym grotem (uklad: os x = kierunek jazdy, os y = bok, os pasa y = 16) */
+  const SW = 3.2, head = (x, y, ang, L, H) => { g.save(); g.translate(x, y); g.rotate(ang); g.beginPath(); g.moveTo(L, 0); g.lineTo(0, -H); g.lineTo(0, H); g.closePath(); g.fill(); g.restore(); };
+  const side = parts.filter(q => q === 'left' || q === 'right'), thru = has('through');
+  g.lineWidth = SW;
+  if (thru) { g.beginPath(); g.moveTo(0, 16); g.lineTo(34, 16); g.stroke(); head(33, 16, 0, 14, 6.4); }
+  if (!thru && side.length === 1) { /* sam skret: trzon prosto, zagiecie w bok, skosny grot */ const sg = side[0] === 'left' ? -1 : 1, y0 = 16 - sg * 5; g.beginPath(); g.moveTo(0, y0); g.lineTo(22, y0); g.lineTo(30, y0 + sg * 6); g.stroke(); head(28, y0 + sg * 5.5, sg * 0.36, 15, 5.8); }
+  else if (!thru && side.length === 2) { g.beginPath(); g.moveTo(0, 16); g.lineTo(13, 16); g.stroke(); for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(13, 16); g.lineTo(20, 16 + sg * 5); g.lineTo(26, 16 + sg * 8); g.stroke(); head(23.5, 16 + sg * 7, sg * 0.5, 14, 5.4); } }
+  else for (const sg of (side.length ? [side.includes('left') ? -1 : null, side.includes('right') ? 1 : null] : []).filter(v => v)) { /* prosto + odgalezienie */ g.beginPath(); g.moveTo(10, 16); g.lineTo(16, 16 + sg * 2); g.lineTo(23, 16 + sg * 7); g.stroke(); head(20.5, 16 + sg * 5.5, sg * 0.5, 13, 5); }
 }
 
 // ---------- rysowanie ----------

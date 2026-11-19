@@ -2174,6 +2174,9 @@ const S2W = (x, y) => s2w([x, y]); const roads = () => S.doc.road, nk = () => 'n
 $('cTile').checked = false; $('cNodeLanes').checked = true; $('cAx').checked = false; S.tool = 'pan';
 /* ---------- historia ---------- */
 const snap = () => JSON.stringify({ r: roads(), nid, rid }); function push() { hist.push(snap()); if (hist.length > 80) hist.shift(); }
+let _sv = 0; function saveScene() { clearTimeout(_sv); _sv = setTimeout(() => { try { localStorage.setItem('sxScene', JSON.stringify({ s: snap(), v: S.view })); } catch (e) {} }, 300); }
+addEventListener('pointerup', () => { try { saveScene(); } catch (e) {} }); addEventListener('wheel', () => { try { saveScene(); } catch (e) {} }, { passive: true });
+function restoreScene() { try { const j = JSON.parse(localStorage.getItem('sxScene') || 'null'); if (!j) return false; const o = JSON.parse(j.s); S.doc.road = o.r; nid = o.nid; rid = o.rid; if (j.v) Object.assign(S.view, j.v); selR = null; selV = null; changed(false); return true; } catch (e) { return false; } }
 function undo() { const s = hist.pop(); if (!s) return; const o = JSON.parse(s); S.doc.road = o.r; nid = o.nid; rid = o.rid; selR = null; selV = null; changed(false); }
 /* ---------- model drogi (pola edytora) ---------- */
 function mkRoad(hw, pts, keys, opt) { const d = (TYPES.find(t => t[0] === hw) || [0, 0, {}])[2], base = Object.assign(newRoad(pts, keys), { hw, lanes: d.lanes || 2, oneway: !!d.oneway, lw: LW_CLASS[hw.replace('_link', '')] || 3.5, sb: true, name: '', tl: '', _id: rid++ }); if (!base.oneway) base.nf = Math.ceil(base.lanes / 2); return Object.assign(base, opt || {}); }
@@ -2191,7 +2194,7 @@ function autoFork() { const by = new Map(); roads().forEach(r => { if (!r.nk || 
     const want = new Map([[S2[0][0], L + bl / 2], [S2[1][0], L + ln - br / 2]]);
     for (const [a, v] of want) { const [r, e] = a; if (r._man) continue; const oth = e ? 0 : 1, cv = +offAt(r, oth); r.off = ''; delete r.off; r[e ? 'offE' : 'offS'] = Math.round(v * 100) / 100; const fk = r.nk[e ? 0 : r.nk.length - 1], fr = fk && (by.get(fk) || []).length > 1; r[oth ? 'offE' : 'offS'] = fr ? cv : Math.round(v * 100) / 100; r._afo = 1; }
   } }
-function changed(rec = true) { try { autoFork(); } catch (e) { console.warn(e); } try { touch(); } catch (e) { console.warn(e); } analyze(); renderEdit(); renderReport(); try { popRender(); } catch (e) {} }
+function changed(rec = true) { try { autoFork(); } catch (e) { console.warn(e); } try { saveScene(); } catch (e) {} try { touch(); } catch (e) { console.warn(e); } analyze(); renderEdit(); renderReport(); try { popRender(); } catch (e) {} }
 /* ---------- raport: czy połączenie jest dobre ---------- */
 function analyze() {
   report = []; const nodes = new Map();
@@ -2332,7 +2335,7 @@ q('sxScen').innerHTML = SCG.map(g => `<optgroup label="${g.g} (${g.names.length}
 /* ---------- panele zwijane ---------- */
 const small = () => innerWidth < 900; if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); }
 q('sxbL').onclick = () => { q('sxL').classList.toggle('off'); if (small()) q('sxR').classList.add('off'); }; q('sxbR').onclick = () => { q('sxR').classList.toggle('off'); if (small()) q('sxL').classList.add('off'); };
-loadScenario(Object.keys(SC)[0]); setTool('sel');
+if (!restoreScene()) loadScenario(Object.keys(SC)[0]); setTool('sel');
 window.__sx = { get report() { return report; } };
 })();
 </script>

@@ -35,3 +35,7 @@ out = header.replace('%VERSION%', time.strftime('%Y.%m.%d.%H%M')) + "(function (
 out = out.replace('%VERSION%', time.strftime('%H%M'))
 open(root + '/idlanes.user.js', 'w', encoding='utf-8').write(out)
 print('ok', len(out))
+
+# razem z userscriptem budujemy tez podglad.html (wersja tylko do ogladania)
+import subprocess
+subprocess.run([sys.executable, root + '/tools/build-viewer.py'], check=True)

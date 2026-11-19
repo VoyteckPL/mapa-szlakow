@@ -1881,7 +1881,7 @@ if (!EMBED) (() => {
         const info = outs.map(e => { const r = R[e.i], q = r.pts[1], u = [sc(q)[0] - sc(nd)[0], sc(q)[1] - sc(nd)[1]], ul = Math.hypot(u[0], u[1]) || 1, cr = (hs[0] * u[1] - hs[1] * u[0]) / (hl * ul), dt = (hs[0] * u[0] + hs[1] * u[1]) / (hl * ul); return { r, cr, dt }; });
         const ex = Math.abs(info[0].cr) > Math.abs(info[1].cr) ? info[0] : info[1], mn = ex === info[0] ? info[1] : info[0];
         if (Math.abs(ex.cr) < 0.05) continue;
-        const A = ri.lanes, B = mn.r.lanes, C = ex.r.lanes; if (B + C !== A && B + C !== A + 1) continue;
+        const A = ri.lanes, B = mn.r.lanes, C = ex.r.lanes; if (B + C !== A && B + C !== A + 1) continue; if (B === A || C === A) continue; /* jezdnia biegnie dalej z ta sama liczba pasow + boczna droga: skrzyzowanie, nie rozjazd - bez automatycznych turn:lanes */
         const sh = B + C === A + 1, left = ex.cr < 0, t = [];
         for (let i = 0; i < A; i++) { if (left) t.push(i < C - (sh ? 1 : 0) ? 'left' : (i === C - 1 && sh ? 'left;through' : 'through')); else t.push(i < A - C ? 'through' : (i === A - C && sh ? 'through;right' : 'right')); }
         if (!left && sh) { t.length = 0; for (let i = 0; i < A; i++) t.push(i < B - 1 ? 'through' : (i === B - 1 ? 'through;right' : 'right')); }

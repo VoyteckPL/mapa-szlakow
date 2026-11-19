@@ -1810,6 +1810,7 @@ if (!EMBED) (() => {
       for (const nw of newWays) { const m = new RegExp('<way old_id="' + nw.tid + '" new_id="(\\d+)"').exec(upTxt); if (m) { nw.r.osm = +m[1]; delete nw.r.nw; delete nw.r.tg; } }
       { const kOf = new Map(); byId.forEach((n, id) => kOf.set(id, key(n.lon, n.lat))); for (const [n, v] of mod) kOf.set(n.id, key(v.lon, v.lat)); crt.forEach(n => kOf.set(n.tid, key(n.lon, n.lat)));
         newWays.forEach(nw => { if (nw.r.osm !== nw.id) sent.set(nw.r.osm, nw.refs.map(x => kOf.get(x))); });
+        for (const [id, w] of wayEl) if (!nodeRefs.has(id)) sent.set(id, w.nodes.map(x => kOf.get(x))); /* drogi tylko z przesunietymi wezlami: lista wezlow po wysylce (z nowymi pozycjami) - inaczej stara lista dawala 'usuniete wezly' po wysylce */
         for (const [id, arr] of nodeRefs) { sent.set(id, arr.map(x => kOf.get(x))); S.doc.road.forEach(r => { if (r.osm === id) r.nk = r.nk.map((k, i) => k == null ? key(unproj(r.pts[i]).lon, unproj(r.pts[i]).lat) : k); }); } }
       for (const w of delWays) S.osm.ways.delete(w.id); S.doc.del = [];
       for (const [w, nt] of wmod) { const o = osmWay(w.id); if (o) o.t = nt; S.doc.road.forEach(r => { if (r.osm === w.id) delete r.tg; }); }

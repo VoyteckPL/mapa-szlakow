@@ -20,6 +20,7 @@ viewer = r"""<style>
 <script>
 (function () {
   var lcP = document.getElementById('lcP'); if (!lcP) return;
+  ['cNodeLanes', 'cNodeBord', 'cAn', 'cLay', 'cBlue'].forEach(function (id) { var e = document.getElementById(id); if (e) e.checked = false; }); /* warstwy techniczne edytora (pasy jezdni, granice wezlow) zawsze wylaczone w podgladzie - nie dziedzicza ustawien edytora z localStorage */
   /* usun z menu warstw sekcje 'Edytor' (naglowek, separator, przycisk) */
   var bs = lcP.querySelectorAll('b'); bs.forEach(function (b) { if (/edytor/i.test(b.textContent)) { var hr = b.previousElementSibling, row = b.nextElementSibling; if (hr && hr.tagName === 'HR') hr.remove(); if (row) row.remove(); b.remove(); } });
   var st = document.createElement('div'); st.id = 'vSt'; var clr = document.createElement('button'); clr.id = 'vClr'; clr.textContent = '🗑 Usuń wszystkie drogi'; var bar = document.createElement('div'); bar.id = 'vBar'; bar.append(clr, st); document.body.appendChild(bar);

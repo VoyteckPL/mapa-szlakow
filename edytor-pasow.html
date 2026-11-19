@@ -1686,7 +1686,7 @@ cv.addEventListener('pointerdown', e => {
 cv.addEventListener('pointermove', e => { if (S.draw && e.pointerType !== 'touch') { S.cur = s2w(evp(e)); const v = nearVertex(evp(e), 14), h = v ? S.doc.road[v.i].pts[v.vi] : null; const ch = h !== S.hov; S.hov = h; if (S.draw.pts.length || ch) render(); } else if (S.hov) { S.hov = null; render(); } });
 cv.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId)) return; ptrs.set(e.pointerId, evp(e));
-  if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.02, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
+  if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], k = Math.max(0.0014, Math.min(200, pinch.k * dist(a, b) / pinch.d)), c = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; S.view.k = k; S.view.x = pinch.v.x - (c[0] - pinch.c[0]) / k; S.view.y = pinch.v.y - (c[1] - pinch.c[1]) / k; render(); return; }
   if (!drag) return; const p = evp(e);
   if (drag.m === 'axisIns') { if (dist(p, drag.p) < 5) return; const r = S.doc.road[drag.i], i = drag.seg, pj = axisProj(r, s2w(drag.p)); push(); r.pts.splice(i + 1, 0, pj.p); r.nk.splice(i + 1, 0, null); if (r.rp) r.rp.splice(i + 1, 0, [(r.rp[i][0] + r.rp[i + 1][0]) / 2, (r.rp[i][1] + r.rp[i + 1][1]) / 2]); S.vsel = i + 1; drag = { m: 'vtx', i: drag.i, vi: i + 1, moved: true }; ui(); }
   if (drag.m === 'maybe' && dist(p, drag.p) > 6) drag.m = 'pan';
@@ -1722,7 +1722,7 @@ function endPtr(e) {
 }
 cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
 cv.addEventListener('contextmenu', e => e.preventDefault());
-let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.02, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
+let wsT = 0; cv.addEventListener('wheel', e => { clearTimeout(wsT); wsT = setTimeout(save, 400); e.preventDefault(); const p = evp(e), w = s2w(p), f = Math.exp(-e.deltaY * 0.0015); S.view.k = Math.max(0.0014, Math.min(200, S.view.k * f)); S.view.x = w[0] - (p[0] - W / 2) / S.view.k; S.view.y = w[1] - (p[1] - H / 2) / S.view.k; render(); }, { passive: false });
 cv.addEventListener('dblclick', e => { // podwojny klik na wezle usuwa go (cofnij: ↶)
   if (S.tool !== 'sel' || EMBED) return; const v = nearVertex(evp(e), 14); if (!v) return; const r = S.doc.road[v.i]; if (!r || !r.pts[v.vi]) return;
   push(); PZ.sel = null; r.pts.splice(v.vi, 1); r.nk.splice(v.vi, 1); if (r.rp) r.rp.splice(v.vi, 1); S.vsel = -1;

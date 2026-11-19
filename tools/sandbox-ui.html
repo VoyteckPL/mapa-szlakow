@@ -31,6 +31,7 @@
   <h4>Rysuj: typ drogi</h4><div class="types" id="sxTypes"></div>
   <div class="mu">Rysuj: klik = punkt, „Zakończ” = koniec. Klik w drogę tworzy skrzyżowanie, klik w punkt łączy. Zaznacz: przeciągnij punkt; „+” na odcinku dodaje punkt.</div>
   <h4>Widok</h4>
+  <div class="row"><button id="sxCutR" style="flex:1" title="Usuwa ręczne długości ramion i ręczne łuki pasów – wszystko wraca do automatu">Reset granic i łuków (auto)</button></div>
   <div class="row"><button id="sxLyOnly" class="on" style="flex:1" title="Ukrywa wszystko oprócz asfaltu i oznakowania">Tylko drogi + oznakowanie</button><button id="sxLyAll" style="flex:1">Wszystko</button></div>
   <label class="chk"><input type="checkbox" id="sxOut" checked> obrysy pasów</label>
   <label class="chk"><input type="checkbox" id="sxBord" checked> granice węzłów (żółte)</label>
@@ -232,6 +233,7 @@ addEventListener('keydown', e => { if ((e.key === 'Delete' || e.key === 'Backspa
 const LYS = { sxOut: 1, sxBord: 1, sxHd: 1, sxNL: 1, sxNM: 1, sxAx: 1, sxDot: 1, sxGrid: 1 }, LYV = ['sxOut', 'sxBord', 'sxHd', 'sxNL', 'sxAx', 'sxDot', 'sxGrid'];
 const lyApply = () => { try { $('cNodeLanes').checked = q('sxOut').checked; $('cNodeBord').checked = q('sxBord').checked; } catch (e) {} touch(); };
 q('sxBord').onchange = lyApply; q('sxHd').onchange = () => render(); q('sxNM').onchange = () => render();
+q('sxCutR').onclick = () => { push(); for (const r of roads()) delete r.cutD; S.laneH = {}; changed(); hint('Granice węzłów i łuki pasów: auto'); };
 q('sxLyOnly').onclick = () => { for (const k of LYV) q(k).checked = false; q('sxNM').checked = true; q('sxNA').checked = true; lyApply(); };
 q('sxLyAll').onclick = () => { for (const k of LYV) q(k).checked = k !== 'sxGrid'; q('sxNM').checked = true; lyApply(); };
 q('sxGrid').onchange = () => render(); q('sxNL').onchange = () => render(); q('sxNA').onchange = () => touch(); q('sxTen').oninput = () => { if (q('sxNA').checked) touch(); else render(); }; q('sxRad').oninput = () => { window.__nodeRad = +q('sxRad').value; q('sxRadV').textContent = +q('sxRad').value ? q('sxRad').value + ' m' : 'auto'; touch(); saveScene(); }; q('sxOT').oninput = () => { q('sxOTv').textContent = +q('sxOT').value ? q('sxOT').value + ' m' : 'cała droga'; changed(false); }; q('sxTenR').onclick = e => { e.preventDefault(); q('sxTen').value = 40; touch(); }; q('sxGs').onchange = () => render(); q('sxOut').onchange = () => { $('cNodeLanes').checked = q('sxOut').checked; touch(); }; q('sxDot').onchange = () => render(); q('sxAx').onchange = () => render();

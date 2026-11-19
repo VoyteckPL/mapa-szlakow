@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mapa dróg</title>
+<style>
+  :root { --bg:#e9ecdf; --pn:#fff; --tx:#1d2330; --mu:#667085; --ac:#1e88e5; }
+  @media (prefers-color-scheme: dark) { :root { --pn:#1b212b; --tx:#e6e9ef; --mu:#97a1b3; } }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); font:13px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--tx); overscroll-behavior:none; }
+  #map { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+  #map:active { cursor:grabbing; }
+  .box { position:fixed; background:var(--pn); border-radius:8px; box-shadow:0 1px 6px rgba(0,0,0,.3); padding:6px 9px; }
+  #hud { left:10px; top:10px; max-width:240px; }
+  #hud b { font-size:14px; } #hud .s { color:var(--mu); font-size:11px; margin-top:2px; }
+  #hud label { display:flex; gap:5px; align-items:center; margin-top:3px; }
+  #tags { left:10px; bottom:10px; max-width:300px; max-height:40vh; overflow:auto; font:11px/1.35 ui-monospace,Menlo,Consolas,monospace; display:none; }
+  #tags .k { color:var(--mu); }
+  #attr { right:6px; bottom:4px; font-size:10px; padding:1px 6px; border-radius:4px; color:var(--mu); }
+  #zbtn { right:10px; top:10px; display:flex; flex-direction:column; gap:4px; padding:4px; }
+  #zbtn button { width:30px; height:30px; font-size:18px; border:1px solid #ccd; background:var(--pn); color:var(--tx); border-radius:6px; cursor:pointer; }
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="hud" class="box"><b>Mapa dróg</b><div class="s" id="st">wczytuję…</div>
+  <label><input type="checkbox" id="cArr" checked> strzałki (turn:lanes)</label>
+  <label><input type="checkbox" id="cLn" checked> linie pasów</label>
+  <label><input type="checkbox" id="cBr" checked> mosty (cień, barierki)</label></div>
+<div id="zbtn" class="box"><button id="zi" title="Przybliż">+</button><button id="zo" title="Oddal">−</button></div>
+<div id="tags" class="box"></div>
+<div id="attr" class="box">Dane © współtwórcy OpenStreetMap (ODbL)</div>
+<script>
+'use strict';
+/* =====================================================================
+   MAPA DRÓG – lekki silnik od zera.
+   Rurociąg:  kafelki (dane Gdyni z repo) -> graf (węzły/krawędzie)
+              -> model pasów -> trasy (przelotowe pary ramion w węźle)
+              -> dopasowanie położenia jezdni na węzłach -> geometria (Path2D w metrach)
+              -> rysowanie jedną transformacją (bez przeliczania przy przesuwaniu).
+   ===================================================================== */
+
+/* ---------- konfiguracja (wszystkie progi w jednym miejscu) ---------- */
+const CFG = {
+  tile: { dLon: 0.02, dLat: 0.01, url: (x, y) => `data/roads/gdynia/${x}_${y}.json` },
+  zoom: { kMin: 0.0014, kMax: 300, loadK: 0.5, maxWays: 2500 },
+  through: { maxDev: 0.65, nameBonus: 2, classBonus: 1, lanesBonus: 0.5 },   // rad (~37°)
+  taper: { max: 22, frac: 0.4 },
+  junction: { cutMin: 2, cutMax: 9, filletMaxFactor: 3, straightAbove: 2.6 }, // rad: powyżej kąta (≈150°) bez łuku
+  chaikin: 2,
+  line: { edge: 0.2, lane: 0.14, dash: [3, 9] },
+  colors: { asphalt: '#6b6e74', edge: '#e6e7e3', lane: '#eeeeee', center: '#f0d44a', bridge: '#8d9197' },
+};
+/* klasy dróg: szerokość pasa, ranga, oznakowanie */
+const HW = {
+  motorway:     { w: 3.75, rank: 9, marks: 1, edge: 1, def: 2 }, trunk:        { w: 3.6,  rank: 8.5, marks: 1, edge: 1, def: 2 },
+  primary:      { w: 3.5,  rank: 8, marks: 1, edge: 1, def: 1 }, secondary:    { w: 3.4,  rank: 7, marks: 1, edge: 1, def: 1 },
+  tertiary:     { w: 3.25, rank: 6, marks: 1, edge: 1, def: 1 }, unclassified: { w: 3.0,  rank: 5, marks: 1, edge: 0, def: 1 },
+  residential:  { w: 2.75, rank: 4, marks: 0, edge: 0, def: 1 }, living_street:{ w: 2.5,  rank: 3, marks: 0, edge: 0, def: 1 },
+  service:      { w: 2.5,  rank: 2, marks: 0, edge: 0, def: 1 }, road:         { w: 3.0,  rank: 3, marks: 0, edge: 0, def: 1 },
+};
+const hwInfo = h => HW[(h || '').replace('_link', '')] || null;
+
+/* ---------- rzut i widok ---------- */
+const LON0 = 18.5345, LAT0 = 54.5073, MX = 111320 * Math.cos(LAT0 * Math.PI / 180), MY = 110540;
+const proj = (lon, lat) => [(lon - LON0) * MX, -(lat - LAT0) * MY];
+const unproj = (x, y) => [LON0 + x / MX, LAT0 - y / MY];
+const cv = document.getElementById('map'), ctx = cv.getContext('2d');
+const V = { x: 0, y: 0, k: 1.4 }; let W = 0, H = 0, DPR = 1, dirty = true;
+const zoomOf = k => Math.log2(156543.03 * Math.cos(LAT0 * Math.PI / 180) * k), kOfZoom = z => Math.pow(2, z) / (156543.03 * Math.cos(LAT0 * Math.PI / 180));
+const s2w = (sx, sy) => [(sx - W / 2) / V.k + V.x, (sy - H / 2) / V.k + V.y];
+function resize() { DPR = Math.min(window.devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR); dirty = true; }
+addEventListener('resize', resize);
+
+/* ---------- dane: kafelki z repo ---------- */
+const tiles = new Map(), ways = new Map(); let pending = 0, graphTimer = 0;
+const tileRange = () => { const a = unproj(...s2w(-W * 0.3, -H * 0.3)), b = unproj(...s2w(W * 1.3, H * 1.3)); return { x0: Math.floor(Math.min(a[0], b[0]) / CFG.tile.dLon), x1: Math.floor(Math.max(a[0], b[0]) / CFG.tile.dLon), y0: Math.floor(Math.min(a[1], b[1]) / CFG.tile.dLat), y1: Math.floor(Math.max(a[1], b[1]) / CFG.tile.dLat) }; };
+async function loadTile(x, y) {
+  const key = x + '_' + y; if (tiles.has(key)) return; tiles.set(key, 0); pending++;
+  try { const r = await fetch(CFG.tile.url(x, y)); if (r.ok) for (const w of await r.json()) if (!ways.has(w.i)) ways.set(w.i, { id: w.i, t: w.t, g: w.g.map(c => proj(c[0], c[1])), k: w.g.map(c => c[0].toFixed(7) + ',' + c[1].toFixed(7)) }); tiles.set(key, 1); }
+  catch (e) { tiles.delete(key); } finally { pending--; scheduleGraph(); }
+}
+function ensureTiles() { if (V.k < CFG.zoom.loadK) return; const r = tileRange(); for (let x = r.x0; x <= r.x1; x++) for (let y = r.y0; y <= r.y1; y++) if (!tiles.has(x + '_' + y) && pending < 4) loadTile(x, y); }
+function scheduleGraph() { clearTimeout(graphTimer); graphTimer = setTimeout(rebuild, 120); }
+
+/* ---------- 1) graf: węzły i krawędzie ---------- */
+function buildGraph(list) {
+  const use = new Map(); for (const w of list) { const seen = new Set(); w.k.forEach((k, i) => { if (!seen.has(k)) { seen.add(k); use.set(k, (use.get(k) || 0) + 1); } if (i === 0 || i === w.k.length - 1) use.set(k, (use.get(k) || 0) + 1); }); }
+  const nodes = new Map(), edges = [];
+  const node = (k, p) => { let n = nodes.get(k); if (!n) nodes.set(k, n = { k, x: p[0], y: p[1], arms: [] }); return n; };
+  for (const w of list) {
+    const hw = w.t.highway; if (!hwInfo(hw) || w.t.area === 'yes') continue;
+    let cut = [0]; for (let i = 1; i < w.k.length - 1; i++) if (use.get(w.k[i]) > 1) cut.push(i); cut.push(w.k.length - 1);
+    for (let c = 0; c + 1 < cut.length; c++) {
+      let pts = w.g.slice(cut[c], cut[c + 1] + 1), ka = w.k[cut[c]], kb = w.k[cut[c + 1]]; if (pts.length < 2 || ka === kb && pts.length < 3) continue;
+      if (w.t.oneway === '-1') { pts = pts.slice().reverse(); [ka, kb] = [kb, ka]; }
+      const e = { id: w.id + ':' + c, way: w.id, t: w.t, hw, info: hwInfo(hw), raw: pts, a: ka, b: kb, ly: layerOf(w.t) };
+      e.na = node(ka, pts[0]); e.nb = node(kb, pts[pts.length - 1]); edges.push(e);
+    }
+  }
+  return { nodes, edges };
+}
+function layerOf(t) { let l = parseInt(t.layer, 10) || 0; if (t.bridge && t.bridge !== 'no' && l < 1) l = 1; if (t.tunnel && t.tunnel !== 'no' && l > -1) l = -1; return l; }
+
+/* ---------- 2) model pasów krawędzi ---------- */
+const tokens = (s, n) => { const a = (s || '').split('|').map(x => x.replace(/slight_|sharp_/g, '')); while (a.length < n) a.push(''); return a.slice(0, n); };
+function laneModel(e) {
+  const t = e.t, info = e.info, ow = ['yes', '1', 'true', '-1'].includes(t.oneway) || /^(motorway|trunk)$/.test(e.hw) && t.oneway !== 'no' && false;
+  let total = parseInt(t.lanes, 10), lanes = [], w = info.w;
+  const tw = parseFloat(String(t.width || '').replace(',', '.'));
+  if (ow) {
+    const n = total > 0 ? total : info.def; const tk = tokens(t['turn:lanes'], n); for (let i = 0; i < n; i++) lanes.push({ dir: 1, tok: tk[i] });
+    if (tw > 0) w = Math.max(2.2, Math.min(5, tw / n));
+    const thr = lanes.map((l, i) => /through|^$|none/.test(l.tok) ? i : -1).filter(i => i >= 0);
+    const turnish = lanes.some(l => l.tok && !/^(through|none)$/.test(l.tok)); e.anchor = turnish && thr.length && thr.length < n ? (thr[0] + thr[thr.length - 1] + 1) / 2 : n / 2; /* oś: środek pasów „na wprost” */
+  } else {
+    let nf = parseInt(t['lanes:forward'], 10), nb = parseInt(t['lanes:backward'], 10);
+    if (!(total > 0)) total = (nf >= 0 ? nf : 0) + (nb >= 0 ? nb : 0) || (info.marks ? 2 : (info.rank >= 4 ? 2 : 1));
+    if (!(nf >= 0) && !(nb >= 0)) { nf = Math.ceil(total / 2); nb = total - nf; } else if (!(nf >= 0)) nf = total - nb; else if (!(nb >= 0)) nb = total - nf;
+    if (total === 1 && nf + nb !== 1) { nf = 1; nb = 0; }
+    const tf = tokens(t['turn:lanes:forward'], nf), tb = tokens(t['turn:lanes:backward'], nb);
+    for (let j = nb - 1; j >= 0; j--) lanes.push({ dir: -1, tok: tb[j] }); for (let j = 0; j < nf; j++) lanes.push({ dir: 1, tok: tf[j] });
+    if (tw > 0 && lanes.length) w = Math.max(2.2, Math.min(5, tw / lanes.length));
+    e.anchor = nf && nb ? nb : lanes.length / 2; /* oś w linii środkowej między kierunkami */
+  }
+  e.lanes = lanes; e.lw = w; e.oneway = ow;
+  const n = lanes.length; e.oL = -e.anchor * w; e.oR = (n - e.anchor) * w;
+}
+
+/* ---------- 3) trasy: pary przelotowe w węźle + dopasowanie położenia ---------- */
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1]], nrm = a => { const l = Math.hypot(a[0], a[1]) || 1; return [a[0] / l, a[1] / l]; };
+function smoothLine(pts, it) { let P = pts; for (let r = 0; r < it; r++) { if (P.length < 3) break; const Q = [P[0]]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; Q.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); } Q.push(P[P.length - 1]); P = Q; } return P; }
+function prepEdge(e) {
+  e.pts = smoothLine(e.raw, CFG.chaikin); const c = [0]; for (let i = 1; i < e.pts.length; i++) c.push(c[i - 1] + Math.hypot(e.pts[i][0] - e.pts[i - 1][0], e.pts[i][1] - e.pts[i - 1][1])); e.cum = c; e.len = c[c.length - 1];
+  laneModel(e); e.offA = [e.oL, e.oR]; e.offB = [e.oL, e.oR];
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const p of e.pts) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); } const m = Math.max(Math.abs(e.oL), Math.abs(e.oR)) + 3; e.bb = [x0 - m, y0 - m, x1 + m, y1 + m];
+}
+function outward(e, end) { const P = e.pts, n = P.length; if (end === 'a') { const q = atS(e, Math.min(6, e.len * 0.6)); return nrm(sub(q, P[0])); } const q = atS(e, Math.max(e.len - 6, e.len * 0.4)); return nrm(sub(q, P[n - 1])); }
+function atS(e, s) { const c = e.cum, P = e.pts; if (s <= 0) return P[0]; if (s >= e.len) return P[P.length - 1]; let i = 1; while (i < c.length - 1 && c[i] < s) i++; const f = (s - c[i - 1]) / ((c[i] - c[i - 1]) || 1); return [P[i - 1][0] + (P[i][0] - P[i - 1][0]) * f, P[i - 1][1] + (P[i][1] - P[i - 1][1]) * f]; }
+function tanAt(e, s) { const a = atS(e, Math.max(0, s - 0.5)), b = atS(e, Math.min(e.len, s + 0.5)); return nrm(sub(b, a)); }
+function matchNodes(G) {
+  for (const n of G.nodes.values()) n.arms = [];
+  for (const e of G.edges) { e.na.arms.push({ e, end: 'a' }); e.nb.arms.push({ e, end: 'b' }); }
+  for (const n of G.nodes.values()) {
+    const arms = n.arms; if (arms.length < 2) continue;
+    for (const a of arms) { a.d = outward(a.e, a.end); a.ang = Math.atan2(a.d[1], a.d[0]); a.off = a.end === 'a' ? a.e.offA : a.e.offB; }
+    const cand = []; for (let i = 0; i < arms.length; i++) for (let j = i + 1; j < arms.length; j++) { const A = arms[i], B = arms[j], dev = Math.PI - Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); if (dev > CFG.through.maxDev) continue;
+      const same = (A.e.t.name && A.e.t.name === B.e.t.name) || (A.e.t.ref && A.e.t.ref === B.e.t.ref); cand.push({ A, B, sc: (same ? CFG.through.nameBonus : 0) + (Math.floor(A.e.info.rank) === Math.floor(B.e.info.rank) ? CFG.through.classBonus : 0) + (A.e.lanes.length === B.e.lanes.length ? CFG.through.lanesBonus : 0) - dev * 2 }); }
+    cand.sort((p, q) => q.sc - p.sc); const used = new Set(); n.pairs = [];
+    for (const c of cand) { if (used.has(c.A) || used.has(c.B)) continue; used.add(c.A); used.add(c.B); n.pairs.push(c);
+      /* ramię w układzie trasy: początek krawędzi = kierunek przeciwny do trasy => odbicie lewo/prawo */
+      const fr = (arm, route) => (arm.end === 'a') === route ? [-arm.off[1], -arm.off[0]] : [arm.off[0], arm.off[1]]; /* route=true dla ramienia A (trasa wchodzi) */
+      const a = fr(c.A, true), b = fr(c.B, false), m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const back = (arm, route) => (arm.end === 'a') === route ? [-m[1], -m[0]] : [m[0], m[1]]; const va = back(c.A, true), vb = back(c.B, false);
+      if (c.A.end === 'a') c.A.e.offA = va; else c.A.e.offB = va; if (c.B.end === 'a') c.B.e.offA = vb; else c.B.e.offB = vb; c.A.off = va; c.B.off = vb; }
+    n.cut = Math.max(CFG.junction.cutMin, Math.min(CFG.junction.cutMax, Math.max(...arms.map(a => Math.max(Math.abs(a.off[0]), Math.abs(a.off[1])))) * 0.9));
+  }
+}
+
+/* ---------- 4) geometria krawędzi i węzłów (Path2D w metrach) ---------- */
+const sm = t => t * t * (3 - 2 * t);
+function lat(e, s) { /* położenie lewej i prawej krawędzi na długości s (zwężenie przy końcach do wartości z węzła) */
+  const T = Math.min(CFG.taper.max, e.len * CFG.taper.frac), wa = 1 - sm(Math.max(0, Math.min(1, s / T))), wb = 1 - sm(Math.max(0, Math.min(1, (e.len - s) / T)));
+  return [e.oL + (e.offA[0] - e.oL) * wa + (e.offB[0] - e.oL) * wb, e.oR + (e.offA[1] - e.oR) * wa + (e.offB[1] - e.oR) * wb];
+}
+function buildEdgeGeo(e) {
+  const P = e.pts, n = P.length, L = [], R = [], N = [], S = e.cum, cutA = e.na.arms.length >= 3 ? (e.na.cut || 0) : 0, cutB = e.nb.arms.length >= 3 ? (e.nb.cut || 0) : 0;
+  const T = []; for (let i = 0; i < n; i++) { const a = P[Math.max(0, i - 1)], b = P[Math.min(n - 1, i + 1)], d = nrm(sub(b, a)); T.push(d); N.push([-d[1], d[0]]); }
+  /* dogęszczenie na długich odcinkach, żeby zwężenia były gładkie */
+  const dense = []; for (let i = 0; i < n; i++) { dense.push({ p: P[i], nn: N[i], s: S[i] }); if (i + 1 < n) { const seg = S[i + 1] - S[i], m = Math.floor(seg / 4); for (let q = 1; q <= m; q++) { const f = q / (m + 1); dense.push({ p: [P[i][0] + (P[i + 1][0] - P[i][0]) * f, P[i][1] + (P[i + 1][1] - P[i][1]) * f], nn: nrm([N[i][0] * (1 - f) + N[i + 1][0] * f, N[i][1] * (1 - f) + N[i + 1][1] * f]), s: S[i] + seg * f }); } } }
+  for (const q of dense) { const l = lat(e, q.s); q.l = [q.p[0] + q.nn[0] * l[0], q.p[1] + q.nn[1] * l[0]]; q.r = [q.p[0] + q.nn[0] * l[1], q.p[1] + q.nn[1] * l[1]]; q.lo = l; }
+  const asphalt = new Path2D(); asphalt.moveTo(dense[0].l[0], dense[0].l[1]); for (const q of dense) asphalt.lineTo(q.l[0], q.l[1]); for (let i = dense.length - 1; i >= 0; i--) asphalt.lineTo(dense[i].r[0], dense[i].r[1]); asphalt.closePath();
+  const info = e.info, nL = e.lanes.length, edge = new Path2D(), dash = new Path2D(), solid = new Path2D(), dbl = new Path2D(), bridge = new Path2D();
+  const inside = q => q.s >= cutA && q.s <= e.len - cutB, line = (path, f) => { let on = false; for (const q of dense) { const ok = inside(q); if (!ok) { on = false; continue; } const pt = f(q); if (!on) { path.moveTo(pt[0], pt[1]); on = true; } else path.lineTo(pt[0], pt[1]); } };
+  if (info.edge) { line(edge, q => q.l); line(edge, q => q.r); }
+  if (info.marks && nL >= 2) for (let i = 1; i < nL; i++) { const opp = e.lanes[i - 1].dir !== e.lanes[i].dir, f = q => [q.p[0] + q.nn[0] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL), q.p[1] + q.nn[1] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL)];
+    if (opp) { if (nL >= 4 && info.rank >= 7) { line(dbl, q => { const c = f(q); return [c[0] + q.nn[0] * 0.12, c[1] + q.nn[1] * 0.12]; }); line(dbl, q => { const c = f(q); return [c[0] - q.nn[0] * 0.12, c[1] - q.nn[1] * 0.12]; }); } else line(solid, f); } else line(dash, f); }
+  if (e.ly > 0) { line(bridge, q => [q.l[0] - q.nn[0] * 0.25, q.l[1] - q.nn[1] * 0.25]); line(bridge, q => [q.r[0] + q.nn[0] * 0.25, q.r[1] + q.nn[1] * 0.25]); }
+  e.geo = { asphalt, edge, dash, solid, dbl, bridge, dense };
+  /* strzałki z turn:lanes: 10 m przed końcem (dla pasów w kierunku +) lub za początkiem (dla pasów -) */
+  e.arrows = []; if (e.len >= 30) for (let i = 0; i < nL; i++) { const tok = e.lanes[i].tok; if (!tok || tok === 'none') continue; const fwd = e.lanes[i].dir > 0, s = fwd ? e.len - Math.max(9, cutB + 5) : Math.max(9, cutA + 5); if (s < 4 || s > e.len - 4) continue; const q = lat(e, s), c = (q[0] + (q[1] - q[0]) * (i + 0.5) / nL), p = atS(e, s), d = tanAt(e, s), nn = [-d[1], d[0]]; e.arrows.push({ x: p[0] + nn[0] * c, y: p[1] + nn[1] * c, a: Math.atan2(d[1], d[0]) + (fwd ? 0 : Math.PI), tok }); }
+}
+function buildNodeGeo(n) {
+  const arms = n.arms; if (arms.length < 2) { n.geo = null; return; }
+  const c = n.cut, pts = [];
+  for (const a of arms) { const e = a.e, s = a.end === 'a' ? c : e.len - c; const p = atS(e, Math.max(0, Math.min(e.len, s))), d = tanAt(e, Math.max(0, Math.min(e.len, s))), nn = [-d[1], d[0]], l = lat(e, Math.max(0, Math.min(e.len, s)));
+    const Lp = [p[0] + nn[0] * l[0], p[1] + nn[1] * l[0]], Rp = [p[0] + nn[0] * l[1], p[1] + nn[1] * l[1]], o = a.d; /* lewa/prawa względem kierunku NA ZEWNĄTRZ węzła */
+    const cr = q => o[0] * (q[1] - n.y) - o[1] * (q[0] - n.x); a.pl = cr(Lp) > cr(Rp) ? [Lp, Rp] : [Rp, Lp]; /* [po lewej od ramienia, po prawej] */ }
+  const order = arms.slice().sort((p, q) => p.ang - q.ang), fill = new Path2D(), edge = new Path2D(); let first = true;
+  const add = (pp, mv) => { if (mv) fill.moveTo(pp[0], pp[1]); else fill.lineTo(pp[0], pp[1]); };
+  for (let i = 0; i < order.length; i++) { const A = order[i], B = order[(i + 1) % order.length]; /* narożnik: lewa krawędź ramienia A -> prawa krawędź ramienia B */
+    const p0 = A.pl[0], p1 = B.pl[1]; if (first) { add(A.pl[1], true); first = false; } add(A.pl[1], false); add(p0, false);
+    const ang = Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); let ctrl = null;
+    if (order.length > 1 && ang < CFG.junction.straightAbove) { const r = isect(p0, A.d, p1, B.d); /* prosta kierunkowa każdej krawędzi: przecięcie = punkt kontrolny łuku */ if (r && Math.hypot(r[0] - p0[0], r[1] - p0[1]) < c * CFG.junction.filletMaxFactor && Math.hypot(r[0] - p1[0], r[1] - p1[1]) < c * CFG.junction.filletMaxFactor) ctrl = r; }
+    edge.moveTo(p0[0], p0[1]); if (ctrl) { for (let q = 1; q <= 10; q++) { const t = q / 10, m = 1 - t, pp = [m * m * p0[0] + 2 * m * t * ctrl[0] + t * t * p1[0], m * m * p0[1] + 2 * m * t * ctrl[1] + t * t * p1[1]]; fill.lineTo(pp[0], pp[1]); edge.lineTo(pp[0], pp[1]); } } else { fill.lineTo(p1[0], p1[1]); edge.lineTo(p1[0], p1[1]); } }
+  fill.closePath(); n.geo = { fill, edge, info: arms.reduce((m, a) => Math.max(m, a.e.info.edge ? 1 : 0), 0) };
+  n.ly = layerOfNode(arms);
+}
+function isect(p, d, q, e) { const den = d[0] * e[1] - d[1] * e[0]; if (Math.abs(den) < 1e-6) return null; const t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den; return [p[0] + d[0] * t, p[1] + d[1] * t]; }
+function layerOfNode(arms) { const ls = arms.map(a => a.e.ly), mx = Math.max(...ls), mn = Math.min(...ls); return mx > mn && mx > 0 && ls.filter(v => v === mx).length >= 2 ? mx : mn; }
+
+/* ---------- 5) przebudowa grafu po wczytaniu danych ---------- */
+let G = { nodes: new Map(), edges: [] }, lastMs = 0;
+function rebuild() {
+  const t0 = performance.now(), a = s2w(-W * 0.4, -H * 0.4), b = s2w(W * 1.4, H * 1.4), x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]), list = [];
+  for (const w of ways.values()) { if (!hwInfo(w.t.highway) || w.t.area === 'yes') continue; if (w.g.some(p => p[0] >= x0 && p[0] <= x1 && p[1] >= y0 && p[1] <= y1)) list.push(w); if (list.length >= CFG.zoom.maxWays) break; }
+  G = buildGraph(list); for (const e of G.edges) prepEdge(e); matchNodes(G);
+  for (const n of G.nodes.values()) if (n.arms.length >= 2) buildNodeGeo(n); for (const e of G.edges) buildEdgeGeo(e);
+  G.layers = [...new Set(G.edges.map(e => e.ly))].sort((p, q) => p - q);
+  lastMs = performance.now() - t0; dirty = true; hud();
+}
+
+/* ---------- 6) rysowanie ---------- */
+let asphaltPat = null;
+function pattern() { if (asphaltPat) return asphaltPat; const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d'); g.fillStyle = CFG.colors.asphalt; g.fillRect(0, 0, 128, 128); for (let i = 0; i < 1600; i++) { const v = 90 + Math.random() * 50 | 0; g.fillStyle = `rgba(${v},${v},${v + 4},.35)`; g.fillRect(Math.random() * 128, Math.random() * 128, 1.2, 1.2); } asphaltPat = ctx.createPattern(c, 'repeat'); asphaltPat.setTransform(new DOMMatrix().scale(4 / 128)); return asphaltPat; }
+function arrowPath(ctx2, tok) { /* strzałka w kierunku +x, długość ~3 m */
+  const one = (sx, kind) => { ctx2.beginPath();
+    if (kind === 'through') { ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.7, -0.09); ctx2.lineTo(0.7, -0.4); ctx2.lineTo(1.5, 0); ctx2.lineTo(0.7, 0.4); ctx2.lineTo(0.7, 0.09); ctx2.lineTo(-1.4, 0.09); }
+    else { const sg = kind === 'left' ? -1 : 1; ctx2.moveTo(-1.4, -0.09); ctx2.lineTo(0.2, -0.09); ctx2.lineTo(0.2, sg * 0.0 - 0.09); ctx2.lineTo(0.2, sg * 0.9); ctx2.lineTo(-0.15, sg * 0.9); ctx2.lineTo(0.35, sg * 1.5); ctx2.lineTo(0.85, sg * 0.9); ctx2.lineTo(0.5, sg * 0.9); ctx2.lineTo(0.5, 0.09); ctx2.lineTo(-1.4, 0.09); }
+    ctx2.closePath(); ctx2.fill(); };
+  const parts = tok.split(';'); if (parts.includes('through')) one(0, 'through'); for (const p of parts) if (p === 'left' || p === 'right') one(0, p);
+  if (!parts.some(p => /through|left|right/.test(p))) return; }
+function draw() {
+  dirty = false; const k = V.k, z = zoomOf(k); ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg'); ctx.fillRect(0, 0, W, H);
+  if (z < 13 || !G.edges.length) return;
+  const showLn = document.getElementById('cLn').checked && k >= 1.6, showAr = document.getElementById('cArr').checked && k >= 2.2, showBr = document.getElementById('cBr').checked;
+  const a = s2w(0, 0), b = s2w(W, H), vx0 = Math.min(a[0], b[0]), vx1 = Math.max(a[0], b[0]), vy0 = Math.min(a[1], b[1]), vy1 = Math.max(a[1], b[1]), vis = bb => !(bb[2] < vx0 || bb[0] > vx1 || bb[3] < vy0 || bb[1] > vy1);
+  ctx.setTransform(DPR * k, 0, 0, DPR * k, DPR * (W / 2 - V.x * k), DPR * (H / 2 - V.y * k)); ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+  if (k < 1.0) { /* mały zoom: same grube kreski osi */
+    ctx.strokeStyle = CFG.colors.asphalt; ctx.lineCap = 'round'; for (const e of G.edges) { if (!vis(e.bb)) continue; ctx.lineWidth = Math.max(e.lanes.length * e.lw, 2.2 / k); ctx.beginPath(); e.pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); } return; }
+  const pat = pattern(), px = 1 / k;
+  for (const ly of G.layers) {
+    const es = G.edges.filter(e => e.ly === ly && vis(e.bb)), ns = [...G.nodes.values()].filter(n => n.geo && n.ly === ly && n.x >= vx0 - 20 && n.x <= vx1 + 20 && n.y >= vy0 - 20 && n.y <= vy1 + 20);
+    if (ly > 0 && showBr) { ctx.save(); ctx.translate(1.1, 1.5); ctx.globalAlpha = 0.16; ctx.fillStyle = '#000'; for (const e of es) ctx.fill(e.geo.asphalt); ctx.restore(); }
+    ctx.save(); if (ly < 0) ctx.globalAlpha = 0.5; ctx.fillStyle = pat; for (const e of es) ctx.fill(e.geo.asphalt); for (const n of ns) ctx.fill(n.geo.fill);
+    ctx.lineWidth = Math.max(CFG.line.edge, 1.3 * px); ctx.strokeStyle = CFG.colors.edge; for (const e of es) if (e.geo) ctx.stroke(e.geo.edge); for (const n of ns) ctx.stroke(n.geo.edge); /* krawędzie jezdni i narożniki węzłów */
+    if (ly > 0 && showBr) { ctx.lineWidth = 0.5; ctx.strokeStyle = CFG.colors.bridge; for (const e of es) ctx.stroke(e.geo.bridge); }
+    if (showLn) { ctx.lineWidth = Math.max(CFG.line.lane, px); ctx.strokeStyle = CFG.colors.lane; ctx.setLineDash(CFG.line.dash); for (const e of es) ctx.stroke(e.geo.dash); ctx.setLineDash([]); for (const e of es) ctx.stroke(e.geo.solid); ctx.strokeStyle = CFG.colors.center; ctx.lineWidth = Math.max(0.1, px); for (const e of es) ctx.stroke(e.geo.dbl); }
+    if (showAr) { ctx.fillStyle = '#dcdcd8'; for (const e of es) for (const ar of e.arrows) { ctx.save(); ctx.translate(ar.x, ar.y); ctx.rotate(ar.a); arrowPath(ctx, ar.tok); ctx.restore(); } }
+    ctx.restore();
+  }
+  if (sel) { ctx.lineWidth = Math.max(0.25, 2 * px); ctx.strokeStyle = '#ffd23f'; ctx.stroke(sel.geo.asphalt); }
+}
+function frame() { if (dirty) draw(); requestAnimationFrame(frame); }
+
+/* ---------- 7) interakcja ---------- */
+let sel = null; const ptrs = new Map(); let moved = 0;
+function setView(x, y, k) { V.x = x; V.y = y; V.k = Math.max(CFG.zoom.kMin, Math.min(CFG.zoom.kMax, k)); dirty = true; ensureTiles(); scheduleGraph(); hashSet(); }
+function zoomAt(sx, sy, f) { const w = s2w(sx, sy), k = Math.max(CFG.zoom.kMin, Math.min(CFG.zoom.kMax, V.k * f)); V.x = w[0] - (sx - W / 2) / k; V.y = w[1] - (sy - H / 2) / k; V.k = k; dirty = true; ensureTiles(); scheduleGraph(); hashSet(); }
+cv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); moved = 0; });
+cv.addEventListener('pointermove', e => { if (!ptrs.has(e.pointerId)) return; const p = ptrs.get(e.pointerId);
+  if (ptrs.size === 1) { const dx = e.clientX - p[0], dy = e.clientY - p[1]; moved += Math.abs(dx) + Math.abs(dy); V.x -= dx / V.k; V.y -= dy / V.k; dirty = true; }
+  else if (ptrs.size === 2) { const o = [...ptrs.entries()].find(([id]) => id !== e.pointerId)[1], d0 = Math.hypot(p[0] - o[0], p[1] - o[1]), d1 = Math.hypot(e.clientX - o[0], e.clientY - o[1]); if (d0 > 0) zoomAt((e.clientX + o[0]) / 2, (e.clientY + o[1]) / 2, d1 / d0); moved += 10; }
+  ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+const endPtr = e => { if (ptrs.size === 1 && moved < 6) pick(e.clientX, e.clientY); ptrs.delete(e.pointerId); if (!ptrs.size) { ensureTiles(); scheduleGraph(); hashSet(); } };
+cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', e => ptrs.delete(e.pointerId));
+cv.addEventListener('dblclick', e => zoomAt(e.clientX, e.clientY, 2));
+document.getElementById('zi').onclick = () => zoomAt(W / 2, H / 2, 1.6); document.getElementById('zo').onclick = () => zoomAt(W / 2, H / 2, 1 / 1.6);
+for (const id of ['cArr', 'cLn', 'cBr']) document.getElementById(id).onchange = () => { dirty = true; };
+function pick(sx, sy) { const w = s2w(sx, sy), tol = 10 / V.k; let best = null, bd = 1e9; for (const e of G.edges) { if (w[0] < e.bb[0] || w[0] > e.bb[2] || w[1] < e.bb[1] || w[1] > e.bb[3]) continue; for (let i = 1; i < e.pts.length; i++) { const A = e.pts[i - 1], B = e.pts[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)), d = Math.hypot(w[0] - A[0] - dx * t, w[1] - A[1] - dy * t); if (d < bd) { bd = d; best = e; } } }
+  sel = best && bd < Math.max(tol, (best.lanes.length * best.lw) / 2 + 1) ? best : null; dirty = true; const tg = document.getElementById('tags');
+  if (!sel) { tg.style.display = 'none'; return; } tg.style.display = 'block'; tg.innerHTML = `<div><span class="k">way</span>=<a href="https://www.openstreetmap.org/way/${sel.way}" target="_blank" rel="noopener">${sel.way}</a></div>` + Object.entries(sel.t).map(([a, b]) => `<div><span class="k">${esc(a)}</span>=${esc(b)}</div>`).join('') + `<div class="k">pasy: ${sel.lanes.length} · oś: ${sel.anchor}</div>`; }
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+function hud() { document.getElementById('st').textContent = `zoom ${zoomOf(V.k).toFixed(1)} · dróg ${G.edges.length} · węzłów ${[...G.nodes.values()].filter(n => n.arms.length > 2).length} · układ ${Math.round(lastMs)} ms` + (pending ? ' · wczytuję…' : ''); }
+setInterval(hud, 800);
+
+/* ---------- 8) adres (#map=zoom/lat/lon) ---------- */
+function hashSet() { const ll = unproj(V.x, V.y); try { history.replaceState(null, '', `#map=${zoomOf(V.k).toFixed(2)}/${ll[1].toFixed(6)}/${ll[0].toFixed(6)}`); } catch (e) {} }
+function hashGet() { const m = /#map=(\d+(?:\.\d+)?)\/(-?[\d.]+)\/(-?[\d.]+)/.exec(location.hash); if (!m) return false; const p = proj(+m[3], +m[2]); V.x = p[0]; V.y = p[1]; V.k = Math.max(CFG.zoom.kMin, Math.min(CFG.zoom.kMax, kOfZoom(+m[1]))); return true; }
+addEventListener('hashchange', () => { if (hashGet()) { dirty = true; ensureTiles(); scheduleGraph(); } });
+
+resize(); if (!hashGet()) { V.k = kOfZoom(17); } ensureTiles(); hud(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

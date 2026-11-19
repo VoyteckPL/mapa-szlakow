@@ -159,6 +159,13 @@ function matchNodes(G) {
 }
 
 /* ---------- 4) geometria krawędzi i węzłów (Path2D w metrach) ---------- */
+function inStrip(e, p, pad) { /* czy punkt leży wewnątrz asfaltu krawędzi e (na jej szerokości); pad > 0 zwęża pas */
+  if (p[0] < e.bb[0] || p[0] > e.bb[2] || p[1] < e.bb[1] || p[1] > e.bb[3]) return false; const P = e.pts; let bd = 1e9, bs = 0, bn = 0;
+  for (let i = 1; i < P.length; i++) { const A = P[i - 1], B = P[i], dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy || 1, t = Math.max(0, Math.min(1, ((p[0] - A[0]) * dx + (p[1] - A[1]) * dy) / L2)), qx = A[0] + dx * t, qy = A[1] + dy * t, d = Math.hypot(p[0] - qx, p[1] - qy); if (d < bd) { bd = d; bs = e.cum[i - 1] + (e.cum[i] - e.cum[i - 1]) * t; const L = Math.sqrt(L2); bn = ((p[0] - qx) * -dy + (p[1] - qy) * dx) / L; } }
+  const l = lat(e, bs); return bn > l[0] + pad && bn < l[1] - pad && bs > 0.3 && bs < e.len - 0.3; }
+function neighbors(e) { /* krawędzie, które mogą zakrywać krawędzie e (nie para przelotowa, ta sama warstwa) */
+  const out = []; for (const o of G.edges) { if (o === e || o.ly !== e.ly) continue; if (o.bb[2] < e.bb[0] || o.bb[0] > e.bb[2] || o.bb[3] < e.bb[1] || o.bb[1] > e.bb[3]) continue;
+    let partner = false; for (const n of [e.na, e.nb]) for (const c of n.pairs || []) if ((c.A.e === e && c.B.e === o) || (c.B.e === e && c.A.e === o)) partner = true; if (!partner) out.push(o); } return out; }
 const sm = t => t * t * (3 - 2 * t);
 function lat(e, s) { /* położenie lewej i prawej krawędzi na długości s (zwężenie przy końcach do wartości z węzła) */
   const T = Math.min(CFG.taper.max, e.len * CFG.taper.frac), wa = 1 - sm(Math.max(0, Math.min(1, s / T))), wb = 1 - sm(Math.max(0, Math.min(1, (e.len - s) / T)));
@@ -172,8 +179,8 @@ function buildEdgeGeo(e) {
   for (const q of dense) { const l = lat(e, q.s); q.l = [q.p[0] + q.nn[0] * l[0], q.p[1] + q.nn[1] * l[0]]; q.r = [q.p[0] + q.nn[0] * l[1], q.p[1] + q.nn[1] * l[1]]; q.lo = l; }
   const asphalt = new Path2D(); asphalt.moveTo(dense[0].l[0], dense[0].l[1]); for (const q of dense) asphalt.lineTo(q.l[0], q.l[1]); for (let i = dense.length - 1; i >= 0; i--) asphalt.lineTo(dense[i].r[0], dense[i].r[1]); asphalt.closePath();
   const info = e.info, nL = e.lanes.length, edge = new Path2D(), dash = new Path2D(), solid = new Path2D(), dbl = new Path2D(), bridge = new Path2D();
-  const inside = q => q.s >= cutA && q.s <= e.len - cutB, line = (path, f) => { let on = false; for (const q of dense) { const ok = inside(q); if (!ok) { on = false; continue; } const pt = f(q); if (!on) { path.moveTo(pt[0], pt[1]); on = true; } else path.lineTo(pt[0], pt[1]); } };
-  if (info.edge) { line(edge, q => q.l); line(edge, q => q.r); }
+  const nb2 = e.info.edge ? neighbors(e) : [], covered = pt => nb2.some(o => inStrip(o, pt, 0.15)), inside = q => q.s >= cutA && q.s <= e.len - cutB, line = (path, f, chk) => { let on = false; for (const q of dense) { const ok = inside(q); if (!ok) { on = false; continue; } const pt = f(q); if (chk && covered(pt)) { on = false; continue; } if (!on) { path.moveTo(pt[0], pt[1]); on = true; } else path.lineTo(pt[0], pt[1]); } };
+  if (info.edge) { line(edge, q => q.l, true); line(edge, q => q.r, true); }
   if (info.marks && nL >= 2) for (let i = 1; i < nL; i++) { const opp = e.lanes[i - 1].dir !== e.lanes[i].dir, f = q => [q.p[0] + q.nn[0] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL), q.p[1] + q.nn[1] * (q.lo[0] + (q.lo[1] - q.lo[0]) * i / nL)];
     if (opp) { if (nL >= 4 && info.rank >= 7) { line(dbl, q => { const c = f(q); return [c[0] + q.nn[0] * 0.12, c[1] + q.nn[1] * 0.12]; }); line(dbl, q => { const c = f(q); return [c[0] - q.nn[0] * 0.12, c[1] - q.nn[1] * 0.12]; }); } else line(solid, f); } else line(dash, f); }
   if (e.ly > 0) { line(bridge, q => [q.l[0] - q.nn[0] * 0.25, q.l[1] - q.nn[1] * 0.25]); line(bridge, q => [q.r[0] + q.nn[0] * 0.25, q.r[1] + q.nn[1] * 0.25]); }
@@ -193,7 +200,9 @@ function buildNodeGeo(n) {
     const p0 = A.pl[0], p1 = B.pl[1]; if (first) { add(A.pl[1], true); first = false; } add(A.pl[1], false); add(p0, false);
     const ang = Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1]))); let ctrl = null;
     if (order.length > 1 && ang < CFG.junction.straightAbove) { const r = isect(p0, A.d, p1, B.d); /* prosta kierunkowa każdej krawędzi: przecięcie = punkt kontrolny łuku */ if (r && Math.hypot(r[0] - p0[0], r[1] - p0[1]) < c * CFG.junction.filletMaxFactor && Math.hypot(r[0] - p1[0], r[1] - p1[1]) < c * CFG.junction.filletMaxFactor) ctrl = r; }
-    edge.moveTo(p0[0], p0[1]); if (ctrl) { for (let q = 1; q <= 10; q++) { const t = q / 10, m = 1 - t, pp = [m * m * p0[0] + 2 * m * t * ctrl[0] + t * t * p1[0], m * m * p0[1] + 2 * m * t * ctrl[1] + t * t * p1[1]]; fill.lineTo(pp[0], pp[1]); edge.lineTo(pp[0], pp[1]); } } else { fill.lineTo(p1[0], p1[1]); edge.lineTo(p1[0], p1[1]); } }
+    const cp = [p0]; if (ctrl) { for (let q = 1; q <= 10; q++) { const t = q / 10, m = 1 - t; cp.push([m * m * p0[0] + 2 * m * t * ctrl[0] + t * t * p1[0], m * m * p0[1] + 2 * m * t * ctrl[1] + t * t * p1[1]]); } } else cp.push(p1);
+    for (let q = 1; q < cp.length; q++) fill.lineTo(cp[q][0], cp[q][1]);
+    let on = false; for (let q = 1; q < cp.length; q++) { const mid = [(cp[q - 1][0] + cp[q][0]) / 2, (cp[q - 1][1] + cp[q][1]) / 2], hid = arms.some(a => inStrip(a.e, mid, 0.2)); if (hid) { on = false; continue; } if (!on) { edge.moveTo(cp[q - 1][0], cp[q - 1][1]); on = true; } edge.lineTo(cp[q][0], cp[q][1]); } }
   fill.closePath(); n.geo = { fill, edge, info: arms.reduce((m, a) => Math.max(m, a.e.info.edge ? 1 : 0), 0) };
   n.ly = layerOfNode(arms);
 }

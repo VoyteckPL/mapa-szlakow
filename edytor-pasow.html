@@ -351,7 +351,7 @@ function skelFork(X, yl, yr, C, R, gores) {
     o.Cd = Cd; o.nh = pre + N + 1; o.dOwn = dOwn; o.cTrue = o.c;
   }
   // zakaz nakladania: osie jezdni zjazdu nie moga zblizyc sie bardziej niz suma polowek szerokosci + margines; odsuwamy lagodnie (mniejsza odnoga ustepuje)
-  if (arms[0].l + arms[1].l !== nX + 1) { const A = arms[0], B = arms[1], nA = A.Cd.length, nB = B.Cd.length, hs = (A.l + B.l) * w / 2, CL = 0, sh = A.straight !== B.straight ? (A.straight ? [0, 1] : [1, 0]) : (A.l === B.l ? [0.5, 0.5] : (A.l < B.l ? [1, 0] : [0, 1]));
+  if (arms[0].l + arms[1].l !== nX + 1) { const A = arms[0], B = arms[1], nA = A.Cd.length, nB = B.Cd.length, hs = (A.l + B.l) * w / 2, CL = 2.2, sh = A.straight !== B.straight ? (A.straight ? [0, 1] : [1, 0]) : (A.l === B.l ? [0.5, 0.5] : (A.l < B.l ? [1, 0] : [0, 1]));
     const real = O => { const n = O.Cd.length, tg = i => nOf(nrm(sub(O.Cd[Math.min(n - 1, i + 1)], O.Cd[Math.max(0, i - 1)]))), tr = add(n0, mul(nE, O.c)), s0 = tg(0), sg = dist(add(O.Cd[0], mul(s0, O.dOwn || 0)), tr) <= dist(add(O.Cd[0], mul(s0, -(O.dOwn || 0))), tr) ? 1 : -1; return O.Cd.map((q, i) => add(q, mul(tg(i), sg * (O.dOwn || 0)))); }, rA = real(A), rB = real(B); /* odstep liczony miedzy rzeczywistymi osiami jezdni (z offsetem), nie miedzy osiami OSM */
     const pA = new Array(nA).fill(0), pB = new Array(nB).fill(0), dirA = new Array(nA), dirB = new Array(nB); let sA2 = 0;
     for (let i = 0; i < nA; i++) { if (i) sA2 += Math.hypot(A.Cd[i][0] - A.Cd[i - 1][0], A.Cd[i][1] - A.Cd[i - 1][1]); let bj = Math.min(nB - 1, i), bd = 1e9; for (let j = Math.max(0, i - 80); j < Math.min(nB, i + 80); j++) { const d = Math.hypot(rA[i][0] - rB[j][0], rA[i][1] - rB[j][1]); if (d < bd) { bd = d; bj = j; } }

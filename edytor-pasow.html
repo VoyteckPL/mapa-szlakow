@@ -812,7 +812,7 @@ function layout() {
       const a = arms[i], b = arms[(i + 1) % N]; let gap = b.a - a.a; while (gap <= 0) gap += 2 * Math.PI;
       const L0 = [o[0] + a.n[0] * a.hp, o[1] + a.n[1] * a.hp], R0 = [o[0] - b.n[0] * b.hq, o[1] - b.n[1] * b.hq];
       { const e0 = a.EM.length ? a.EM : null; if (i === 0 || true) { /* poczatek ramienia a: prawa krawedz (minus) zakonczona tuz za punktem stycznym poprzedniego rogu - tu tylko daleki koniec */ } }
-      if (gap >= Math.PI - 0.02) { cor[i] = { pts: [L0, R0], T1: L0, T2: R0 }; continue; }
+      if (gap >= Math.PI - 0.3) { cor[i] = { pts: [L0, R0], T1: L0, T2: R0 }; continue; } /* ramiona prawie naprzeciw siebie (< ok. 17 st. od prostej): droga przelotowa, bez luku (wzor r / tan(kat / 2) dawal dziesiatki metrow = bombel) */
       const th = Math.acos(Math.max(-1, Math.min(1, -dt(a.u, b.u)))); let rr = r0; if (md === 1 && th > 0.05) rr = r0 / th; else if (md === 2 && th > 0.05) rr = r0 / Math.tan(th / 2);
       let T1, T2, C0, ok = false, refl = false;
       if (gap > 1.75 && th > 0.02) { /* lagodny naroznik (kat zewnetrzny >135 st.): luk wypukly na zewnatrz, srodek po stronie wezla, styczne ~r0 od wierzcholka */

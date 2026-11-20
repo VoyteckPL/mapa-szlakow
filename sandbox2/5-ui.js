@@ -58,7 +58,7 @@ function dopasuj() {
   }
   S2.V.cx = (x0 + x1) / 2;
   S2.V.cy = (y0 + y1) / 2;
-  S2.V.z = Math.min(cv.clientWidth / (x1 - x0 + 60), cv.clientHeight / (y1 - y0 + 60), 12);
+  S2.V.z = Math.min(cv.clientWidth / (x1 - x0 + 24), cv.clientHeight / (y1 - y0 + 24), 20);
 }
 
 /* ---------- lista scen ---------- */
@@ -112,15 +112,35 @@ function trafienie(x, y) {
   return best;
 }
 let drag = null;
+const ptrs = new Map(); /* dotyk: dwa palce = zoom i przesuwanie */
+let pinch = null;
 cv.addEventListener('pointerdown', (e) => {
-  const h = trafienie(e.offsetX, e.offsetY);
+  ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
   cv.setPointerCapture(e.pointerId);
+  if (ptrs.size === 2) {
+    if (drag && !drag.pan && drag.moved) S2.hist.pop();
+    drag = null;
+    const [a, b] = [...ptrs.values()];
+    pinch = { d: G.dist(a, b), z: S2.V.z, w: S2W((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) };
+    return;
+  }
+  const h = trafienie(e.offsetX, e.offsetY);
   if (h && (h.node || h.r)) {
     zapamietaj();
     drag = { h, moved: false };
   } else drag = { pan: [e.offsetX, e.offsetY, S2.V.cx, S2.V.cy], h, moved: false };
 });
 cv.addEventListener('pointermove', (e) => {
+  if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, [e.offsetX, e.offsetY]);
+  if (pinch && ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()],
+      m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    S2.V.z = Math.max(0.3, Math.min(60, (pinch.z * G.dist(a, b)) / (pinch.d || 1)));
+    const w1 = S2W(m[0], m[1]);
+    S2.V.cx += pinch.w[0] - w1[0];
+    S2.V.cy += pinch.w[1] - w1[1];
+    return przelicz();
+  }
   if (!drag) return;
   drag.moved = true;
   if (drag.pan) {
@@ -134,7 +154,12 @@ cv.addEventListener('pointermove', (e) => {
   }
   przelicz();
 });
-cv.addEventListener('pointerup', () => {
+const koniecDotyku = (e) => {
+  ptrs.delete(e.pointerId);
+  if (pinch) {
+    if (ptrs.size === 0) pinch = null;
+    return;
+  }
   if (drag && !drag.moved && drag.pan) {
     S2.sel = drag.h && drag.h.road ? drag.h.road : null;
     edycja();
@@ -142,7 +167,15 @@ cv.addEventListener('pointerup', () => {
   }
   if (drag && !drag.moved && !drag.pan) S2.hist.pop();
   drag = null;
-});
+};
+cv.addEventListener('pointerup', koniecDotyku);
+cv.addEventListener('pointercancel', koniecDotyku);
+const zoomBy = (k) => {
+  S2.V.z = Math.max(0.3, Math.min(60, S2.V.z * k));
+  przelicz();
+};
+$('bZin').onclick = () => zoomBy(1.5);
+$('bZout').onclick = () => zoomBy(1 / 1.5);
 cv.addEventListener('dblclick', (e) => {
   const h = trafienie(e.offsetX, e.offsetY);
   if (!h) return;
@@ -157,7 +190,7 @@ cv.addEventListener(
   (e) => {
     e.preventDefault();
     const w0 = S2W(e.offsetX, e.offsetY);
-    S2.V.z = Math.max(0.3, Math.min(40, S2.V.z * Math.exp(-e.deltaY * 0.0015)));
+    S2.V.z = Math.max(0.3, Math.min(60, S2.V.z * Math.exp(-e.deltaY * 0.0015)));
     const w1 = S2W(e.offsetX, e.offsetY);
     S2.V.cx += w0[0] - w1[0];
     S2.V.cy += w0[1] - w1[1];

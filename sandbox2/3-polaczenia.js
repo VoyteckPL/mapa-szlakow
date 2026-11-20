@@ -80,6 +80,7 @@ function buduj(sc) {
     }
   }
   out.ciagi.forEach(krawedzie);
+  out.rozjazdy.forEach(przytnijOznakowanie);
   return out;
 }
 
@@ -374,4 +375,37 @@ function krawedzie(c) {
     }
   });
   c.poly = c.edgeL.concat(c.edgeR.slice().reverse());
+}
+
+/* ---------- 6. oznakowanie w rozjeździe: linie gałęzi leżące na asfalcie drugiej gałęzi są ukryte
+   (wspólny pas 3 → 2+2: krawędzie wewnętrzne pojawiają się dopiero tam, gdzie gałęzie się rozchodzą = klin) ---------- */
+function przytnijOznakowanie(f) {
+  const inside = (p, P) => {
+    if (!G.inPoly(p, P)) return false;
+    for (let i = 1; i < P.length; i++) {
+      const ab = G.sub(P[i], P[i - 1]),
+        t = Math.max(0, Math.min(1, G.dot(G.sub(p, P[i - 1]), ab) / (G.dot(ab, ab) || 1)));
+      if (G.dist(p, G.add(P[i - 1], G.mul(ab, t))) < 0.05) return false;
+    }
+    return true;
+  };
+  [
+    [f.L.c, f.R.c],
+    [f.R.c, f.L.c],
+  ].forEach(([c, o]) => {
+    const out = [];
+    for (const l of c.lines) {
+      let cur = [];
+      for (const p of l.P) {
+        if (inside(p, o.poly)) {
+          if (cur.length > 1) out.push({ kind: l.kind, P: cur });
+          cur = [];
+        } else cur.push(p);
+      }
+      if (cur.length > 1) out.push({ kind: l.kind, P: cur });
+    }
+    c.linesClip = out;
+  });
+  f.L.c.lines = f.L.c.linesClip;
+  f.R.c.lines = f.R.c.linesClip;
 }

@@ -5,7 +5,8 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 ## Jak pracujemy
 - Małe kroki, oszczędzaj tokeny: czytaj tylko potrzebne fragmenty (grep po nazwie funkcji, potem Read z offset/limit), nie całe pliki.
 - Poprawki jako **reguły ogólne**, nie jednorazowe łaty pod jeden przypadek.
-- Rozwijamy teraz **sandbox2** (`sandbox2.html` + folder `sandbox2/`) – nowy silnik od zera. Stary `sandbox-drog.html` + `sandbox/` tylko do podglądu, nie rozwijać. Nie ruszaj `index.html` (główna mapa) ani `edytor-pasow.html` bez wyraźnej prośby.
+- Rozwijamy teraz **skrzyzowanie.html** (`skrz/skrz.js`): JEDNO skrzyżowanie 3 ramion z suwakami parametrów (promień narożnika R, strefa z, maks. wcięcie T, min. cięcie, odstęp linii, tył węzła Rb, szer. pasa); silnik `junction()`; przycisk ⧉ kopiuje parametry + węzły + kąty/cięcia. Dopiero gdy będzie dobre – wracamy do rozjazdów (sandbox2). `sandbox2` (zawiera szablony scen, rozjazdy, ciągi) jest wstrzymany.
+- Wstrzymane: **sandbox2** (`sandbox2.html` + folder `sandbox2/`) – nowy silnik od zera. Stary `sandbox-drog.html` + `sandbox/` tylko do podglądu, nie rozwijać. Nie ruszaj `index.html` (główna mapa) ani `edytor-pasow.html` bez wyraźnej prośby.
 - Nigdy nie wysyłaj zmian do OSM. Sandbox rysuje drogi testowe lokalnie.
 - Rozpoznawanie pasów z ortofoto jest porzucone – nie rozwijać.
 - Zmiany commituj i wypychaj na `main` bez pytania (GitHub Pages: https://voyteckpl.github.io/mapa-szlakow/sandbox-drog.html).

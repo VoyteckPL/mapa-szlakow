@@ -38,3 +38,7 @@ Dalej: uwagi Wojtka do scen (wkleja ⧉ + numer węzła) → poprawki reguł; po
 - Rozjazd/włączenie: gałąź „prosta” (<9° od przedłużenia pnia) zostaje na osi, jej przekrój zwęża się symetrycznie; gałąź boczna startuje w swoim pasie pnia i jedną krzywą Hermite'a dochodzi do własnej osi (koniec falowania). Overlap asfaltów blisko węzła jest zamierzony (etap 1 bez offsetów); lane-linie nie pasują 1:1 (pień 3 pasy vs prosta 2 pasy) – czeka na etap 2.
 - Nawrót: łuk o promieniu ≥ 1,5·połowa szerokości+1 (bez kanciastości); skrzyżowanie: gdy wszystkie ramiona po jednej stronie węzła, tył węzła zaokrąglony wokół W2.
 - Testy: 245/247 (ostatnie 2 to losowe ostre warianty rozjazdów).
+
+## 2026-11-20 (wieczór) – zmiana kierunku: jedno skrzyżowanie 3 ramion
+Wojtek: lista szablonów nie daje postępu → `skrzyzowanie.html` + `skrz/skrz.js`. Jedno skrzyżowanie, osie na środku, suwaki: R (łuk narożnika kołowy, styczny do obu krawędzi), z (strefa), T (maks. wcięcie), min (cięcie), gap (odstęp linii), Rb (tył węzła), lw (szer. pasa), far (limit „prawie prosto”). Pasy i kierunek per ramię. Kąty pokazane na ekranie. ⧉ kopiuje parametry+węzły+kąty+cięcia; `sweepTest()` w konsoli przemiata kąty (0 błędów).
+Dalej: Wojtek dobiera „złoty środek” suwakami i wkleja ustawienia; potem rozjazdy i reszta (sandbox2 wstrzymany), na końcu offsety.

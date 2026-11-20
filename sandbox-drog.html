@@ -2499,11 +2499,17 @@ const L0 = 6, KT = 8, mkAng = a => () => { const r = a * Math.PI / 180, c = Math
   /* luk niepotrzebny */ const arc0 = Array.from({ length: 7 }, (_, z) => { const u2 = z / 6, m = 1 - u2, A = [L0, 5.25], Bz = f(KT); return [+(m * m * A[0] + 2 * m * u2 * K[0] + u2 * u2 * Bz[0]).toFixed(2), +(m * m * A[1] + 2 * m * u2 * K[1] + u2 * u2 * Bz[1]).toFixed(2)]; });
   const sc = [ST('primary', wide('primary', 1, 3, 'through|through|right'), [[-90, 0], [0, 0]]), ST('primary', wide('primary', 1, 2), [[0, 0], [90, 0]]), ST('primary_link', wide('primary', 1, 1), [[0, 0], P1, P2])];
   sc.fork = true; return sc; };
+const mkCombo = (kind, side, a) => () => { const r = a * Math.PI / 180, c = Math.cos(r), s = Math.sin(r) * side, f = d => [+(d * c).toFixed(2), +(d * s).toFixed(2)];
+  const sc = kind === 'wyjazd' ? [ST('primary', wide('primary', 1, 3, side > 0 ? 'through|through|right' : 'left|through|through'), [[-90, 0], [0, 0]]), ST('primary', wide('primary', 1, 2), [[0, 0], [90, 0]]), ST('primary_link', wide('primary', 1, 1), [[0, 0], f(25), f(70)])]
+    : [ST('primary', wide('primary', 1, 2), [[-90, 0], [0, 0]]), ST('primary_link', wide('primary', 1, 1), [f(-70), f(-25), [0, 0]]), ST('primary', wide('primary', 1, 3), [[0, 0], [90, 0]])]; sc.fork = true; return sc; };
+const comboNames = []; for (const kind of ['wyjazd', 'wjazd']) for (const [side, sn] of [[1, 'prawa'], [-1, 'lewa']]) for (const a of [15, 30, 45, 60, 75, 90]) comboNames.push([kind + ' ' + sn + ' · ' + String(a).padStart(2, '0') + '°', mkCombo(kind, side, a)]);
+grp('Rozjazd 3 ↔ 2+1 kombinacje', comboNames);
+//
 grp('Kąty rozjazdu 3 → 2+1', Array.from({ length: 19 }, (_, i) => i * 5).map(a => ['kąt ' + String(a).padStart(2, '0') + '°', mkAng(a)]));
 function loadScenario(name) { window.__fake = {}; const sf = SC[name]; if (!sf) return; const sc = typeof sf === "function" ? sf() : sf; push(); S.doc.road = []; const by = new Map(), key = p => { const k = p[0].toFixed(2) + ',' + p[1].toFixed(2); if (!by.has(k)) by.set(k, nk()); return by.get(k); };
   for (const [hw, o, pts] of sc) { const r = mkRoad(hw, pts.map(p => p.slice()), pts.map(key), o.tl ? { tl: o.tl, tlM: true } : {}); if (o.lanes) { r.lanes = o.lanes; if (!r.oneway) r.nf = Math.ceil(o.lanes / 2); } if (o.oneway) { r.oneway = true; delete r.nf; } S.doc.road.push(r); }
   selR = null; { /* scenariusz laduje sie tam, gdzie patrzysz (srodek ekranu), widok sie nie zmienia */ const cw = S2W(innerWidth / 2, innerHeight / 2), ox = Math.round(cw[0] + (sc.fork ? 0 : 0)), oy = Math.round(cw[1]); const dx = ox - (sc.fork ? 40 : 0), dy = oy; for (const r of roads()) r.pts.forEach(p => { p[0] += dx; p[1] += dy; }); } changed(); }
-/* na razie tylko rozjazd 3 -> 2+1: podstawowy + kąty 0-90 */ { const keep = ['Rozjazdy (odnoga w prawo) · 3 → 2 + 1'].concat(SCG.filter(g => g.g.startsWith('Kąty rozjazdu')).flatMap(g => g.names)); SCG.length = 0; SCG.push({ g: 'Rozjazd 3 → 2 + 1', names: keep }); }
+/* na razie tylko rozjazd 3 -> 2+1: podstawowy + kąty 0-90 */ { const keep = ['Rozjazdy (odnoga w prawo) · 3 → 2 + 1'].concat(SCG.filter(g => g.g.startsWith('Kąty rozjazdu') || g.g.startsWith('Rozjazd 3 ↔')).flatMap(g => g.names)); SCG.length = 0; SCG.push({ g: 'Rozjazd 3 → 2 + 1', names: keep }); }
 q('sxScen').innerHTML = SCG.map(g => `<optgroup label="${g.g} (${g.names.length})">${g.names.map(n => `<option value="${n}">${n.split(' · ').slice(1).join(' · ') === '3 → 2 + 1' ? 'bazowy (prawa odnoga)' : n.split(' · ').slice(1).join(' · ')}</option>`).join('')}</optgroup>`).join(''); q('sxGo').onclick = () => loadScenario(q('sxScen').value);
 /* ---------- panele zwijane ---------- */
 const small = () => innerWidth < 900; if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); }

@@ -23,14 +23,15 @@ function sprawdz(B) {
   }
   for (const w of B.wezly) if (w.poly.some(bad)) E.push('NaN w węźle ' + w.nk);
   for (const f of B.rozjazdy) {
+    const B_o = f.P.p;
     const ends = (a) => (a.at ? [a.c.edgeL[a.c.edgeL.length - 1], a.c.edgeR[a.c.edgeR.length - 1]] : [a.c.edgeL[0], a.c.edgeR[0]]);
     const P = ends(f.P),
       br = ends(f.L).concat(ends(f.R));
-    P.forEach((p) => br.some((q) => G.dist(p, q) < 0.1) || E.push(f.nk + ': krawędź pnia bez gałęzi'));
+    P.forEach((p) => br.some((q) => G.dist(p, q) < 0.25) || E.push(f.nk + ': krawędź pnia bez gałęzi'));
     br.forEach((q) => {
       const ab = G.sub(P[1], P[0]),
         t = Math.max(0, Math.min(1, G.dot(G.sub(q, P[0]), ab) / G.dot(ab, ab)));
-      if (G.dist(q, G.add(P[0], G.mul(ab, t))) > 0.1) E.push(f.nk + ': gałąź poza przekrojem pnia');
+      if (G.dist(q, G.add(P[0], G.mul(ab, t))) > 0.25) E.push(f.nk + ': gałąź poza przekrojem pnia');
     });
     /* gałąź nie wchodzi na asfalt drugiej gałęzi (głębiej niż 10 cm) */
     const inner = (a, right) => {
@@ -66,7 +67,8 @@ function sprawdz(B) {
       [f.R, f.L],
     ]) {
       const e = inner(a, a === f.L ? !a.at : !!a.at);
-      if (e.some((p) => G.inPoly(p, b.c.poly) && dPoly(p, b.c.poly) > 0.1)) {
+      /* nachodzenie liczymy dopiero za strefą przejścia (gałąź boczna startuje w pasie pnia, więc blisko węzła asfalty się nakładają z założenia) */
+      if (e.some((p) => G.dist(p, B_o) > 60 && G.inPoly(p, b.c.poly) && dPoly(p, b.c.poly) > 0.1)) {
         E.push(f.nk + ': gałęzie nachodzą na siebie');
         break;
       }

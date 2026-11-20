@@ -99,6 +99,7 @@ function ciag(sc, seq) {
   });
   const R = Math.max(...seq.map((s) => Math.max((TYPY[s.r.typ] || TYPY.gl).R, hwOf(s.r) * 2.5)));
   G.emax = Math.max(...seq.map((s) => hwOf(s.r))) + 2;
+  G.rmin = Math.max(...seq.map((s) => hwOf(s.r))) * 1.5 + 1 /* nawrót: zawsze zaokrąglony, krawędź wewnętrzna bez załamania */;
   const Q = G.dense(G.fillet(raw, R), STEP),
     C = G.cum(Q);
   /* długość s każdego styku = najbliższy punkt osi do wierzchołka */
@@ -137,13 +138,8 @@ function ciag(sc, seq) {
       Lw = same ? 0 : Math.min(0.45 * lenW, Math.max(15, 30 * Math.abs(B.n - A.n) + 4 * Math.abs(wb - wa)));
     return { s, k, A, B, wideB, Lw, node: nodeOf(seq[k])[1], typ: same ? 'ciąg' : A.n !== B.n ? 'zmiana pasów' : 'zmiana szerokości' };
   });
-  /* granice pasów (w indeksach szerszego układu) zwężone do węższego */
-  const squeeze = (W, N) =>
-    W.b.map((_, j) => {
-      let jn = j <= W.nb ? j - (W.nb - N.nb) : N.nb + (j - W.nb);
-      jn = Math.max(0, Math.min(N.n, jn));
-      return N.b[jn];
-    });
+  /* klin SYMETRYCZNY: szersza jezdnia na styku ma szerokość węższej (pasy równomiernie węższe), potem rozszerza się po obu stronach osi */
+  const squeeze = (W, N) => W.b.map((x) => (x * (N.n * N.lw)) / (W.n * W.lw));
   const bd = Q.map((_, i) => {
     const s = C[i];
     let k = 0;
@@ -205,74 +201,84 @@ function jakRozjazd(arms) {
   return best;
 }
 
-/* ROZJAZD/WŁĄCZENIE. Korytarz = średnia osi OSM obu gałęzi, na początku płynnie przechodzący z kierunku pnia
-   (styczność w węźle). Gałąź startuje w swoich pasach przekroju pnia (s0), jedzie w korytarzu równolegle,
-   dopóki jej oś OSM nie wyjdzie na zewnątrz poza s0, potem płynnie (Tb) przechodzi na swoją oś OSM.
-   Gałąź, której oś nie wychodzi na zewnątrz, wraca na nią dopiero, gdy druga gałąź odjechała.
-   Gałąź nigdy nie skręca w stronę drugiej gałęzi przed jej odjazdem. */
+/* ROZJAZD/WŁĄCZENIE (etap 1, osie na środku).
+   - gałąź „prosta” (kąt do przedłużenia pnia < 9°) zostaje na swojej osi; jej przekrój zwęża się symetrycznie z szerokości pnia (klin po obu stronach),
+   - gałąź boczna startuje w swoim pasie przekroju pnia (po swojej stronie), jedzie równolegle do pnia i łagodną krzywą Hermite'a
+     dochodzi do własnej osi OSM w punkcie, w którym obie gałęzie są już rozdzielone (bez falowania: jedna krzywa, nie dwa zakręty). */
 function rozjazd(f) {
   const hwP = f.P.hw,
     o = f.P.p,
-    Tb = 12 + 2 * hwP;
-  /* osie gałęzi od węzła, równo co 1 m */
-  const fromNode = (b) => {
+    nR = G.right(f.p),
+    Tmin = 14 + 3 * hwP;
+  const info = [f.L, f.R].map((b, i) => {
     const c = b.c,
-      P = b.at ? c.Q.slice().reverse() : c.Q.slice(),
+      at = !!b.at,
+      P = at ? c.Q.slice().reverse() : c.Q.slice(),
       C = G.cum(P);
-    return { P, C, L: C[C.length - 1] };
-  };
-  const AL = fromNode(f.L),
-    AR = fromNode(f.R),
-    S = Math.min(AL.L, AR.L),
-    M = [];
-  for (let s = 0; s <= S; s += 1) {
-    const m = G.lerp(G.at(AL.P, AL.C, s).p, G.at(AR.P, AR.C, s).p, 0.5),
-      base = G.add(o, G.mul(f.p, s));
-    M.push(G.lerp(base, m, G.sstep(s / Tb)));
-  }
-  const MC = G.cum(M),
-    MN = G.normals(M);
-  const frame = (s) => {
-    const k = Math.max(0, Math.min(M.length - 1, Math.round(s)));
-    return { m: M[k], n: MN[k], t: [-MN[k][1], MN[k][0]] };
-  };
-  void MC;
-  const G2 = [
-    [f.L, -hwP + f.L.hw, AL],
-    [f.R, hwP - f.R.hw, AR],
-  ].map(([b, s0, A]) => {
-    const side = s0 >= 0 ? 1 : -1;
-    let sx = null;
-    for (let k = 0; k < A.P.length && A.C[k] <= S; k++) {
-      const F = frame(A.C[k]);
-      if (side * (G.dot(G.sub(A.P[k], F.m), F.n) - s0) >= 0) {
-        sx = A.C[k];
-        break;
-      }
+    return { b, c, at, P, C, L: C[C.length - 1], ang: G.ang(f.p, b.uFar), s0: (i ? 1 : -1) * (hwP - b.hw), bdN: at ? c.bd.slice().reverse() : c.bd.slice(), dvN: at ? c.div.slice().reverse() : c.div.slice(), oldC: C };
+  });
+  const thr = info.reduce((m, x) => (Math.abs(x.ang) < Math.abs(m.ang) ? x : m));
+  thr.through = Math.abs(thr.ang) < 0.16;
+  if (thr.through) thr.s0 = 0;
+  const dPoly = (p, P) => {
+    let m = 1e9;
+    for (let i = 1; i < P.length; i++) {
+      const ab = G.sub(P[i], P[i - 1]),
+        t = Math.max(0, Math.min(1, G.dot(G.sub(p, P[i - 1]), ab) / (G.dot(ab, ab) || 1)));
+      m = Math.min(m, G.dist(p, G.add(P[i - 1], G.mul(ab, t))));
     }
-    return { b, s0, A, sx, tb: Math.min(Tb, 0.45 * A.L) };
-  });
-  G2.forEach((g, i) => {
-    const o2 = G2[1 - i],
-      gone = o2.sx == null ? S : o2.sx + o2.tb;
-    if (g.sx == null) g.sx = Math.max(g.tb, gone);
-    g.sx = Math.max(0, Math.min(g.sx, 3 * Tb, S - g.tb, g.A.L - g.tb));
-  });
-  G2.forEach((g) => {
-    const { b, s0, A, sx, tb } = g,
-      out = A.P.map((q, k) => {
-        const s = A.C[k];
-        if (s >= sx + tb || s > S) return q;
-        const F = frame(s),
-          d = G.sub(q, F.m),
-          la = G.dot(d, F.n),
-          al = G.dot(d, F.t),
-          w = s <= sx ? 0 : G.sstep((s - sx) / tb),
-          la2 = s0 + (la - s0) * w;
-        return G.add(G.add(F.m, G.mul(F.t, al * w)), G.mul(F.n, la2));
-      });
-    b.c.Q = b.at ? out.reverse() : out;
-    b.c.C = G.cum(b.c.Q);
+    return m;
+  };
+  info.forEach((g, gi) => {
+    const other = info[1 - gi];
+    let P2 = g.P,
+      C2 = g.C;
+    {
+      /* punkt dojścia do własnej osi (gałąź prosta: stały, bliski; boczna: dopiero po rozdzieleniu gałęzi) */
+      const smax = Math.max(Tmin, 0.6 * g.L);
+      let sj = Tmin;
+      const side = g.s0 >= 0 ? 1 : -1;
+      for (; !g.through && sj < smax; sj += 1) {
+        const J = G.at(g.P, g.C, sj).p;
+        if (dPoly(J, other.P) >= g.b.hw + other.b.hw + 0.3 && side * (G.dot(G.sub(J, o), nR) - g.s0) > 0.2) break;
+      }
+      sj = Math.min(sj, g.L * 0.6);
+      const J = G.at(g.P, g.C, sj),
+        P0 = G.add(o, G.mul(nR, g.s0)),
+        m = G.dist(P0, J.p),
+        n = Math.max(4, Math.ceil(m)),
+        H = [];
+      for (let k = 0; k <= n; k++) {
+        const t = k / n,
+          h00 = 2 * t ** 3 - 3 * t * t + 1,
+          h10 = t ** 3 - 2 * t * t + t,
+          h01 = -2 * t ** 3 + 3 * t * t,
+          h11 = t ** 3 - t * t;
+        H.push([h00 * P0[0] + h10 * m * f.p[0] + h01 * J.p[0] + h11 * m * J.u[0], h00 * P0[1] + h10 * m * f.p[1] + h01 * J.p[1] + h11 * m * J.u[1]]);
+      }
+      P2 = H.concat(g.P.filter((_, k) => g.C[k] > sj + 0.5));
+      C2 = G.cum(P2);
+    }
+    /* przeniesienie profilu pasów po długości łuku */
+    let k = 0;
+    const Tw = Tmin * 1.5,
+      bd = [],
+      dv = [];
+    P2.forEach((_, i) => {
+      const sFrac = C2[i];
+      while (k < g.oldC.length - 1 && Math.abs(g.oldC[k + 1] - sFrac) < Math.abs(g.oldC[k] - sFrac)) k++;
+      let row = g.bdN[k].slice();
+      if (g.through && sFrac < Tw) {
+        const fk = 1 + (hwP / g.b.hw - 1) * (1 - G.sstep(sFrac / Tw));
+        row = row.map((x) => x * fk);
+      }
+      bd.push(row);
+      dv.push(g.dvN[k]);
+    });
+    g.b.c.Q = g.at ? P2.slice().reverse() : P2;
+    g.b.c.bd = g.at ? bd.reverse() : bd;
+    g.b.c.div = g.at ? dv.reverse() : dv;
+    g.b.c.C = G.cum(g.b.c.Q);
   });
 }
 
@@ -288,7 +294,17 @@ function skrzyzowanie(nk, arms) {
   for (let i = 0; i < n; i++) {
     const A = arms[i],
       B = arms[(i + 1) % n],
-      x = G.lineX(G.add(p, G.mul(lft(A), A.hw)), A.u, G.add(p, G.mul(lft(B), -B.hw)), B.u);
+      x = G.lineX(G.add(p, G.mul(lft(A), A.hw)), A.u, G.add(p, G.mul(lft(B), -B.hw)), B.u),
+      gap = (Math.atan2(B.u[1], B.u[0]) - Math.atan2(A.u[1], A.u[0]) + 2 * Math.PI) % (2 * Math.PI);
+    /* wklęsły „tył” węzła (wszystkie ramiona po jednej stronie): zaokrąglenie wokół węzła zamiast prostej cięciwy daleko od niego */
+    if (gap > Math.PI + 0.05) {
+      const th = Math.atan2(A.u[1], A.u[0]) + gap / 2,
+        r = 2 * (Math.max(A.hw, B.hw) + CURB);
+      cor.push([p[0] + Math.cos(th) * r, p[1] + Math.sin(th) * r]);
+      A.d = Math.max(A.d, B.hw + CURB);
+      B.d = Math.max(B.d, A.hw + CURB);
+      continue;
+    }
     const okX = x && x.t > -A.hw && x.s > -B.hw && x.t < 4 * A.hw + 40 && x.s < 4 * B.hw + 40;
     cor.push(okX ? x.p : null);
     if (okX) {

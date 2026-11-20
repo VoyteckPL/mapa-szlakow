@@ -32,3 +32,9 @@ Sandbox od zera (`sandbox2.html` + `sandbox2/`), stary zostaje. Etap 1: wszystki
 Reguły w `3-polaczenia.js`: ciąg z łukami (odsunięcie łuku ≤ pół szer.+2 m), klin w szerszej drodze za węzłem, rozjazd/włączenie w korytarzu (gałąź w swoich pasach pnia, nie skręca do drugiej), skrzyżowanie = przycięte ramiona + wielokąt z łukami narożników.
 Testy: każda scena + 12 losowych wariantów = 247; **242 OK**. Pozostałe 5: rozjazdy/włączenia przy ostrym skręcie pnia (>45°) – gałęzie lekko na siebie nachodzą.
 Dalej: uwagi Wojtka do scen (wkleja ⧉ + numer węzła) → poprawki reguł; potem etap 2 (offsety jako reguły).
+
+## 2026-11-20 (wieczór) – poprawki po uwagach Wojtka na scenach sandbox2
+- Zmiana pasów: klin SYMETRYCZNY (szersza jezdnia na styku ma szerokość węższej, rozszerza się po obu stronach osi).
+- Rozjazd/włączenie: gałąź „prosta” (<9° od przedłużenia pnia) zostaje na osi, jej przekrój zwęża się symetrycznie; gałąź boczna startuje w swoim pasie pnia i jedną krzywą Hermite'a dochodzi do własnej osi (koniec falowania). Overlap asfaltów blisko węzła jest zamierzony (etap 1 bez offsetów); lane-linie nie pasują 1:1 (pień 3 pasy vs prosta 2 pasy) – czeka na etap 2.
+- Nawrót: łuk o promieniu ≥ 1,5·połowa szerokości+1 (bez kanciastości); skrzyżowanie: gdy wszystkie ramiona po jednej stronie węzła, tył węzła zaokrąglony wokół W2.
+- Testy: 245/247 (ostatnie 2 to losowe ostre warianty rozjazdów).

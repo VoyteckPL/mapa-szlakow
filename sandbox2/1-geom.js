@@ -58,7 +58,7 @@ G.fillet = (P, R) => {
       lc = G.dist(b, c) * (i === P.length - 2 ? 0.9 : 0.5),
       /* odsunięcie łuku od wierzchołka ≤ emax (przy nawrotach łuk nie ucieka daleko od węzła) */
       ex = 1 / Math.cos(Math.min(th, 3.1) / 2) - 1,
-      Rm = Math.min(R, (G.emax || 1e9) / Math.max(ex, 1e-9)),
+      Rm = Math.max(Math.min(R, (G.emax || 1e9) / Math.max(ex, 1e-9)), G.rmin || 0),
       t = Math.min(Rm * Math.tan(th / 2), la, lc),
       r = t / Math.tan(th / 2),
       p0 = G.sub(b, G.mul(u, t)),

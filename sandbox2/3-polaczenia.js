@@ -235,19 +235,21 @@ function rozjazd(f) {
       C2 = g.C;
     {
       /* punkt dojścia do własnej osi (gałąź prosta: stały, bliski; boczna: dopiero po rozdzieleniu gałęzi) */
-      const smax = Math.max(Tmin, 0.6 * g.L);
-      let sj = Tmin;
+      const Tg = Math.min(Tmin, 0.45 * g.L) /* krótka gałąź: krótsze przejście */,
+        smax = Math.max(Tg, 0.7 * g.L);
+      let sj = Tg;
       const side = g.s0 >= 0 ? 1 : -1;
       for (; !g.through && sj < smax; sj += 1) {
         const J = G.at(g.P, g.C, sj).p;
         if (dPoly(J, other.P) >= g.b.hw + other.b.hw + 0.3 && side * (G.dot(G.sub(J, o), nR) - g.s0) > 0.2) break;
       }
-      sj = Math.min(sj, g.L * 0.6);
+      sj = Math.min(sj, g.L * 0.75);
       const J = G.at(g.P, g.C, sj),
-        P0 = G.add(o, G.mul(nR, g.s0)),
-        m = G.dist(P0, J.p),
-        n = Math.max(4, Math.ceil(m)),
-        H = [];
+        S0 = G.add(o, G.mul(nR, g.s0)),
+        P0 = G.add(S0, G.mul(f.p, 2)) /* prosty odcinek startowy: krawędzie dokładnie w przekroju pnia */,
+        m = 0.7 * G.dist(P0, J.p),
+        n = Math.max(4, Math.ceil(G.dist(P0, J.p))),
+        H = [S0];
       for (let k = 0; k <= n; k++) {
         const t = k / n,
           h00 = 2 * t ** 3 - 3 * t * t + 1,
@@ -261,7 +263,7 @@ function rozjazd(f) {
     }
     /* przeniesienie profilu pasów po długości łuku */
     let k = 0;
-    const Tw = Tmin * 1.5,
+    const Tw = Math.min(Tmin * 1.5, 0.8 * g.L),
       bd = [],
       dv = [];
     P2.forEach((_, i) => {

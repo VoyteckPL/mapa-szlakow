@@ -27,5 +27,8 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - Wolny koniec drogi (nic się nie łączy): oś OSM na środku jezdni.
 - Wojtek wkleja JSON z przycisku „Kopiuj do Claude (config)” – to opis sceny (drogi, punkty, offsety, raport).
 
+## Plan przebudowy
+Docelowy model silnika (jezdnia = oś + profil pasów + kotwica osi, nazwane typy węzłów, asercje geometrii) i etapy: `docs/PLAN-silnik.md`. Nowe reguły dopasowuj do tego modelu.
+
 ## Testy
 Playwright jest dostępny w środowisku Claude w chmurze; lokalnie wystarczy przeglądarka. Po zmianie sprawdź kilka scenariuszy z listy „Scenariusze”, nie tylko jeden.

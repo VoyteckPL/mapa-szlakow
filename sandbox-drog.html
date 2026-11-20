@@ -2330,7 +2330,7 @@ function renderEdit() { const el = q('sxEdit'), r = selR && roads().includes(sel
   for (const s of el.querySelectorAll('.sxeT')) s.onchange = () => mut(() => { const i = +s.dataset.i, nbk = n - nf; if (r.oneway) { const a = (r.tl || '').split('|'); while (a.length < n) a.push(''); a[i] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else if (L[i].dir > 0) { const a = (r.tl || '').split('|'); while (a.length < nf) a.push(''); a[i - nbk] = s.value; r.tl = a.some(x => x) ? a.join('|') : ''; } else { const a = (r.tlb || '').split('|'); while (a.length < nbk) a.push(''); a[nbk - 1 - i] = s.value; r.tlb = a.some(x => x) ? a.join('|') : ''; } r.tlM = true; }); }
 /* ---------- szybkie menu przy klikniętej drodze: typ, liczba pasów, kierunek ---------- */
 let popAt = null;
-function showPop(sx, sy) { popAt = [sx, sy]; popRender(); }
+function showPop(sx, sy) { return; /* popup wylaczony na zyczenie */ popAt = [sx, sy]; popRender(); }
 function hidePop() { popAt = null; q('sxPop').style.display = 'none'; }
 function popRender() { const el = q('sxPop'), r = selR && roads().includes(selR) ? selR : null; if (!r || !popAt || tool !== 'sel') { el.style.display = 'none'; return; }
   const n = Math.max(1, r.lanes | 0); el.innerHTML = `<div class="t">${TYPES.map(x => `<button data-h="${x[0]}" class="${x[0] === r.hw ? 'on' : ''}"><i style="background:${colOf(x[0])}"></i>${x[1].replace(/ \(.*\)/, '')}</button>`).join('')}</div>

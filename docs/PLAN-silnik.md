@@ -12,6 +12,8 @@ Stan: 2026-11-20. Cel: drogi OSM odwzorowane jak w rzeczywistości – szerokoś
 ## Model docelowy
 **A. Graf.** Way OSM cięte w węzłach → krawędzie. Każdy węzeł zna swoje wloty/wyloty.
 
+**A2. Normalizacja OSM (osobny krok, przed geometrią).** Drogi w OSM są rysowane bardzo różnie, dlatego najpierw tłumaczymy każdy way na jeden wewnętrzny opis jezdni: kierunek, pasy (liczba, szerokości), kotwica osi i rola w węźle. Robi to lista **reguł normalizacji**. Każda reguła to mały obiekt `{nazwa, kiedy(way, sąsiedzi), co(opis)}` w jednym pliku `sandbox/silnik/reguly.js`, z komentarzem i sceną testową. Przykłady: „brak `lanes` → wg typu drogi”, „`lanes:forward/backward`”, „3 pasy przy sąsiedzie ±1 → oś na granicy”, „`placement=*`”, „dwujezdniowa narysowana jedną linią”, „łącznica bez `lanes` → 1”. Raport w sandboksie pokazuje dla każdej drogi, **które reguły zadziałały**. Dzięki temu wyjątek dodaje się jako nową regułę ze sceną, a nie jako `if` w geometrii. Geometria i render nie patrzą już na tagi OSM, tylko na znormalizowany opis.
+
 **B. Jezdnia = oś + profil przekroju.** Dla krawędzi, wzdłuż długości s (funkcje kawałkami liniowe):
 - `pasy(s)`: lista szerokości pasów (suma = szerokość jezdni),
 - `kotwica(s)`: gdzie w przekroju leży oś OSM (środek / granica pasów k / krawędź), w metrach od lewej krawędzi.
@@ -41,7 +43,7 @@ Przycisk „Testy” w sandboksie (tabela OK/BŁĄD) + ten sam kod w Playwright 
 
 ## Etapy (każdy = mały PR, wszystkie testy zielone przed następnym)
 0. **Asercje na obecnym kodzie** (bez zmian geometrii) → lista scenariuszy, które naprawdę są złe. Przypadki, które już działają dobrze (np. 3 → 2+1), Wojtek zatwierdza jako **wzorzec**: zapisujemy ich geometrię (granice pasów w punktach kontrolnych) i zrzut, a nowy silnik musi dać to samo. Dorobek nie przepada – staje się testem.
-1. Nowy silnik obok starego (`sandbox/silnik/`), przełącznik „silnik: stary / nowy”. Graf + profil + `granica()`; typy `KONIEC`, `KONTYNUACJA`.
+1. Nowy silnik obok starego (`sandbox/silnik/`), przełącznik „silnik: stary / nowy”. Normalizacja (reguły + raport „które reguły zadziałały”), graf + profil + `granica()`; typy `KONIEC`, `KONTYNUACJA`.
 2. `ZMIANA_PASÓW` – przeniesienie ustalonych reguł z CLAUDE.md.
 3. `ROZJAZD` (2→1+1, 3→2+1, odnoga w lewo/prawo).
 4. `WŁĄCZENIE`.

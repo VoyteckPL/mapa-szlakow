@@ -1,0 +1,4527 @@
+(() => {
+  'use strict';
+  const q = (id) => document.getElementById(id),
+    esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const TYPES = [
+    ['motorway', 'Autostrada', { oneway: true, lanes: 3 }],
+    ['trunk', 'Droga ekspresowa', { oneway: true, lanes: 2 }],
+    ['primary', 'Droga krajowa (primary)', { lanes: 2 }],
+    ['secondary', 'Wojewódzka (secondary)', { lanes: 2 }],
+    ['tertiary', 'Powiatowa (tertiary)', { lanes: 2 }],
+    ['unclassified', 'Gminna (unclassified)', { lanes: 2 }],
+    ['residential', 'Osiedlowa (residential)', { lanes: 2 }],
+    ['living_street', 'Strefa zamieszkania', { lanes: 2 }],
+    ['service', 'Dojazd (service)', { lanes: 1 }],
+    ['motorway_link', 'Łącznica autostrady', { oneway: true, lanes: 1 }],
+    ['primary_link', 'Łącznica (primary_link)', { oneway: true, lanes: 1 }],
+    ['secondary_link', 'Łącznica (secondary_link)', { oneway: true, lanes: 1 }],
+  ];
+  const COL = {
+      motorway: '#c6504a',
+      trunk: '#d4793a',
+      primary: '#d9a62f',
+      secondary: '#6bb36b',
+      tertiary: '#5d9bd5',
+      unclassified: '#8c98a8',
+      residential: '#a8b0bb',
+      living_street: '#b9a3d0',
+      service: '#c8ccd2',
+    },
+    colOf = (h) => COL[h.replace('_link', '')] || '#888',
+    hwName = (h) => (TYPES.find((t) => t[0] === h) || [0, h])[1];
+  let tool = 'sel',
+    drawHw = 'secondary',
+    drawPts = [],
+    selR = null,
+    selV = null,
+    drag = null,
+    joinA = null,
+    hist = [],
+    nid = 1,
+    rid = 1,
+    report = [],
+    pointer = [0, 0],
+    moved = 0;
+  const S2W = (x, y) => s2w([x, y]);
+  const roads = () => S.doc.road,
+    nk = () => 'n' + nid++,
+    hint = (t) => {
+      q('sxHint').textContent = t;
+    };
+  $('cTile').checked = false;
+  $('cNodeLanes').checked = true;
+  $('cAx').checked = false;
+  S.tool = 'pan';
+  /* ---------- historia ---------- */
+  const snap = () => JSON.stringify({ r: roads(), nid, rid });
+  function push() {
+    hist.push(snap());
+    if (hist.length > 80) hist.shift();
+  }
+  let _sv = 0;
+  function saveScene() {
+    clearTimeout(_sv);
+    _sv = setTimeout(() => {
+      try {
+        localStorage.setItem(
+          'sxScene',
+          JSON.stringify({
+            s: snap(),
+            v: S.view,
+            nr: S.nodeR || {},
+            lh: S.laneH || {},
+            ot: +q('sxOT').value,
+            rad: +q('sxRad').value,
+            ar: +q('sxAR').value,
+            wl: +q('sxWL').value,
+            sm: +q('sxSm').value,
+          }),
+        );
+      } catch (e) {}
+    }, 300);
+  }
+  addEventListener('pointerup', () => {
+    try {
+      saveScene();
+    } catch (e) {}
+  });
+  addEventListener(
+    'wheel',
+    () => {
+      try {
+        saveScene();
+      } catch (e) {}
+    },
+    { passive: true },
+  );
+  function restoreScene() {
+    try {
+      const j = JSON.parse(localStorage.getItem('sxScene') || 'null');
+      if (!j) return false;
+      const o = JSON.parse(j.s);
+      S.doc.road = o.r;
+      nid = o.nid;
+      rid = o.rid;
+      if (j.v) Object.assign(S.view, j.v);
+      S.nodeR = j.nr || {};
+      S.laneH = j.lh || {};
+      if (j.ot != null) {
+        q('sxOT').value = j.ot;
+        q('sxOTv').textContent = j.ot ? j.ot + ' m' : 'cała droga';
+      }
+      if (j.sm != null) {
+        q('sxSm').value = j.sm;
+        window.__lsm = +j.sm;
+        q('sxSmV').textContent = j.sm;
+      }
+      if (j.wl != null) {
+        q('sxWL').value = j.wl;
+        window.__wtl = +j.wl;
+        q('sxWLv').textContent = j.wl;
+      }
+      if (j.ar != null) {
+        q('sxAR').value = j.ar;
+        window.__arcR = +j.ar;
+        q('sxARv').textContent = j.ar;
+      }
+      if (j.rad != null) {
+        q('sxRad').value = j.rad;
+        window.__nodeRad = +j.rad;
+        q('sxRadV').textContent = +j.rad ? j.rad + ' m' : 'auto';
+      }
+      selR = null;
+      selV = null;
+      changed(false);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  function undo() {
+    const s = hist.pop();
+    if (!s) return;
+    const o = JSON.parse(s);
+    S.doc.road = o.r;
+    nid = o.nid;
+    rid = o.rid;
+    selR = null;
+    selV = null;
+    changed(false);
+  }
+  /* ---------- model drogi (pola edytora) ---------- */
+  function mkRoad(hw, pts, keys, opt) {
+    const d = (TYPES.find((t) => t[0] === hw) || [0, 0, {}])[2],
+      base = Object.assign(newRoad(pts, keys), {
+        hw,
+        lanes: d.lanes || 2,
+        oneway: !!d.oneway,
+        lw: LW_CLASS[hw.replace('_link', '')] || 3.5,
+        sb: true,
+        name: '',
+        tl: '',
+        _id: rid++,
+      });
+    if (!base.oneway) base.nf = Math.ceil(base.lanes / 2);
+    return Object.assign(base, opt || {});
+  }
+  function lanesOf(r) {
+    const n = Math.max(1, r.lanes | 0),
+      tok = (s) => (s || '').split('|').map((x) => x.replace(/slight_|sharp_/g, ''));
+    if (r.oneway) {
+      const t = tok(r.tl);
+      return Array.from({ length: n }, (_, i) => ({ dir: 1, tok: t[i] || '' }));
+    }
+    const nf = r.nf == null ? Math.ceil(n / 2) : Math.max(0, Math.min(n, r.nf)),
+      nb = n - nf,
+      tf = tok(r.tl),
+      tb = tok(r.tlb),
+      out = [];
+    for (let j = nb - 1; j >= 0; j--) out.push({ dir: -1, tok: tb[j] || '' });
+    for (let j = 0; j < nf; j++) out.push({ dir: 1, tok: tf[j] || '' });
+    return out;
+  }
+  /* auto-offset rozjazdow/wlaczen: grupy pasow odnog ustawiaja sie na pasach drogi glownej (jak w edytorze), zeby wezel byl krotki */
+  /* droga przechodzaca przez wspolny wezel innej drogi: tnij ja w tym wezle (kazde ramie konczy sie w wezle) */
+  function splitJunctions() {
+    for (let g = 0; g < 20; g++) {
+      const cnt = new Map();
+      roads().forEach((r) => new Set(r.nk).forEach((k) => cnt.set(k, (cnt.get(k) || 0) + 1)));
+      let did = false;
+      for (const r of roads().slice()) {
+        for (let i = 1; i < r.nk.length - 1; i++) {
+          if (cnt.get(r.nk[i]) > 1) {
+            const b = JSON.parse(JSON.stringify(r));
+            b.pts = r.pts.slice(i);
+            b.nk = r.nk.slice(i);
+            b._id = rid++;
+            delete b.rp;
+            r.pts = r.pts.slice(0, i + 1);
+            r.nk = r.nk.slice(0, i + 1);
+            if (r.offE != null) {
+              b.offE = r.offE;
+              delete r.offE;
+            }
+            delete b.offS;
+            if (r.off != null && r.off !== '') {
+              b.off = r.off;
+            }
+            S.doc.road.splice(roads().indexOf(r) + 1, 0, b);
+            did = true;
+            break;
+          }
+        }
+        if (did) break;
+      }
+      if (!did) break;
+    }
+  }
+  /* wspolna krzywa startu drogi glownej (np. dwupasmowki) przy rozjezdzie: gdy dojezdza do wezla pod katem wzgledem wlotu o wiekszej liczbie pasow, zaczyna sie rownolegle do wlotu (tangens ciagly) i dochodzi do swojego kierunku */
+  function mainBlendInfo(x, st) {
+    try {
+      if (window.__nb) return null;
+      const all = roads(),
+        key = st ? x.nk[0] : x.nk[x.nk.length - 1];
+      if (!key || !x.oneway) return null;
+      const at = all.filter((y) => y.nk && (y.nk[0] === key || y.nk[y.nk.length - 1] === key));
+      if (at.length !== 3) return null;
+      const out = (P) => {
+          const o0 = P[0],
+            d0 = Math.hypot(P[1][0] - o0[0], P[1][1] - o0[1]) || 1;
+          return [(P[1][0] - o0[0]) / d0, (P[1][1] - o0[1]) / d0];
+        },
+        ordered = (y, s) => (s ? y.pts : y.pts.slice().reverse());
+      const mine = out(ordered(x, st));
+      let I = null;
+      for (const y of at) {
+        if (y === x || !y.oneway || (y.lanes | 0) <= (x.lanes | 0)) continue;
+        const s2 = y.nk[0] === key,
+          dy = out(ordered(y, s2));
+        if (dy[0] * mine[0] + dy[1] * mine[1] < -0.2) {
+          I = { y, v: [-dy[0], -dy[1]] };
+        }
+      }
+      if (!I) return null;
+      if (I.v[0] * mine[0] + I.v[1] * mine[1] > 0.99999999) return null;
+      const P = ordered(x, st),
+        p0 = P[0],
+        d1 = Math.hypot(P[1][0] - p0[0], P[1][1] - p0[1]);
+      const th = (Math.acos(Math.max(-1, Math.min(1, I.v[0] * mine[0] + I.v[1] * mine[1]))) * 180) / Math.PI,
+        Lw = Math.min(
+          16,
+          3 + th * 0.8,
+        ) /* dlugosc profilowania rosnie z katem: maly kat = krotkie, prawie niewidoczne wyprofilowanie, os zostaje na linii OSM */,
+        L = Math.min(Lw, d1 * 0.9);
+      if (d1 < 1.2) return null;
+      return { P, p0: p0.slice(), T0: I.v, T1: mine, L, Rr: [p0[0] + mine[0] * L, p0[1] + mine[1] * L] };
+    } catch (e) {
+      return null;
+    }
+  }
+  const hermAt = (b, s) => {
+    const ch = b.L,
+      s2 = s * s,
+      s3 = s2 * s,
+      h00 = 2 * s3 - 3 * s2 + 1,
+      h10 = s3 - 2 * s2 + s,
+      h01 = -2 * s3 + 3 * s2,
+      h11 = s3 - s2,
+      k = ch * 1.1;
+    return [
+      h00 * b.p0[0] + h10 * k * b.T0[0] + h01 * b.Rr[0] + h11 * k * b.T1[0],
+      h00 * b.p0[1] + h10 * k * b.T0[1] + h01 * b.Rr[1] + h11 * k * b.T1[1],
+    ];
+  };
+  /* twardy warunek: krawedz odnogi nigdy nie wchodzi na pas jezdni glownej (przywieranie) */
+  window.__hug = (r, Q, d, w) => {
+    r._cs = null;
+    r._dense = null;
+    if (r._csTgt) {
+      const o0 = roads().find((y) => y._id === r._csTgt);
+      if (o0) {
+        o0._cs2 = null;
+        o0._cT2 = null;
+      }
+      r._csTgt = null;
+    }
+    if (r._csMain) {
+      const o1 = roads().find((y) => y._id === r._csMain);
+      if (o1) o1._cT2 = null;
+      r._csMain = null;
+    }
+    r._cT = null;
+    if (!r.oneway || !Q.length) return;
+    {
+      for (let j = Q.length - 2; j >= 1; j--)
+        if (Math.hypot(Q[j][0] - Q[j - 1][0], Q[j][1] - Q[j - 1][1]) < 0.12) {
+          Q.splice(j, 1);
+          if (d.length > j) d.splice(j, 1);
+          if (w.length > j) w.splice(j, 1);
+        }
+    } /* bez zdublowanych punktow osi (zero-dlugie odcinki dawaly szpice) */
+    {
+      /* zakladka 6 cm w wezle rozjazdu: wlot wystaje za wezel, pozostale ramiona zaczynaja sie nieco wczesniej - bez wlosowych szczelin miedzy asfaltami */ const all0 =
+          roads(),
+        me0 = all0.find((x) => x._id === r._id) || r;
+      if (me0.nk && me0.nk.length >= 2 && Q.length >= 2)
+        for (const e1 of [0, 1]) {
+          const kk = me0.nk[e1 ? me0.nk.length - 1 : 0],
+            at = all0.filter((y) => y.nk && (y.nk[0] === kk || y.nk[y.nk.length - 1] === kk));
+          if (at.length !== 3 || !at.every((y) => y.oneway)) continue;
+          if (me0._cs || me0._cs2 || at.some((y) => y._cs)) continue;
+          /* skosny rozjazd: rogi musza sie pokrywac dokladnie, bez zakladki */ const big = at.reduce((m, y) =>
+              (y.lanes | 0) > (m.lanes | 0) ? y : m,
+            ),
+            i0 = e1 ? Q.length - 1 : 0,
+            i1 = e1 ? Q.length - 2 : 1,
+            tx = Q[i0][0] - Q[i1][0],
+            ty = Q[i0][1] - Q[i1][1],
+            tl = Math.hypot(tx, ty) || 1,
+            sgn0 = big === me0 ? 1 : -1;
+          Q[i0] = [Q[i0][0] + (tx / tl) * 0.06 * sgn0, Q[i0][1] + (ty / tl) * 0.06 * sgn0];
+        }
+    }
+    const all = roads();
+    const me = all.find((x) => x._id === r._id) || r;
+    if (!me.nk || me.nk.length < 2) return;
+    const ends = [
+      [0, me.nk[0]],
+      [1, me.nk[me.nk.length - 1]],
+    ];
+    const bw = (me.lanes | 0) * (me.lw || 3.5);
+    for (const e0 of [0, 1]) {
+      const bi = mainBlendInfo(me, e0 === 0);
+      if (!bi) continue;
+      const n0 = Q.length,
+        ix0 = (j) => (e0 === 0 ? j : n0 - 1 - j),
+        cl0 = [0];
+      for (let j = 1; j < n0; j++)
+        cl0.push(cl0[j - 1] + Math.hypot(Q[ix0(j)][0] - Q[ix0(j - 1)][0], Q[ix0(j)][1] - Q[ix0(j - 1)][1]));
+      let jr = 0;
+      while (jr < n0 - 1 && cl0[jr] < bi.L) jr++;
+      if (jr < 2) continue;
+      const sc = bi.L / (cl0[jr] || 1);
+      for (let j = 0; j <= jr; j++) Q[ix0(j)] = hermAt(bi, Math.min(1, cl0[j] / cl0[jr]));
+      {
+        const q00 = Q[ix0(0)],
+          s1 = Math.hypot(Q[ix0(1)][0] - q00[0], Q[ix0(1)][1] - q00[1]);
+        Q[ix0(0)] = bi.p0.slice();
+        Q[ix0(1)] = [bi.p0[0] + bi.T0[0] * s1, bi.p0[1] + bi.T0[1] * s1];
+      }
+      /* pierwszy odcinek dokladnie wzdluz wlotu: przekroj poczatku = przekroj konca trojpasmowki */ if (
+        Math.abs(+offAt(me, e0)) < 0.01
+      )
+        (window.__hugZero = window.__hugZero || new WeakSet()).add(
+          r,
+        ); /* z offsetem (np. 2 -> 1+1) zostaje profil offsetu silnika */
+    }
+    {
+      /* dwupasmowka rozjazdu: gladka os (zalamania na punktach OSM zaokraglone), poczatek zakotwiczony */ const isMainR =
+        [0, me.nk.length - 1].some((j) => {
+          const kk = me.nk[j];
+          const at = all.filter((y) => y.nk && (y.nk[0] === kk || y.nk[y.nk.length - 1] === kk));
+          return (
+            at.length === 3 &&
+            at.some((y) => y !== me && y.oneway && (y.lanes | 0) > (me.lanes | 0)) &&
+            at.some((y) => y !== me && (y.lanes | 0) < (me.lanes | 0))
+          );
+        });
+      if (isMainR && Q.length > 4) {
+        const st0 =
+            all.filter((y) => y.nk && (y.nk[0] === me.nk[0] || y.nk[y.nk.length - 1] === me.nk[0])).length === 3,
+          src = st0 ? Q.map((p2) => p2.slice()) : Q.map((p2) => p2.slice()).reverse(),
+          cu = [0];
+        for (let i = 1; i < src.length; i++)
+          cu.push(cu[i - 1] + Math.hypot(src[i][0] - src[i - 1][0], src[i][1] - src[i - 1][1]));
+        const tot = cu[cu.length - 1],
+          NS = Math.max(4, Math.ceil(tot / 1)),
+          rs = [];
+        let sg = 1;
+        for (let i = 0; i <= NS; i++) {
+          const s = (tot * i) / NS;
+          while (sg < cu.length - 1 && cu[sg] < s) sg++;
+          const f = (s - cu[sg - 1]) / (cu[sg] - cu[sg - 1] || 1);
+          rs.push([
+            src[sg - 1][0] + (src[sg][0] - src[sg - 1][0]) * f,
+            src[sg - 1][1] + (src[sg][1] - src[sg - 1][1]) * f,
+          ]);
+        }
+        const SMm = Math.round(+(window.__lsm == null ? 6 : window.__lsm)) * 14;
+        for (let it = 0; it < SMm; it++) {
+          const cp = rs.map((p2) => p2.slice());
+          for (let k = 3; k < rs.length - 1; k++) {
+            const wgt = Math.min(1, (k - 3) / 8),
+              sx = (cp[k - 1][0] + 2 * cp[k][0] + cp[k + 1][0]) / 4,
+              sy = (cp[k - 1][1] + 2 * cp[k][1] + cp[k + 1][1]) / 4;
+            rs[k] = [cp[k][0] + (sx - cp[k][0]) * wgt, cp[k][1] + (sy - cp[k][1]) * wgt];
+          }
+        } /* poczatek (3 pierwsze punkty) zakotwiczony, wygladzanie narasta plynnie w ciagu 8 m */
+        const ww = w[0],
+          dd0 = d[0],
+          out = st0 ? rs : rs.reverse();
+        Q.length = 0;
+        out.forEach((p2) => Q.push(p2));
+        d.length = 0;
+        w.length = 0;
+        for (let i = 0; i < Q.length; i++) {
+          d.push(0);
+          w.push(ww);
+        }
+      }
+    }
+    {
+      const nq = Q.length;
+      (window.__mainQ = window.__mainQ || {})[me._id] = Q.map((q0, j) => {
+        const a0 = Q[Math.max(0, j - 1)],
+          b0 = Q[Math.min(nq - 1, j + 1)],
+          dx0 = b0[0] - a0[0],
+          dy0 = b0[1] - a0[1],
+          L0 = Math.hypot(dx0, dy0) || 1,
+          dj = window.__hugZero && window.__hugZero.has(r) ? 0 : d[j] || 0;
+        return [q0[0] + (-dy0 / L0) * dj, q0[1] + (dx0 / L0) * dj];
+      });
+    }
+    for (const [e, key] of ends) {
+      const cand = all.filter(
+        (x) => x !== me && x.oneway && x.nk && (x.nk[0] === key || x.nk[x.nk.length - 1] === key),
+      );
+      if (cand.length < 2) continue;
+      const dirAway = (x, st) => {
+        const P = x.pts,
+          n = P.length,
+          o = st ? P[0] : P[n - 1];
+        let q2 = st ? P[1] : P[n - 2];
+        const dd = Math.hypot(q2[0] - o[0], q2[1] - o[1]) || 1;
+        return [(q2[0] - o[0]) / dd, (q2[1] - o[1]) / dd];
+      };
+      const mine = dirAway(me, e === 0);
+      let main = null,
+        best = 0;
+      for (const x of cand) {
+        const st = x.nk[0] === key;
+        const dr = dirAway(x, st),
+          dp = dr[0] * mine[0] + dr[1] * mine[1];
+        if (
+          (e === 1 || st) &&
+          dp > -0.3 &&
+          (x.lanes | 0) > (me.lanes | 0) &&
+          (x.lanes | 0) >= best &&
+          !(x._id === me._id)
+        ) {
+          best = x.lanes | 0;
+          main = { x, st };
+        }
+      }
+      let sibCase = false;
+      if (!main) {
+        /* 2 -> 1+1: dwie jednopasmowki; ta mniej odchylona od osi wlotu jest 'glowna', druga odnoga nie wchodzi na nia */ const inl1 =
+            cand.find((y) => (y.lanes | 0) > (me.lanes | 0)),
+          sib = cand.find((y) => y !== inl1 && y !== me && (y.lanes | 0) === (me.lanes | 0));
+        if (inl1 && sib) {
+          const uI = dirAway(inl1, inl1.nk[0] === key).map((v) => -v),
+            cosMe = mine[0] * uI[0] + mine[1] * uI[1],
+            sd = dirAway(sib, sib.nk[0] === key),
+            cosSib = sd[0] * uI[0] + sd[1] * uI[1];
+          if (cosMe < cosSib - 1e-6 || (Math.abs(cosMe - cosSib) <= 1e-6 && me._id > sib._id))
+            main = { x: sib, st: sib.nk[0] === key };
+          sibCase = true;
+        }
+      }
+      if (!main) continue;
+      let mqZero = false;
+      const x = main.x;
+      const mwN = ((cand.find((y) => y !== me && y !== x) || x).lw || 3.5) * (x.lanes | 0);
+      let PL = main.st ? x.pts : x.pts.slice().reverse();
+      {
+        const bi = mainBlendInfo(x, main.st);
+        if (bi) {
+          const pl = [];
+          for (let z = 0; z <= 24; z++) pl.push(hermAt(bi, z / 24));
+          PL = pl.concat(bi.P.slice(1));
+        }
+        const mq = window.__mainQ && window.__mainQ[x._id];
+        if (mq && mq.length > 2) {
+          mqZero = true;
+          const oriented = main.st ? mq : mq.slice().reverse();
+          PL = oriented;
+          const hs = JSON.stringify(oriented.slice(0, 40).map((p) => [Math.round(p[0] * 10), Math.round(p[1] * 10)]));
+          window.__mqHash = window.__mqHash || {};
+          if (window.__mqHash[me._id] !== hs) {
+            window.__mqHash[me._id] = hs;
+            window.__again = true;
+          }
+        }
+      }
+      const mw = (x.lanes | 0) * (x.lw || 3.5),
+        dmRaw = +offAt(x, main.st ? 0 : 1) * (x.lw || 3.5),
+        dm = dmRaw;
+      /* offset glownej mierzony od strony 'od wezla' (os wskazuje od wezla); gdy rysowana odwrotnie, znak sie zmienia */ let dmA =
+        mqZero ? 0 : main.st ? dm : -dm; /* sciezka glownej z __mainQ ma juz offset */
+      const seg = [];
+      let cum = 0;
+      for (let z = 1; z < PL.length; z++) {
+        const L = Math.hypot(PL[z][0] - PL[z - 1][0], PL[z][1] - PL[z - 1][1]);
+        seg.push({ a: PL[z - 1], b: PL[z], L, c0: cum });
+        cum += L;
+      }
+      const nodeP0 = e === 0 ? me.pts[0] : me.pts[me.pts.length - 1],
+        u00 = [(seg[0].b[0] - seg[0].a[0]) / (seg[0].L || 1), (seg[0].b[1] - seg[0].a[1]) / (seg[0].L || 1)],
+        dmB = mqZero
+          ? (PL[0][0] - nodeP0[0]) * -u00[1] + (PL[0][1] - nodeP0[1]) * u00[0]
+          : dmA; /* polozenie osi glownej w wezle (z offsetem) */
+      const lat = (p) => {
+        let bd = 1e9,
+          bl = 0,
+          ok = false;
+        for (const s of seg) {
+          const ux = (s.b[0] - s.a[0]) / (s.L || 1),
+            uy = (s.b[1] - s.a[1]) / (s.L || 1),
+            px = p[0] - s.a[0],
+            py = p[1] - s.a[1],
+            tt = px * ux + py * uy;
+          if (tt < 0 || tt > s.L) continue;
+          const l = -uy * px + ux * py;
+          if (Math.abs(l) < bd) {
+            bd = Math.abs(l);
+            bl = l;
+            ok = true;
+          }
+        }
+        return ok ? { l: bl } : null;
+      };
+      const nrm = (j) => {
+        const a = Q[Math.max(0, j - 1)],
+          b = Q[Math.min(Q.length - 1, j + 1)],
+          dx = b[0] - a[0],
+          dy = b[1] - a[1],
+          L = Math.hypot(dx, dy) || 1;
+        return [-dy / L, dx / L];
+      };
+      /* strona: znak poprzecznego polozenia najdalszego punktu odnogi */ let far = 0,
+        sgn = 0;
+      for (let j = 0; j < Q.length; j++) {
+        const c = [Q[j][0] + nrm(j)[0] * d[j], Q[j][1] + nrm(j)[1] * d[j]],
+          ll = lat(c);
+        if (ll && Math.abs(ll.l - dmA) > far) {
+          far = Math.abs(ll.l - dmA);
+          sgn = Math.sign(ll.l - dmA);
+        }
+      }
+      if (!sgn) {
+        const s0q = seg[0],
+          nb0 = e === 0 ? me.pts[1] : me.pts[me.pts.length - 2],
+          nd0 = e === 0 ? me.pts[0] : me.pts[me.pts.length - 1],
+          ux0 = (s0q.b[0] - s0q.a[0]) / (s0q.L || 1),
+          uy0 = (s0q.b[1] - s0q.a[1]) / (s0q.L || 1),
+          sv0 = (nb0[0] - nd0[0]) * -uy0 + (nb0[1] - nd0[1]) * ux0;
+        if (Math.abs(sv0) < 1e-6) continue;
+        sgn = sv0 > 0 ? 1 : -1;
+      }
+      {
+        /* odnoga pod kątem > 65 st.: pas zaczyna sie rownolegle do jezdni (srodek skrajnego pasa), skreca lukiem R o staly przekroj i dalej idzie kierunkiem odnogi; geometria wg punktow OSM przesunieta rownolegle */
+        const nodeP = e === 0 ? me.pts[0] : me.pts[me.pts.length - 1],
+          nxt = e === 0 ? me.pts[1] : me.pts[me.pts.length - 2],
+          bl0 = Math.hypot(nxt[0] - nodeP[0], nxt[1] - nodeP[1]) || 1,
+          bd = [(nxt[0] - nodeP[0]) / bl0, (nxt[1] - nodeP[1]) / bl0],
+          s00 = seg[0],
+          uu = [(s00.b[0] - s00.a[0]) / (s00.L || 1), (s00.b[1] - s00.a[1]) / (s00.L || 1)],
+          cosP = uu[0] * bd[0] + uu[1] * bd[1];
+        const bwE =
+          (x.lw || 3.5) *
+          (me.lanes | 0); /* szerokosc pasa w wezle = szerokosc sasiednich pasow (poszerzanie zaczyna sie dalej) */
+        if (cosP < Math.cos((60 * Math.PI) / 180) && me.pts.length >= 2) {
+          const l0b = dmB + sgn * (mwN / 2 + bwE / 2),
+            P0b = [nodeP[0] + -uu[1] * l0b, nodeP[1] + uu[0] * l0b],
+            side = bd[0] * -uu[1] + bd[1] * uu[0] >= 0 ? 1 : -1,
+            sv = [-uu[1] * side, uu[0] * side],
+            phi = Math.atan2(bd[0] * sv[0] + bd[1] * sv[1], bd[0] * uu[0] + bd[1] * uu[1]),
+            R = Math.max(5, bwE / 2 + 3),
+            cen = [P0b[0] + sv[0] * R, P0b[1] + sv[1] * R],
+            list = [],
+            NA = Math.max(6, Math.ceil((Math.abs(phi) * R) / 0.5));
+          /* rampa prostopadla: pas idzie prosto w dol po osi OSM (os = srodek pasa), start tuz przy dolnej krawedzi jezdni glownej */
+          const sinT = Math.max(0.3, Math.abs(bd[0] * -uu[1] + bd[1] * uu[0])),
+            inl = cand.find((y) => y !== me && y !== x),
+            nmv = [-uu[1], uu[0]],
+            aa = bd[0] * nmv[0] + bd[1] * nmv[1],
+            nbv = [-bd[1], bd[0]],
+            cc = nbv[0] * nmv[0] + nbv[1] * nmv[1],
+            nbu = nbv[0] * uu[0] + nbv[1] * uu[1],
+            mainEdge = dmB + (sgn * mwN) / 2;
+          let inEdge = mainEdge + sgn * 3.5;
+          if (inl) {
+            const ie = inl.nk[0] === key ? 0 : 1,
+              lwI = inl.lw || 3.5;
+            inEdge = +offAt(inl, ie) * lwI + (sgn * (inl.lanes | 0) * lwI) / 2;
+          }
+          const hE = [-bwE / 2, bwE / 2],
+            nearIn = hE[0] * nbu <= hE[1] * nbu ? 0 : 1,
+            sEd = hE.map((h, i2) => (Math.abs(aa) < 0.15 ? 0.5 : ((i2 === nearIn ? inEdge : mainEdge) - h * cc) / aa)),
+            sStart = Math.max(0.2, Math.min(sEd[0], sEd[1]) - 0.5),
+            s0 = sStart;
+          r._cs = { s: [Math.max(0, sEd[0] - sStart), Math.max(0, sEd[1] - sStart)] };
+          /* zakladka 0,25 m pod odchodzacy pas: bez wlosowej szczeliny na skosie */ /* skosny start: rogi pasa leza na krawedziach dwupasmowki i trojpasmowki */ const ordA =
+            (e === 0 ? me.pts : me.pts.slice().reverse()).map((p) => p.slice());
+          /* os = dokladnie punkty OSM (bez wygladzonych punktow silnika) */ const ordA0 = [];
+          if (inl && Math.abs(aa) >= 0.15) {
+            /* odchodzacy pas wlotu konczy sie na tej samej skosnej krawedzi: rog wewnetrzny wysuniety do przodu, zewnetrzny cofniety */ const iM =
+                1 - nearIn,
+              Pn = (i2) => [nodeP[0] + bd[0] * sEd[i2] + nbv[0] * hE[i2], nodeP[1] + bd[1] * sEd[i2] + nbv[1] * hE[i2]],
+              Pin = Pn(nearIn),
+              Pma = Pn(iM),
+              alongU = (p) => (p[0] - nodeP[0]) * uu[0] + (p[1] - nodeP[1]) * uu[1],
+              latN = (p) => (p[0] - nodeP[0]) * nmv[0] + (p[1] - nodeP[1]) * nmv[1],
+              ie2 = inl.nk[0] === key ? 0 : 1,
+              lwI2 = inl.lw || 3.5,
+              NLi = Math.max(1, inl.lanes | 0),
+              latIn = inEdge - sgn * lwI2,
+              den = latN(Pma) - latN(Pin) || 1,
+              tt = (latIn - latN(Pin)) / den,
+              Pinner = [Pin[0] + (Pma[0] - Pin[0]) * tt, Pin[1] + (Pma[1] - Pin[1]) * tt],
+              dir = ie2 === 1 ? -1 : 1,
+              shO = dir * alongU(Pin),
+              shI = dir * alongU(Pinner),
+              arr = Array(2 * NLi).fill(0);
+            if (sgn > 0) {
+              arr[2 * NLi - 2] = shI;
+              arr[2 * NLi - 1] = shO;
+            } else {
+              arr[0] = shO;
+              arr[1] = shI;
+            }
+            if (sibCase && NLi >= 2) {
+              if (sgn > 0) arr[2 * NLi - 3] = shI;
+              else arr[2] = shI;
+              /* 2 -> 1+1: tez pas wlotu przy jezdni prosto konczy sie skosem */ const enM =
+                  x.nk[0] === key ? 's' : 'e',
+                shMain = (enM === 's' ? 1 : -1) * (alongU(Pinner) - 0.06);
+              x._cs = x._cs || {};
+              x._cs[enM] = sgn > 0 ? [0, shMain] : [shMain, 0];
+            }
+            inl._cs2 = { [ie2 === 1 ? 'e' : 's']: arr };
+            r._csTgt = inl._id;
+            {
+              /* punkty docelowe rogow (wspolne wierzcholki): silnik przelicza je na przesuniecia wzdluz osi kazdej drogi */ const enI =
+                  ie2 === 1 ? 'e' : 's',
+                NI2 = 2 * NLi,
+                tI = Array(NI2).fill(null);
+              if (sgn > 0) {
+                tI[NI2 - 2] = Pinner;
+                tI[NI2 - 1] = Pin;
+                if (sibCase && NLi >= 2) tI[NI2 - 3] = Pinner;
+              } else {
+                tI[0] = Pin;
+                tI[1] = Pinner;
+                if (sibCase && NLi >= 2) tI[2] = Pinner;
+              }
+              inl._cT2 = { [enI]: tI };
+              const tB = [null, null];
+              tB[nearIn] = Pin;
+              tB[iM] = sibCase ? Pinner : Pma;
+              r._cT = { [e === 0 ? 's' : 'e']: tB };
+              if (sibCase) {
+                const enM2 = x.nk[0] === key ? 's' : 'e';
+                x._cT2 = { [enM2]: sgn > 0 ? [null, Pinner] : [Pinner, null] };
+                r._csMain = x._id;
+              }
+            }
+          }
+          const st0 = [nodeP[0] + bd[0] * s0, nodeP[1] + bd[1] * s0];
+          let acc0 = 0;
+          const full = [st0];
+          for (const p of ordA) {
+            const al = (p[0] - nodeP[0]) * bd[0] + (p[1] - nodeP[1]) * bd[1];
+            if (al > s0 + 0.4) full.push(p);
+          }
+          const fin = e === 0 ? full : full.slice().reverse(),
+            wv = w[0];
+          Q.length = 0;
+          fin.forEach((p) => Q.push(p));
+          d.length = 0;
+          w.length = 0;
+          for (let i = 0; i < Q.length; i++) {
+            d.push(0);
+            w.push(wv);
+          }
+          (window.__hugZero = window.__hugZero || new WeakSet()).add(r);
+          (window.__fake = window.__fake || {})[me._id] = Q.map((q) => q.slice());
+          continue;
+        }
+      }
+      if (me.pts.length >= 3) {
+        /* pierwszy wierzcholek za wezlem lezy na srodku jezdni odnogi: srodek pasa = krzywa Hermite od pasa przy jezdni glownej (start rownolegly) do tego punktu, dalej geometria wg punktow */ const n =
+            Q.length,
+          ix = (j) => (e === 0 ? j : n - 1 - j),
+          pr = e === 0 ? me.pts[1] : me.pts[me.pts.length - 2];
+        let jR = 0,
+          bd = 1e9;
+        for (let j = 0; j < n; j++) {
+          const dd = Math.hypot(Q[ix(j)][0] - pr[0], Q[ix(j)][1] - pr[1]);
+          if (dd < bd) {
+            bd = dd;
+            jR = j;
+          }
+        }
+        if (jR >= 1) {
+          const cl = [0];
+          for (let j = 1; j <= jR; j++)
+            cl.push(cl[j - 1] + Math.hypot(Q[ix(j)][0] - Q[ix(j - 1)][0], Q[ix(j)][1] - Q[ix(j - 1)][1]));
+          if (cl[jR] > 0.2) {
+            const q0 = Q[ix(0)].slice(),
+              s0 = seg[0],
+              bi0 = mainBlendInfo(x, main.st),
+              mux = bi0 ? bi0.T0[0] : (s0.b[0] - s0.a[0]) / (s0.L || 1),
+              muy = bi0 ? bi0.T0[1] : (s0.b[1] - s0.a[1]) / (s0.L || 1),
+              l0 = dmB + sgn * (mwN / 2 + bw / 2),
+              P0 = [q0[0] + -muy * l0, q0[1] + mux * l0];
+            let Rr = Q[ix(jR)].slice();
+            {
+              /* zabezpieczenie: pierwszy punkt OSM narysowany na jezdni glownej (blizej osi niz srodek odchodzacego pasa) = wirtualnie lezy na srodku tego pasa */ const lp =
+                lat(Rr);
+              if (lp) {
+                const rel = (lp.l - dmA) * sgn;
+                if (rel < mw / 2 + bw / 2 - 0.05) {
+                  const nx0 = -muy,
+                    ny0 = mux,
+                    sh = l0 - lp.l,
+                    dlt = [nx0 * sh, ny0 * sh],
+                    pn = e === 0 ? me.pts[2] : me.pts[me.pts.length - 3];
+                  let jN = jR,
+                    bd2 = 1e9;
+                  for (let j = jR + 1; j < n; j++) {
+                    const dd = Math.hypot(Q[ix(j)][0] - pn[0], Q[ix(j)][1] - pn[1]);
+                    if (dd < bd2) {
+                      bd2 = dd;
+                      jN = j;
+                    }
+                  }
+                  let ac = 0;
+                  const cn = [0];
+                  for (let j = jR + 1; j <= jN; j++) {
+                    ac += Math.hypot(Q[ix(j)][0] - Q[ix(j - 1)][0], Q[ix(j)][1] - Q[ix(j - 1)][1]);
+                    cn.push(ac);
+                  }
+                  Rr = [Rr[0] + dlt[0], Rr[1] + dlt[1]];
+                  Q[ix(jR)] = Rr.slice();
+                  for (let j = jR + 1; j <= jN; j++) {
+                    const s = Math.min(1, cn[j - jR] / (ac || 1)),
+                      w = 1 - s * s * (3 - 2 * s);
+                    Q[ix(j)] = [Q[ix(j)][0] + dlt[0] * w, Q[ix(j)][1] + dlt[1] * w];
+                  }
+                }
+              }
+            }
+            const chord = Math.hypot(Rr[0] - P0[0], Rr[1] - P0[1]) || 1,
+              jb = ix(Math.min(n - 1, jR + 4)),
+              T1v = [Q[jb][0] - Rr[0], Q[jb][1] - Rr[1]],
+              tl1 = Math.hypot(T1v[0], T1v[1]) || 1,
+              T1 = tl1 > 0.5 ? [T1v[0] / tl1, T1v[1] / tl1] : [(Rr[0] - P0[0]) / chord, (Rr[1] - P0[1]) / chord];
+            const Cs = [],
+              sm = [];
+            const bz = (k, tt) => {
+              const m = 1 - tt,
+                c1 = [P0[0] + mux * chord * k, P0[1] + muy * chord * k],
+                c2 = [Rr[0] - T1[0] * chord * k, Rr[1] - T1[1] * chord * k];
+              return [
+                m * m * m * P0[0] + 3 * m * m * tt * c1[0] + 3 * m * tt * tt * c2[0] + tt * tt * tt * Rr[0],
+                m * m * m * P0[1] + 3 * m * m * tt * c1[1] + 3 * m * tt * tt * c2[1] + tt * tt * tt * Rr[1],
+              ];
+            };
+            /* wymuszona ciaglosc: dobieramy 'napiecie' k tak, aby promien krzywizny srodka pasa nigdzie nie spadl ponizej polowy szerokosci pasa + zapas (krawedz wewnetrzna bez zalamania) */
+            const minR = (k) => {
+              let mr = 1e9,
+                pv = bz(k, 0),
+                pp = null;
+              for (let i = 1; i <= 60; i++) {
+                const p = bz(k, i / 60);
+                if (pp) {
+                  const a1 = Math.atan2(pv[1] - pp[1], pv[0] - pp[0]),
+                    a2 = Math.atan2(p[1] - pv[1], p[0] - pv[0]);
+                  let da = Math.abs(a2 - a1);
+                  if (da > Math.PI) da = 2 * Math.PI - da;
+                  const sl = Math.hypot(p[0] - pv[0], p[1] - pv[1]);
+                  if (da > 1e-6) mr = Math.min(mr, sl / da);
+                }
+                pp = pv;
+                pv = p;
+              }
+              return mr;
+            };
+            const need = bw / 2 + 0.6;
+            let kk = 0.4,
+              bestK = 0.4,
+              bestR = -1;
+            for (let k = 0.3; k <= 1.6; k += 0.05) {
+              const mr = minR(k);
+              if (mr > bestR) {
+                bestR = mr;
+                bestK = k;
+              }
+              if (mr >= need) {
+                kk = k;
+                bestR = -2;
+                break;
+              }
+            }
+            if (bestR !== -2) kk = bestK;
+            let polyA = null;
+            {
+              /* prosty odcinek wzdluz wlotu, luk o zadanym promieniu, prosta do pierwszego punktu: zakret zawsze okragly */ const cr =
+                  mux * T1[1] - muy * T1[0],
+                phi = Math.acos(Math.max(-1, Math.min(1, mux * T1[0] + muy * T1[1])));
+              if (Math.abs(cr) > 1e-4 && phi > 0.12) {
+                const sg = cr > 0 ? 1 : -1,
+                  n1 = [-muy * sg, mux * sg],
+                  n2 = [-T1[1] * sg, T1[0] * sg],
+                  un2 = mux * n2[0] + muy * n2[1],
+                  n12 = n1[0] * n2[0] + n1[1] * n2[1],
+                  rp = (Rr[0] - P0[0]) * n2[0] + (Rr[1] - P0[1]) * n2[1];
+                if (un2 > 1e-3) {
+                  let R = Math.max(3, +(window.__arcR || 18));
+                  for (let it = 0; it < 40; it++) {
+                    const a = (rp + R * (1 - n12)) / un2,
+                      Tp = [P0[0] + mux * a + n1[0] * R - n2[0] * R, P0[1] + muy * a + n1[1] * R - n2[1] * R],
+                      fw = (Rr[0] - Tp[0]) * T1[0] + (Rr[1] - Tp[1]) * T1[1];
+                    if (a >= 0 && fw >= 0) break;
+                    R *= 0.85;
+                  }
+                  const a = Math.max(0, (rp + R * (1 - n12)) / un2),
+                    A1 = [P0[0] + mux * a, P0[1] + muy * a],
+                    cen = [A1[0] + n1[0] * R, A1[1] + n1[1] * R],
+                    Tp = [cen[0] - n2[0] * R, cen[1] - n2[1] * R],
+                    a0 = Math.atan2(A1[1] - cen[1], A1[0] - cen[0]);
+                  let da = Math.atan2(Tp[1] - cen[1], Tp[0] - cen[0]) - a0;
+                  while (da > Math.PI) da -= 2 * Math.PI;
+                  while (da < -Math.PI) da += 2 * Math.PI;
+                  if (Math.abs(da) < Math.PI && R >= 3) {
+                    polyA = [P0.slice()];
+                    for (let z = 1; z <= Math.ceil(a / 0.5); z++)
+                      polyA.push([P0[0] + mux * Math.min(a, z * 0.5), P0[1] + muy * Math.min(a, z * 0.5)]);
+                    const NA = Math.max(4, Math.ceil((Math.abs(da) * R) / 0.5));
+                    for (let z = 1; z <= NA; z++)
+                      polyA.push([
+                        cen[0] + R * Math.cos(a0 + (da * z) / NA),
+                        cen[1] + R * Math.sin(a0 + (da * z) / NA),
+                      ]);
+                    const sl = Math.hypot(Rr[0] - Tp[0], Rr[1] - Tp[1]),
+                      NL = Math.ceil(sl / 0.5);
+                    for (let z = 1; z <= NL; z++)
+                      polyA.push([Tp[0] + ((Rr[0] - Tp[0]) * z) / NL, Tp[1] + ((Rr[1] - Tp[1]) * z) / NL]);
+                  }
+                }
+              }
+            }
+            if (polyA) r._dense = { e, polyA, jR };
+            const polyAt = (s) => {
+              const cu = [0];
+              for (let i = 1; i < polyA.length; i++)
+                cu.push(cu[i - 1] + Math.hypot(polyA[i][0] - polyA[i - 1][0], polyA[i][1] - polyA[i - 1][1]));
+              const Lp = cu[cu.length - 1] * s;
+              let g = 1;
+              while (g < cu.length - 1 && cu[g] < Lp) g++;
+              const f = (Lp - cu[g - 1]) / (cu[g] - cu[g - 1] || 1);
+              return [
+                polyA[g - 1][0] + (polyA[g][0] - polyA[g - 1][0]) * f,
+                polyA[g - 1][1] + (polyA[g][1] - polyA[g - 1][1]) * f,
+              ];
+            };
+            for (let j = 0; j <= jR; j++) {
+              const s = cl[j] / cl[jR];
+              Cs.push(polyA ? polyAt(s) : bz(kk, s));
+              sm.push(1 - s * s * (3 - 2 * s));
+            }
+            /* os drogi = sama krzywa srodka pasa (offset 0): staly przekroj, poczatek rowny z krawedzia jezdni glownej, brak zalaman krawedzi */
+            (window.__hugZero = window.__hugZero || new WeakSet()).add(r);
+            if (jR >= 3) {
+              const s1 = Math.hypot(Cs[1][0] - Cs[0][0], Cs[1][1] - Cs[0][1]);
+              Cs[1] = [Cs[0][0] + mux * s1, Cs[0][1] + muy * s1];
+            }
+            /* pierwszy odcinek dokladnie rownolegle: czolo pasa rowne z jezdnia glowna */ for (
+              let j = 0;
+              j <= jR;
+              j++
+            ) {
+              Q[ix(j)] = [Cs[j][0], Cs[j][1]];
+              d[ix(j)] = 0;
+            }
+            for (let j = jR + 1; j < n; j++) d[ix(j)] = 0;
+            /* wygladzenie osi (bez zmiany szerokosci): dwumianowe 1-2-1, kilka przejsc, poczatek (2 pierwsze punkty) i koniec zakotwiczone */
+            {
+              const hi = Math.min(n - 1, jR + 10);
+              const SM = Math.round(+(window.__lsm == null ? 6 : window.__lsm)),
+                HI = Math.min(n - 1, jR + 10 + SM * 2);
+              for (let it = 0; it < SM; it++) {
+                const cp = [];
+                for (let j = 0; j <= HI; j++) cp.push(Q[ix(j)]);
+                for (let j = 2; j < HI; j++)
+                  Q[ix(j)] = [
+                    (cp[j - 1][0] + 2 * cp[j][0] + cp[j + 1][0]) / 4,
+                    (cp[j - 1][1] + 2 * cp[j][1] + cp[j + 1][1]) / 4,
+                  ];
+              }
+            }
+            /* czolo: pierwsze ~2 m dokladnie rownolegle do jezdni glownej (poprzeczne polozenie = l0), potem plynnie 2-5 m: krawedzie stykaja sie bez szczeliny */ {
+              const nx0 = -muy,
+                ny0 = mux;
+              for (let j = 1; j <= Math.min(n - 1, jR + 10); j++) {
+                const q = Q[ix(j)],
+                  al = (q[0] - q0[0]) * mux + (q[1] - q0[1]) * muy;
+                if (al > 5) break;
+                const w = al <= 2 ? 1 : 1 - (al - 2) / 3,
+                  sw = w * w * (3 - 2 * w),
+                  lt = (q[0] - q0[0]) * nx0 + (q[1] - q0[1]) * ny0,
+                  dd = (l0 - lt) * sw;
+                q[0] += nx0 * dd;
+                q[1] += ny0 * dd;
+              }
+            }
+          }
+        }
+      }
+      if (sibCase && !(window.__hugZero && window.__hugZero.has(r))) {
+        /* dwie jednopasmowki: sciezka srodka (z offsetem) staje sie osia, offset 0; dalej przechodzi przez zasade nienachodzenia */ const nQ =
+          Q.length;
+        for (let j = 0; j < nQ; j++) {
+          const a0 = Q[Math.max(0, j - 1)],
+            b0 = Q[Math.min(nQ - 1, j + 1)],
+            dx0 = b0[0] - a0[0],
+            dy0 = b0[1] - a0[1],
+            L0 = Math.hypot(dx0, dy0) || 1,
+            dj = d[j] || 0;
+          Q[j] = [Q[j][0] + (-dy0 / L0) * dj, Q[j][1] + (dx0 / L0) * dj];
+          d[j] = 0;
+        }
+        (window.__hugZero = window.__hugZero || new WeakSet()).add(r);
+      }
+      if (window.__hugZero && window.__hugZero.has(r) && seg.length) {
+        /* odnoga idzie rownolegle do jezdni glownej (po jej krzywej), dopoki jej os OSM nie znajdzie sie na srodku odchodzacego pasa; potem wlasna geometria */
+        const nP = Q.length,
+          jx = (k) => (e === 0 ? k : nP - 1 - k),
+          nd = mw / 2 + bw / 2,
+          proj = (p) => {
+            let bd = 1e9,
+              bp = null;
+            for (const s of seg) {
+              const ux = (s.b[0] - s.a[0]) / (s.L || 1),
+                uy = (s.b[1] - s.a[1]) / (s.L || 1),
+                px = p[0] - s.a[0],
+                py = p[1] - s.a[1],
+                tt = Math.max(0, Math.min(s.L, px * ux + py * uy)),
+                qx = s.a[0] + ux * tt,
+                qy = s.a[1] + uy * tt,
+                dd = Math.hypot(p[0] - qx, p[1] - qy);
+              if (dd < bd) {
+                bd = dd;
+                bp = { qx, qy, ux, uy, l: -uy * (p[0] - qx) + ux * (p[1] - qy), end: tt <= 0.001 || tt >= s.L - 0.001 };
+              }
+            }
+            return bp;
+          };
+        const inl0 = cand.find((y) => y !== me && y !== x),
+          wNm = ((inl0 || x).lw || 3.5) * (x.lanes | 0),
+          wFm = (x.lw || 3.5) * (x.lanes | 0),
+          Lm = Math.max(16, Math.abs(wNm - wFm) * (+window.__wtl || 24)),
+          ndAt = (ac) => {
+            const xx = Math.min(1, ac / Lm),
+              f = xx * xx * xx * (xx * (xx * 6 - 15) + 10);
+            return (wNm + (wFm - wNm) * f) / 2 + bw / 2;
+          };
+        const pass = (lim) => {
+          let acc = 0,
+            last = 0,
+            accIn = 0;
+          for (let k = 0; k < Math.min(nP, lim); k++) {
+            const j = jx(k);
+            if (k > 0) acc += Math.hypot(Q[j][0] - Q[jx(k - 1)][0], Q[j][1] - Q[jx(k - 1)][1]);
+            if (acc > 90) break;
+            if (k < 2) continue;
+            /* czolo zakotwiczone */ const ndk = ndAt(acc),
+              pj = proj(Q[j]);
+            if (!pj) continue;
+            const rel = (pj.l - dmA) * sgn;
+            if (rel >= ndk + 0.3 && acc > 2) {
+              if (acc - accIn > 12) break;
+              continue;
+            }
+            /* odnoga trzyma sie jezdni glownej, dopoki nie odejdzie od niej na stale (>12 m poza pasem) */ if (
+              rel < ndk
+            ) {
+              Q[j] = [pj.qx + -pj.uy * (dmA + sgn * ndk), pj.qy + pj.ux * (dmA + sgn * ndk)];
+              last = k;
+              accIn = acc;
+            }
+          }
+          return last;
+        };
+        const lastK = pass(nP);
+        window.__dbg3 = {
+          lastK,
+          nP,
+          nd,
+          rels: Array.from({ length: nP }, (_, k) => {
+            const pj = proj(Q[jx(k)]);
+            return pj ? +((pj.l - dmA) * sgn).toFixed(2) : null;
+          }).filter((_, i) => i % 4 === 0),
+        };
+        if (lastK > 1) {
+          const hiK = Math.min(nP - 1, lastK + 6);
+          const SM2 = Math.round(+(window.__lsm == null ? 6 : window.__lsm));
+          for (let it = 0; it < Math.max(2, SM2); it++) {
+            const cp = [];
+            for (let k = 0; k <= hiK; k++) cp.push(Q[jx(k)]);
+            for (let k = 2; k < hiK; k++)
+              Q[jx(k)] = [
+                (cp[k - 1][0] + 2 * cp[k][0] + cp[k + 1][0]) / 4,
+                (cp[k - 1][1] + 2 * cp[k][1] + cp[k + 1][1]) / 4,
+              ];
+          }
+          pass(hiK + 1);
+        }
+        if (true) {
+          /* ostry zakret odnogi tuz za rozjazdem: zaokraglenie lukiem o promieniu >= polowa szerokosci + zapas (krawedz wewnetrzna sie nie zawija), potem rownomierne probkowanie osi */
+          const Rf = 45,
+            P = [],
+            kS = Math.max(1, Math.min(nP - 2, lastK));
+          /* odcinek przy jezdni glownej (k < kS) zostaje dokladnie rownolegly; zaokraglamy dopiero odejscie */ for (
+            let k = kS;
+            k < nP;
+            k++
+          )
+            P.push(Q[jx(k)]);
+          const dpS = (pts, tol) => {
+            const keep = new Array(pts.length).fill(false);
+            keep[0] = keep[pts.length - 1] = true;
+            const st = [[0, pts.length - 1]];
+            while (st.length) {
+              const [i0, i1] = st.pop();
+              let md = 0,
+                mi = -1;
+              const A = pts[i0],
+                B = pts[i1],
+                dx = B[0] - A[0],
+                dy = B[1] - A[1],
+                L = Math.hypot(dx, dy) || 1;
+              for (let i = i0 + 1; i < i1; i++) {
+                const dd = Math.abs((pts[i][0] - A[0]) * dy - (pts[i][1] - A[1]) * dx) / L;
+                if (dd > md) {
+                  md = dd;
+                  mi = i;
+                }
+              }
+              if (md > tol && mi > 0) {
+                keep[mi] = true;
+                st.push([i0, mi], [mi, i1]);
+              }
+            }
+            return pts.filter((_, i) => keep[i]);
+          };
+          const V = dpS(P, 0.08),
+            poly = [V[0]];
+          for (let i = 1; i < V.length - 1; i++) {
+            const A = V[i - 1],
+              Bv = V[i],
+              C = V[i + 1],
+              u1 = [A[0] - Bv[0], A[1] - Bv[1]],
+              u2 = [C[0] - Bv[0], C[1] - Bv[1]],
+              l1 = Math.hypot(...u1),
+              l2 = Math.hypot(...u2);
+            if (l1 < 1e-6 || l2 < 1e-6) continue;
+            const n1 = [u1[0] / l1, u1[1] / l1],
+              n2 = [u2[0] / l2, u2[1] / l2],
+              cs = Math.max(-1, Math.min(1, n1[0] * n2[0] + n1[1] * n2[1])),
+              th = Math.acos(cs),
+              turn = Math.PI - th;
+            if (turn < 0.015 || th < 0.2) {
+              poly.push(Bv);
+              continue;
+            }
+            let tl = Rf / Math.tan(th / 2);
+            tl = Math.min(tl, 0.48 * l1, 0.48 * l2);
+            const R2 = tl * Math.tan(th / 2),
+              T1 = [Bv[0] + n1[0] * tl, Bv[1] + n1[1] * tl],
+              T2 = [Bv[0] + n2[0] * tl, Bv[1] + n2[1] * tl],
+              bis = [n1[0] + n2[0], n1[1] + n2[1]],
+              bl = Math.hypot(...bis) || 1,
+              Cc = [Bv[0] + (bis[0] / bl) * (R2 / Math.sin(th / 2)), Bv[1] + (bis[1] / bl) * (R2 / Math.sin(th / 2))];
+            let a1 = Math.atan2(T1[1] - Cc[1], T1[0] - Cc[0]),
+              a2 = Math.atan2(T2[1] - Cc[1], T2[0] - Cc[0]),
+              da = a2 - a1;
+            while (da > Math.PI) da -= 2 * Math.PI;
+            while (da < -Math.PI) da += 2 * Math.PI;
+            for (let q2 = 0; q2 <= 12; q2++)
+              poly.push([Cc[0] + R2 * Math.cos(a1 + (da * q2) / 12), Cc[1] + R2 * Math.sin(a1 + (da * q2) / 12)]);
+          }
+          poly.push(V[V.length - 1]);
+          const cuml = [0];
+          for (let i = 1; i < poly.length; i++)
+            cuml.push(cuml[i - 1] + Math.hypot(poly[i][0] - poly[i - 1][0], poly[i][1] - poly[i - 1][1]));
+          const tot = cuml[cuml.length - 1];
+          if (tot > 1) {
+            /* gestsze probkowanie osi (co 0,5 m): krawedzie gladkie bez facetow; Q, d, w zmieniaja dlugosc razem */ const NS =
+                Math.max(2, Math.ceil(tot / 0.5)),
+              samples = [];
+            let seg2 = 1;
+            for (let i = 0; i <= NS; i++) {
+              const s = (tot * i) / NS;
+              while (seg2 < cuml.length - 1 && cuml[seg2] < s) seg2++;
+              const f = (s - cuml[seg2 - 1]) / (cuml[seg2] - cuml[seg2 - 1] || 1);
+              samples.push([
+                poly[seg2 - 1][0] + (poly[seg2][0] - poly[seg2 - 1][0]) * f,
+                poly[seg2 - 1][1] + (poly[seg2][1] - poly[seg2 - 1][1]) * f,
+              ]);
+            }
+            const wv = w[0],
+              pre = [];
+            for (let k = 0; k < kS; k++) pre.push(Q[jx(k)]);
+            const list = pre.concat(samples),
+              kT = kS + 2;
+            {
+              const passes = Math.round(5 * +(window.__lsm == null ? 6 : window.__lsm));
+              for (let it = 0; it < passes; it++) {
+                const cp = list.map((p3) => p3.slice());
+                for (let k = kT; k < list.length - 2; k++) {
+                  list[k] = [
+                    (cp[k - 1][0] + 2 * cp[k][0] + cp[k + 1][0]) / 4,
+                    (cp[k - 1][1] + 2 * cp[k][1] + cp[k + 1][1]) / 4,
+                  ];
+                }
+              }
+            }
+            /* wygladzenie krawedzi: pierwsze 2 i ostatnie 2 punkty zakotwiczone */ for (
+              let j = list.length - 2;
+              j >= 1;
+              j--
+            )
+              if (Math.hypot(list[j][0] - list[j - 1][0], list[j][1] - list[j - 1][1]) < 0.15) list.splice(j, 1);
+            const out = e === 0 ? list : list.reverse();
+            Q.length = 0;
+            for (const p2 of out) Q.push(p2);
+            d.length = 0;
+            w.length = 0;
+            for (let i = 0; i < Q.length; i++) {
+              d.push(0);
+              w.push(wv);
+            }
+          }
+        }
+      }
+      const need = mw / 2 + bw / 2 + 0.05,
+        raw = new Array(Q.length).fill(0),
+        nj = Q.map((_, j) => nrm(j));
+      let released = false,
+        accL = 0;
+      for (let kq = 0; kq < Q.length; kq++) {
+        const j = e === 0 ? kq : Q.length - 1 - kq;
+        if (kq > 0)
+          accL += Math.hypot(Q[j][0] - Q[e === 0 ? j - 1 : j + 1][0], Q[j][1] - Q[e === 0 ? j - 1 : j + 1][1]);
+        if (released || accL > 60) break;
+        const c = [Q[j][0] + nj[j][0] * d[j], Q[j][1] + nj[j][1] * d[j]],
+          ll = lat(c);
+        if (!ll) continue;
+        const rel = (ll.l - dmA) * sgn;
+        if (rel >= need + 0.3 && accL > 2) {
+          released = true;
+          continue;
+        }
+        /* ograniczenie dziala tylko przy wezle, dopoki odnoga nie odejdzie od jezdni glownej (dalej biegnie swoja droga) */ if (
+          rel >= need
+        )
+          continue;
+        /* skladowa normalnej odnogi wzgledem normalnej glownej */ let mn = null;
+        for (const s of seg) {
+          const ux = (s.b[0] - s.a[0]) / (s.L || 1),
+            uy = (s.b[1] - s.a[1]) / (s.L || 1),
+            px = c[0] - s.a[0],
+            py = c[1] - s.a[1],
+            tt = px * ux + py * uy;
+          if (tt >= 0 && tt <= s.L) {
+            mn = [-uy, ux];
+            break;
+          }
+        }
+        if (!mn) continue;
+        const cs = (nj[j][0] * mn[0] + nj[j][1] * mn[1]) * sgn;
+        if (cs < 0.3) continue;
+        raw[j] = Math.min(2.5, (need - rel) / cs);
+      }
+      let sm = raw.slice();
+      for (let it = 0; it < 3; it++) {
+        const nx = sm.slice();
+        for (let j = 1; j < sm.length - 1; j++) nx[j] = (sm[j - 1] + sm[j] * 2 + sm[j + 1]) / 4;
+        sm = nx;
+      }
+      for (let j = 0; j < Q.length; j++) {
+        const dl = Math.max(raw[j], sm[j]);
+        if (dl > 0) d[j] += dl;
+      }
+      if (window.__hugZero && window.__hugZero.has(r)) {
+        d.fill(0);
+      } /* jezdnia z wlasna krzywa srodka pasa: bez dodatkowego przesuniecia */
+      (window.__fake = window.__fake || {})[me._id] = Q.map((q, j) => [
+        q[0] + nrm(j)[0] * d[j],
+        q[1] + nrm(j)[1] * d[j],
+      ]);
+    }
+  };
+  /* plynne poszerzenie pasa odnogi: na styku z wezlem szerokosc = szerokosc pasa sasiednich drog (wierzcholki sie stykaja), dalej plynnie rosnie do wlasnej szerokosci; wewnetrzna krawedz (od strony jezdni) stoi, zewnetrzna rosnie */
+  const __hug0 = window.__hug;
+  const lpCR = (P, step) => {
+    const n = P.length,
+      out = [],
+      g = (i) => P[Math.max(0, Math.min(n - 1, i))];
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = g(i - 1),
+        p1 = g(i),
+        p2 = g(i + 1),
+        p3 = g(i + 2),
+        L = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]),
+        ns = Math.max(2, Math.ceil(L / step));
+      for (let s = 0; s < ns; s++) {
+        const u = s / ns,
+          u2 = u * u,
+          u3 = u2 * u;
+        out.push(
+          [0, 1].map(
+            (c) =>
+              0.5 *
+              (2 * p1[c] +
+                (-p0[c] + p2[c]) * u +
+                (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * u2 +
+                (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * u3),
+          ),
+        );
+      }
+    }
+    out.push(P[n - 1].slice());
+    return out;
+  };
+  window.__lpCR = lpCR;
+  window.__hug = (r, Q, d, w) => {
+    try {
+      __hug0(r, Q, d, w);
+    } catch (er) {
+      console.warn('hug0', (er && er.stack) || er);
+    }
+    try {
+      if (r._dense && !window.__noDense) {
+        /* gesta os (co 0,5 m) na luku: krawedzie pasa sa okragle, nie wielokatne */ const {
+            e: e1,
+            polyA: pA,
+            jR: jr,
+          } = r._dense,
+          n1 = Q.length,
+          ord = [];
+        for (let k = 0; k < n1; k++) ord.push(Q[e1 === 0 ? k : n1 - 1 - k]);
+        const rest = ord.slice(jr + 1),
+          full = pA.concat(rest),
+          wv = w[0];
+        Q.length = 0;
+        (e1 === 0 ? full : full.slice().reverse()).forEach((p) => Q.push(p));
+        d.length = 0;
+        w.length = 0;
+        for (let i = 0; i < Q.length; i++) {
+          d.push(0);
+          w.push(wv);
+        }
+        (window.__hugZero = window.__hugZero || new WeakSet()).add(r);
+      }
+    } catch (er) {
+      console.warn('dense', er);
+    }
+    try {
+      if (r.lp && r.lp.length >= 2 && !window.__noLP) {
+        /* wlasna linia srodka pasa (punkty edytowane recznie) zastepuje os liczona z regul */ const wv = w[0],
+          S2 = lpCR(r.lp, 0.5);
+        Q.length = 0;
+        S2.forEach((p) => Q.push(p));
+        d.length = 0;
+        w.length = 0;
+        for (let i = 0; i < Q.length; i++) {
+          d.push(0);
+          w.push(wv);
+        }
+        (window.__hugZero = window.__hugZero || new WeakSet()).add(r);
+      }
+      if (window.__lpRec) {
+        const nQ = Q.length;
+        (window.__cl = window.__cl || {})[r._id] = Q.map((q0, j) => {
+          const a0 = Q[Math.max(0, j - 1)],
+            b0 = Q[Math.min(nQ - 1, j + 1)],
+            dx0 = b0[0] - a0[0],
+            dy0 = b0[1] - a0[1],
+            L0 = Math.hypot(dx0, dy0) || 1,
+            dj = d[j] || 0;
+          return [q0[0] + (-dy0 / L0) * dj, q0[1] + (dx0 / L0) * dj];
+        });
+      }
+    } catch (er) {
+      console.warn('lp', er);
+    }
+    try {
+      /* wszystkie konce w wezle rozjazdu leza w jednej plaszczyznie (0,06 m za punktem wezla, prostopadle do jezdni glownej): linie krawedzi koncza sie rowno */ const all2 =
+          roads(),
+        me2 = all2.find((x) => x._id === r._id) || r;
+      if (me2.nk && me2.nk.length >= 2 && Q.length >= 2 && !me2._cs && !me2._cs2)
+        for (const e2 of [0, 1]) {
+          const key2 = e2 ? me2.nk[me2.nk.length - 1] : me2.nk[0],
+            at2 = all2.filter((y) => y.nk && (y.nk[0] === key2 || y.nk[y.nk.length - 1] === key2));
+          if (at2.length !== 3 || !at2.every((y) => y.oneway)) continue;
+          const big2 = at2.reduce((m, y) => ((y.lanes | 0) > (m.lanes | 0) ? y : m));
+          if (big2 === me2 || at2.some((y) => y._cs)) continue;
+          const st2 = big2.nk[0] === key2,
+            BP = st2 ? big2.pts : big2.pts.slice().reverse(),
+            P0 = BP[0],
+            bl = Math.hypot(BP[1][0] - P0[0], BP[1][1] - P0[1]) || 1,
+            ub = st2
+              ? [(BP[1][0] - P0[0]) / bl, (BP[1][1] - P0[1]) / bl]
+              : [(BP[1][0] - P0[0]) / bl, (BP[1][1] - P0[1]) / bl],
+            i0 = e2 ? Q.length - 1 : 0,
+            i1 = e2 ? Q.length - 2 : 1,
+            dx = Q[i1][0] - Q[i0][0],
+            dy = Q[i1][1] - Q[i0][1],
+            ln = Math.hypot(dx, dy) || 1,
+            dr = [dx / ln, dy / ln],
+            dn = dr[0] * ub[0] + dr[1] * ub[1],
+            al = (Q[i0][0] - P0[0]) * ub[0] + (Q[i0][1] - P0[1]) * ub[1];
+          if (Math.abs(dn) > 0.5 && Math.abs(al) < 1.0) {
+            const s = (0.06 - al) / dn;
+            Q[i0] = [Q[i0][0] + dr[0] * s, Q[i0][1] + dr[1] * s];
+            /* rogi konca jezdni leza na jednej plaszczyznie prostopadlej do wlotu (krawedzie pasow wlotu przechodza w krawedzie jednopasmowek) */ const d1 =
+                [Q[i1][0] - Q[i0][0], Q[i1][1] - Q[i0][1]],
+              l1 = Math.hypot(d1[0], d1[1]) || 1,
+              u1 = [d1[0] / l1, d1[1] / l1],
+              nn = [-u1[1], u1[0]],
+              wI = w[i0] || w[0],
+              dI = d[i0] || 0,
+              den = u1[0] * ub[0] + u1[1] * ub[1];
+            if (Math.abs(den) > 0.3) {
+              const cor = (sg) => [Q[i0][0] + nn[0] * (dI + (sg * wI) / 2), Q[i0][1] + nn[1] * (dI + (sg * wI) / 2)],
+                shf = (sg) => {
+                  const c = cor(sg);
+                  return (0.06 - ((c[0] - P0[0]) * ub[0] + (c[1] - P0[1]) * ub[1])) / den;
+                },
+                sL = shf(-1),
+                sR = shf(1);
+              r._cs = r._cs || {};
+              r._cs[e2 ? 'e' : 's'] = [sL, sR];
+            }
+          }
+        }
+    } catch (er) {
+      console.warn('plane', er);
+    }
+    try {
+      if (!r.oneway || Q.length < 3) return;
+      const all = roads(),
+        me = all.find((x) => x._id === r._id) || r;
+      if (!me.nk || me.nk.length < 2) return;
+      for (const e of [0, 1]) {
+        const key = e === 0 ? me.nk[0] : me.nk[me.nk.length - 1],
+          cand = all.filter((y) => y !== me && y.oneway && y.nk && (y.nk[0] === key || y.nk[y.nk.length - 1] === key));
+        if (cand.length !== 2) continue;
+        if (cand.every((y) => (y.lanes | 0) < (me.lanes | 0))) continue;
+        /* wlot (najwiecej pasow) nie jest zwezany */ const xr = cand.reduce((m, y) =>
+            (y.lanes | 0) > (m.lanes | 0) ? y : m,
+          ),
+          wN = (xr.lw || 3.5) * (me.lanes | 0),
+          wF = w[e === 0 ? 0 : w.length - 1];
+        if (Math.abs(wF - wN) < 0.05) continue;
+        const st = xr.nk[0] === key,
+          P = st ? xr.pts : xr.pts.slice().reverse(),
+          o0 = P[0],
+          dd0 = Math.hypot(P[1][0] - o0[0], P[1][1] - o0[1]) || 1,
+          uu = st
+            ? [(P[1][0] - o0[0]) / dd0, (P[1][1] - o0[1]) / dd0]
+            : [-(P[1][0] - o0[0]) / dd0, -(P[1][1] - o0[1]) / dd0],
+          nm = [-uu[1], uu[0]],
+          n = Q.length,
+          ix = (j) => (e === 0 ? j : n - 1 - j),
+          nodeP = e === 0 ? me.pts[0] : me.pts[me.pts.length - 1],
+          L = Math.max(16, Math.abs(wF - wN) * (+window.__wtl || 24));
+        let acc = 0,
+          kmax = 0;
+        for (let k = 0; k < n; k++) {
+          const j = ix(k);
+          if (k > 0) acc += Math.hypot(Q[j][0] - Q[ix(k - 1)][0], Q[j][1] - Q[ix(k - 1)][1]);
+          if (acc > L) break;
+          kmax = k;
+          const x = Math.min(1, acc / L),
+            f = x * x * x * (x * (x * 6 - 15) + 10),
+            wj = wN + (wF - wN) * f,
+            a = Q[Math.max(0, j - 1)],
+            b = Q[Math.min(n - 1, j + 1)],
+            dx = b[0] - a[0],
+            dy = b[1] - a[1],
+            ln = Math.hypot(dx, dy) || 1,
+            nj = [-dy / ln, dx / ln],
+            side = (Q[j][0] - nodeP[0]) * nm[0] + (Q[j][1] - nodeP[1]) * nm[1] >= 0 ? 1 : -1,
+            grow = (nj[0] * nm[0] + nj[1] * nm[1]) * side >= 0 ? 1 : -1;
+          w[j] = wj;
+          if (cand.every((y) => (y.lanes | 0) > (me.lanes | 0)))
+            d[j] =
+              (d[j] || 0) +
+              (grow * (wj - (r._cs ? wN : wF))) / 2 +
+              0; /* jezdnia glowna (np. dwupasmowka) zwezana symetrycznie wokol swojej osi */
+        }
+        for (let it = 0; it < 24; it++) {
+          const wc = w.slice(),
+            dc = d.slice();
+          for (let k = 1; k < Math.min(n - 1, kmax + 6); k++) {
+            const j = ix(k),
+              jp = ix(k - 1),
+              jn = ix(k + 1);
+            w[j] = (wc[jp] + 2 * wc[j] + wc[jn]) / 4;
+            d[j] = (dc[jp] + 2 * dc[j] + dc[jn]) / 4;
+          }
+        } /* wygladzenie szerokosci i polozenia osi na odcinku poszerzania */
+      }
+    } catch (er) {
+      console.warn('taper', er);
+    }
+  };
+  function autoFork() {
+    let chg = false;
+    const by = new Map();
+    roads().forEach((r) => {
+      if (!r.nk || r.nk.length < 2) return;
+      [0, r.nk.length - 1].forEach((j) => {
+        const k = r.nk[j];
+        if (!k) return;
+        if (!by.has(k)) by.set(k, []);
+        by.get(k).push([r, j ? 1 : 0]);
+      });
+    });
+    for (const [k, A] of by) {
+      if (A.length !== 3 || new Set(A.map((a) => a[0])).size !== 3 || !A.every(([r]) => r.oneway)) continue;
+      const X = A.reduce((m, a) => ((a[0].lanes | 0) > (m[0].lanes | 0) ? a : m)),
+        Ys = A.filter((a) => a !== X);
+      if (Ys.some(([r]) => (r.lanes | 0) > (X[0].lanes | 0))) continue;
+      const dirOf = ([r, e]) => {
+        const P = r.pts,
+          n = P.length,
+          o = e ? P[n - 1] : P[0];
+        let q = e ? P[n - 2] : P[1];
+        for (let z = 2; z < n && Math.hypot(q[0] - o[0], q[1] - o[1]) < 1; z++) q = e ? P[n - 1 - z] : P[z];
+        const d = Math.hypot(q[0] - o[0], q[1] - o[1]) || 1;
+        return [(q[0] - o[0]) / d, (q[1] - o[1]) / d];
+      };
+      const ux = dirOf(X),
+        ln = X[0].lanes | 0;
+      let offX = +offAt(X[0], X[1]),
+        L = offX - ln / 2;
+      /* strona wzgledem osi wezla X (do odnog: wektor od wezla; y w ukladzie ekranu rosnie w dol = prawo jazdy dla kierunku +x) */
+      const side = (a) => {
+        const d = dirOf(a),
+          s = ux[0] * d[1] - ux[1] * d[0];
+        return (X[1] ? -1 : 1) * s;
+      }; /* >0 = w prawo wzgledem kierunku jazdy */
+      const S2 = Ys.map((a) => [a, side(a)]).sort((p, q) => p[1] - q[1]); /* lewa pierwsza */
+      const bl = S2[0][0][0].lanes | 0,
+        br = S2[1][0][0].lanes | 0;
+      if (bl + br < ln || bl + br > ln + 1) continue;
+      {
+        /* stala pozycja wlotu: srodek grupy pasow drogi glownej lezy na punkcie OSM wezla, niezaleznie od turn:lanes (offset wlotu nie skacze przy ruszaniu dwu- i jednopasmowka) */ const mi =
+            bl > br
+              ? 0
+              : br > bl
+                ? 1
+                : (() => {
+                    const dd = (a) => {
+                      const v = dirOf(a);
+                      return v[0] * ux[0] + v[1] * ux[1];
+                    };
+                    return dd(S2[0][0]) >= dd(S2[1][0]) ? 0 : 1;
+                  })(),
+          pos = mi === 0 ? bl / 2 : ln - br / 2,
+          dX = bl === br && bl + br === ln ? 0 : Math.round((ln / 2 - pos) * 100) / 100,
+          /* jedna regula: podzial symetryczny (2->1+1, 4->2+2, 6->3+3) = os wlotu na srodku; niesymetryczny (3->2+1) = srodek grupy glownej na wezle */ xr =
+            X[0];
+        if (!xr._man) {
+          const b0 = JSON.stringify([xr.offS, xr.offE, xr.off]);
+          const nodeEnd = X[1] ? 'offE' : 'offS',
+            farEnd = X[1] ? 'offS' : 'offE',
+            fk2 = xr.nk[X[1] ? 0 : xr.nk.length - 1],
+            shared = fk2 && (by.get(fk2) || []).length > 1;
+          xr.off = '';
+          delete xr.off;
+          xr[nodeEnd] = dX;
+          xr[farEnd] = shared ? (xr[farEnd] != null ? xr[farEnd] : +offAt(xr, X[1] ? 0 : 1)) : dX;
+          if (JSON.stringify([xr.offS, xr.offE, xr.off]) !== b0) chg = true;
+        }
+        offX = dX;
+        L = dX - ln / 2;
+      }
+      {
+        /* kolejnosc obliczen: jezdnia glowna (wiecej pasow, a przy rownosci mniej odchylona od wlotu) przed odnoga, zeby odnoga zawsze miala swiezy ksztalt glownej */ const ang =
+            (a) => {
+              const d = dirOf(a);
+              return d[0] * ux[0] + d[1] * ux[1];
+            },
+          y0 = Ys[0],
+          y1 = Ys[1],
+          l0 = y0[0].lanes | 0,
+          l1 = y1[0].lanes | 0,
+          mainY = l0 !== l1 ? (l0 > l1 ? y0 : y1) : ang(y0) <= ang(y1) ? y0 : y1,
+          brY = mainY === y0 ? y1 : y0,
+          rr = roads(),
+          iM = rr.indexOf(mainY[0]),
+          iB = rr.indexOf(brY[0]);
+        if (iB >= 0 && iM >= 0 && iB < iM) {
+          rr.splice(iB, 1);
+          rr.push(brY[0]);
+          chg = true;
+        }
+      }
+      const want = new Map([
+        [S2[0][0], L + bl / 2],
+        [S2[1][0], L + ln - br / 2],
+      ]);
+      for (const [a, v] of want) {
+        const [r, e] = a;
+        if (r._man) continue;
+        const before = JSON.stringify([r.offS, r.offE, r.off, r.offTS, r.offTE]);
+        const oth = e ? 0 : 1,
+          cv = +offAt(r, oth);
+        r.off = '';
+        delete r.off;
+        r[e ? 'offE' : 'offS'] = Math.round(v * 100) / 100;
+        const fk = r.nk[e ? 0 : r.nk.length - 1],
+          fr = fk && (by.get(fk) || []).length > 1;
+        const big = Math.max(...Ys.map((y) => y[0].lanes | 0)),
+          tap = (r.lanes | 0) < (X[0].lanes | 0) && (r.lanes | 0) <= big;
+        r[oth ? 'offE' : 'offS'] = fr ? cv : tap ? 0 : Math.round(v * 100) / 100;
+        delete r.offTS;
+        delete r.offTE;
+        const Pp = r.pts,
+          nP = Pp.length,
+          otv =
+            +q('sxOT').value > 0
+              ? +q('sxOT').value
+              : nP > 1
+                ? Math.max(
+                    1,
+                    Math.hypot(
+                      Pp[e ? nP - 1 : 0][0] - Pp[e ? nP - 2 : 1][0],
+                      Pp[e ? nP - 1 : 0][1] - Pp[e ? nP - 2 : 1][1],
+                    ),
+                  )
+                : 12;
+        /* offset schodzi do 0 dokladnie na pierwszym wierzcholku za wezlem; dalej geometria wg punktow OSM */ if (
+          tap &&
+          !fr &&
+          otv > 0
+        )
+          r[e ? 'offTE' : 'offTS'] = otv;
+        if (JSON.stringify([r.offS, r.offE, r.off, r.offTS, r.offTE]) !== before) chg = true;
+        /* odnoga wraca na os w ~12 m od wezla */ r._afo = 1;
+      }
+    }
+    return chg;
+  }
+  function changed(rec = true) {
+    try {
+      splitJunctions();
+      autoFork();
+    } catch (e) {
+      console.warn(e);
+    }
+    try {
+      saveScene();
+    } catch (e) {}
+    try {
+      touch();
+      if (autoFork()) touch();
+    } catch (e) {
+      console.warn(e);
+    }
+    analyze();
+    renderEdit();
+    renderReport();
+    try {
+      popRender();
+    } catch (e) {}
+  }
+  /* ---------- raport: czy połączenie jest dobre ---------- */
+  function analyze() {
+    report = [];
+    const nodes = new Map();
+    roads().forEach((r) => {
+      if (r.pts.length < 2) return;
+      [
+        [0, 'a'],
+        [r.nk.length - 1, 'b'],
+      ].forEach(([j, end]) => {
+        const k = r.nk[j];
+        if (!k) return;
+        (nodes.get(k) || nodes.set(k, { k, p: r.pts[j], arms: [] }).get(k)).arms.push({ r, end });
+      });
+    });
+    const outDir = (a) => {
+      const P = a.r.pts,
+        n = P.length,
+        o = a.end === 'a' ? P[0] : P[n - 1];
+      let c = 0,
+        prev = o;
+      for (let i = 1; i < n; i++) {
+        const p = a.end === 'a' ? P[i] : P[n - 1 - i];
+        c += Math.hypot(p[0] - prev[0], p[1] - prev[1]);
+        prev = p;
+        if (c >= 6 || i === n - 1) {
+          const l = Math.hypot(p[0] - o[0], p[1] - o[1]) || 1;
+          return [(p[0] - o[0]) / l, (p[1] - o[1]) / l];
+        }
+      }
+      return [1, 0];
+    };
+    const flow = (a) => (a.r.oneway ? (a.end === 'a' ? 'out' : 'in') : 'both'),
+      rank = (r) =>
+        ({
+          motorway: 9,
+          trunk: 8,
+          primary: 7,
+          secondary: 6,
+          tertiary: 5,
+          unclassified: 4,
+          residential: 3,
+          living_street: 2,
+          service: 1,
+        })[r.hw.replace('_link', '')] || 0;
+    for (const n of nodes.values()) {
+      const arms = n.arms;
+      if (arms.length < 2) continue;
+      arms.forEach((a) => {
+        a.d = outDir(a);
+        a.L = lanesOf(a.r);
+      });
+      const items = [],
+        cand = [];
+      for (let i = 0; i < arms.length; i++)
+        for (let j = i + 1; j < arms.length; j++) {
+          const A = arms[i],
+            B = arms[j],
+            dev = Math.PI - Math.acos(Math.max(-1, Math.min(1, A.d[0] * B.d[0] + A.d[1] * B.d[1])));
+          if (dev > 0.65) continue;
+          cand.push({ A, B, sc: (rank(A.r) === rank(B.r) ? 1 : 0) + (A.L.length === B.L.length ? 0.5 : 0) - dev * 2 });
+        }
+      cand.sort((x, y) => y.sc - x.sc);
+      const used = new Set(),
+        pairs = [];
+      for (const c of cand) {
+        if (used.has(c.A) || used.has(c.B)) continue;
+        used.add(c.A);
+        used.add(c.B);
+        pairs.push(c);
+      }
+      for (const c of pairs) {
+        const A = c.A,
+          B = c.B,
+          nA = A.L.length,
+          nB = B.L.length,
+          sgn = (x, y) =>
+            (x.end === 'a') === (y.end === 'a') ? -1 : 1; /* przeciwne końce = ta sama orientacja trasy */
+        const oA = offAt(A.r, A.end === 'a' ? 0 : 1) * (A.r.lw || 3.5),
+          oB = offAt(B.r, B.end === 'a' ? 0 : 1) * (B.r.lw || 3.5),
+          jump = Math.abs(oA - (sgn(A, B) > 0 ? oB : -oB)) / (sgn(A, B) > 0 ? 1 : 1);
+        if (nA === nB && Math.abs((A.r.lw || 3.5) - (B.r.lw || 3.5)) < 0.05 && jump < 0.15)
+          items.push(['ok', 'Przelot: ' + nA + ' → ' + nB + ' pasów, bez uskoku']);
+        else if (nA === nB)
+          items.push([
+            jump > 1.5 ? 'er' : 'wr',
+            'Przelot: ten sam układ pasów (' +
+              nA +
+              '), ale oś/szerokość różni się o ' +
+              jump.toFixed(1) +
+              ' m (turn:lanes lub szerokość pasa)',
+          ]);
+        else if (Math.abs(nA - nB) === 1) items.push(['ok', 'Przelot: zmiana ' + nA + ' → ' + nB + ' pasów (o 1)']);
+        else items.push(['wr', 'Przelot: skok liczby pasów ' + nA + ' → ' + nB]);
+        const thr = (a) => a.L.filter((l) => /through|^$|none/.test(l.tok) && l.dir > 0).length;
+        if (arms.length === 2 && A.r.oneway && B.r.oneway && thr(A) > nB)
+          items.push(['wr', 'Wjeżdża ' + thr(A) + ' pasów „na wprost”, za węzłem ' + nB]);
+      }
+      const unp = arms.filter((a) => !pairs.some((c) => c.A === a || c.B === a));
+      if (arms.length === 2 && !pairs.length) {
+        const ang =
+          (Math.acos(Math.max(-1, Math.min(1, arms[0].d[0] * arms[1].d[0] + arms[0].d[1] * arms[1].d[1]))) * 180) /
+          Math.PI;
+        items.push([ang < 50 ? 'er' : 'wr', 'Ostry zakręt ' + ang.toFixed(0) + '° (ramiona nie są przelotowe)']);
+      }
+      if (unp.length && arms.length >= 3) {
+        if (arms.every((a) => a.r.oneway)) {
+          const inL = arms.filter((a) => flow(a) === 'in').reduce((s, a) => s + a.L.length, 0),
+            outL = arms.filter((a) => flow(a) === 'out').reduce((s, a) => s + a.L.length, 0);
+          items.push(
+            inL === outL
+              ? ['ok', 'Bilans pasów: wjazd ' + inL + ' = wyjazd ' + outL]
+              : Math.abs(inL - outL) === 1
+                ? ['wr', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' (różnica 1: wspólny/dodatkowy pas)']
+                : ['er', 'Bilans pasów: wjazd ' + inL + ' vs wyjazd ' + outL + ' – niespójne'],
+          );
+        }
+        for (const u of unp) {
+          const best = Math.min(
+            ...arms
+              .filter((a) => a !== u)
+              .map((a) => (Math.acos(Math.max(-1, Math.min(1, u.d[0] * a.d[0] + u.d[1] * a.d[1]))) * 180) / Math.PI),
+          );
+          if (best < 25) items.push(['wr', 'Ostry kąt ' + best.toFixed(0) + '° między ramionami']);
+        }
+        for (const a of arms) {
+          if (flow(a) !== 'in') continue;
+          const left = a.L.some((l) => /left/.test(l.tok)),
+            right = a.L.some((l) => /right/.test(l.tok)),
+            others = arms.filter((o) => o !== a && flow(o) === 'out'),
+            cr = (o) => a.d[0] * o.d[1] - a.d[1] * o.d[0];
+          if (left && !others.some((o) => cr(o) > 0.25))
+            items.push(['wr', 'Pas „w lewo” bez drogi w lewo (turn:lanes)']);
+          if (right && !others.some((o) => cr(o) < -0.25))
+            items.push(['wr', 'Pas „w prawo” bez drogi w prawo (turn:lanes)']);
+        }
+      }
+      if (!items.length) items.push(['ok', arms.length + ' ramiona, brak uwag']);
+      const worst = items.some((i) => i[0] === 'er') ? 'er' : items.some((i) => i[0] === 'wr') ? 'wr' : 'ok';
+      report.push({
+        x: n.p[0],
+        y: n.p[1],
+        lvl: worst,
+        msg:
+          (arms.length > 2 ? 'Skrzyżowanie (' + arms.length + ')' : 'Połączenie') +
+          ' · ' +
+          arms.map((a) => a.L.length).join('/') +
+          ' pasów',
+        detail: items.map((i) => (i[0] === 'ok' ? '✓ ' : i[0] === 'wr' ? '⚠ ' : '✗ ') + i[1]).join('\n'),
+      });
+    }
+  }
+  function renderReport() {
+    const c = { ok: 0, wr: 0, er: 0 };
+    for (const r of report) c[r.lvl]++;
+    q('sxCnt').innerHTML =
+      `<b class="ok">${c.ok} dobre</b><b class="wr">${c.wr} uwagi</b><b class="er">${c.er} błędy</b>`;
+    const ord = { er: 0, wr: 1, ok: 2 };
+    q('sxRep').innerHTML =
+      report
+        .map((r, i) => [r, i])
+        .sort((a, b) => ord[a[0].lvl] - ord[b[0].lvl])
+        .map(
+          ([r, i]) =>
+            `<div class="rep ${r.lvl}" data-i="${i}">${esc(r.msg)}<small>${esc(r.detail).replace(/\n/g, '<br>')}</small></div>`,
+        )
+        .join('') || '<div class="mu">Brak połączeń – narysuj dwie drogi stykające się w węźle.</div>';
+    for (const el of q('sxRep').querySelectorAll('.rep'))
+      el.onclick = () => {
+        const r = report[+el.dataset.i];
+        S.view.x = r.x;
+        S.view.y = r.y;
+        S.view.k = Math.max(S.view.k, 10);
+        render();
+      };
+  }
+  /* ---------- edycja zaznaczonej drogi ---------- */
+  const TOKS = [
+    '',
+    'through',
+    'left',
+    'right',
+    'through;left',
+    'through;right',
+    'left;right',
+    'slight_left',
+    'slight_right',
+    'merge_to_left',
+    'merge_to_right',
+  ];
+  function renderEdit() {
+    const el = q('sxEdit'),
+      r = selR && roads().includes(selR) ? selR : null;
+    if (!r) {
+      selR = null;
+      el.className = 'mu';
+      el.innerHTML = 'Zaznacz drogę, aby zmienić typ, liczbę pasów, szerokość i turn:lanes.';
+      return;
+    }
+    el.className = '';
+    const L = lanesOf(r),
+      n = L.length,
+      nf = L.filter((l) => l.dir > 0).length;
+    let h = `<div class="row"><b>droga #${r._id || '?'}</b><button id="sxeDel">Usuń drogę</button>${selV ? '<button id="sxeDelV">Usuń punkt</button><button id="sxeSplit">Rozłącz węzeł</button>' : ''}</div><div class="row"><select id="sxeHw" style="flex:1">${TYPES.map((x) => `<option value="${x[0]}"${x[0] === r.hw ? ' selected' : ''}>${x[1]}</option>`).join('')}</select></div><label class="chk"><input type="checkbox" id="sxeOw"${r.oneway ? ' checked' : ''}> jednokierunkowa</label>`;
+    h += r.oneway
+      ? `<div class="row">pasy <input id="sxeN" type="number" min="1" max="8" value="${n}" style="width:54px"></div>`
+      : `<div class="row">w przód <input id="sxeF" type="number" min="0" max="6" value="${nf}" style="width:50px"> w tył <input id="sxeB" type="number" min="0" max="6" value="${n - nf}" style="width:50px"></div>`;
+    h += `<div class="row">szerokość pasa <input id="sxeW" type="number" step="0.05" min="2" max="6" value="${(r.lw || 3.5).toFixed(2)}" style="width:64px"> m</div><h4>turn:lanes (od lewej)</h4>`;
+    L.forEach((l, i) => {
+      h += `<div class="lane"><span>${l.dir > 0 ? '→ pas ' : '← pas '}${i + 1}</span><select data-i="${i}" class="sxeT">${TOKS.map((k) => `<option value="${k}"${l.tok === k ? ' selected' : ''}>${k || '(brak)'}</option>`).join('')}</select></div>`;
+    });
+    if (selV) {
+      h += `<h4>Łuki w węźle</h4><div class="lane"><span style="min-width:96px">promień <b id="sxnrV">${(S.nodeR || {})[selV] ?? 1}</b></span><input type="range" id="sxnr" min="0.2" max="30" step="0.2" value="${(S.nodeR || {})[selV] ?? 1}" style="flex:1"><button id="sxnrR">auto</button></div>`;
+      const arms = [];
+      roads().forEach((rr, ri) => {
+        if (rr.nk[0] === selV) arms.push([rr, ri, 0]);
+        if (rr.nk.length > 1 && rr.nk[rr.nk.length - 1] === selV) arms.push([rr, ri, 1]);
+      });
+      h += `<h4>Offset osi na węźle (w pasach)</h4><div class="mu">Przesuwa jezdnię względem osi OSM. Wartość dodatnia = jezdnia w prawo (w kierunku rysowania).</div>`;
+      for (const [rr, ri, e] of arms) {
+        const cur = offAt(rr, e),
+          man = (e ? rr.offE : rr.offS) != null || (rr.off != null && rr.off !== '');
+        h += `<div class="lane" style="flex-wrap:wrap"><span style="width:auto;min-width:96px">#${rr._id || ri} ${e ? 'koniec' : 'początek'} <b>${(+cur).toFixed(2)}</b>${man ? '' : ' (auto)'}</span>${[-0.5, -0.1, 0.1, 0.5].map((d) => `<button class="sxoD" data-r="${ri}" data-e="${e}" data-d="${d}">${d > 0 ? '+' : ''}${d}</button>`).join('')}<button class="sxoR" data-r="${ri}" data-e="${e}" title="Wróć do automatu">auto</button></div>`;
+      }
+    }
+    el.innerHTML = h;
+    {
+      const sr = el.querySelector('#sxnr');
+      if (sr) {
+        sr.oninput = () => {
+          (S.nodeR = S.nodeR || {})[selV] = +sr.value;
+          el.querySelector('#sxnrV').textContent = sr.value;
+          touch();
+          saveScene();
+        };
+        el.querySelector('#sxnrR').onclick = () => {
+          if (S.nodeR) delete S.nodeR[selV];
+          changed();
+        };
+      }
+    }
+    for (const b of el.querySelectorAll('.sxoD'))
+      b.onclick = () => {
+        const rr = roads()[+b.dataset.r],
+          e = +b.dataset.e;
+        if (!rr) return;
+        push();
+        const cur = +offAt(rr, e);
+        const hadOff = rr.off != null && rr.off !== '';
+        if (hadOff) {
+          if (rr.offS == null) rr.offS = +rr.off;
+          if (rr.offE == null) rr.offE = +rr.off;
+          delete rr.off;
+        }
+        const k = e ? 'offE' : 'offS';
+        rr._man = 1;
+        rr[k] = Math.round((cur + +b.dataset.d) * 100) / 100;
+        changed();
+      };
+    for (const b of el.querySelectorAll('.sxoR'))
+      b.onclick = () => {
+        const rr = roads()[+b.dataset.r],
+          e = +b.dataset.e;
+        if (!rr) return;
+        push();
+        delete rr[e ? 'offE' : 'offS'];
+        delete rr.off;
+        if (rr.offS == null && rr.offE == null) {
+          /* oba końce auto */
+        }
+        changed();
+      };
+    const mut = (f) => {
+      push();
+      f();
+      changed();
+    };
+    q('sxeDel').onclick = () =>
+      mut(() => {
+        S.doc.road.splice(roads().indexOf(r), 1);
+        selR = null;
+      });
+    if (q('sxeDelV')) {
+      q('sxeDelV').onclick = delVertex;
+      q('sxeSplit').onclick = splitVertex;
+    }
+    q('sxeHw').onchange = () =>
+      mut(() => {
+        r.hw = q('sxeHw').value;
+        r.lw = LW_CLASS[r.hw.replace('_link', '')] || r.lw;
+        const d = (TYPES.find((t) => t[0] === r.hw) || [0, 0, {}])[2];
+        if (d.oneway) {
+          r.oneway = true;
+        }
+      });
+    q('sxeOw').onchange = () =>
+      mut(() => {
+        const k = Math.max(1, r.lanes | 0);
+        if (q('sxeOw').checked) {
+          r.oneway = true;
+          delete r.nf;
+          r.tlb = '';
+        } else {
+          r.oneway = false;
+          r.lanes = Math.max(2, k);
+          r.nf = Math.ceil(r.lanes / 2);
+          r.tlb = '';
+          r.tl = '';
+        }
+      });
+    const setN = () =>
+      mut(() => {
+        if (r.oneway) {
+          const k = Math.max(1, Math.min(8, +q('sxeN').value || 1));
+          r.lanes = k;
+          r.tl = (r.tl || '')
+            .split('|')
+            .slice(0, k)
+            .concat(Array(Math.max(0, k - (r.tl || '').split('|').length)).fill(''))
+            .join('|')
+            .replace(/^\|*$/, '');
+        } else {
+          const f = Math.max(0, Math.min(6, +q('sxeF').value || 0)),
+            b = Math.max(0, Math.min(6, +q('sxeB').value || 0));
+          if (f + b < 1) return;
+          r.lanes = f + b;
+          r.nf = f;
+        }
+      });
+    if (r.oneway) q('sxeN').onchange = setN;
+    else {
+      q('sxeF').onchange = setN;
+      q('sxeB').onchange = setN;
+    }
+    q('sxeW').onchange = () =>
+      mut(() => {
+        const v = parseFloat(q('sxeW').value);
+        if (v >= 2 && v <= 6) {
+          r.lw = v;
+          r.lwM = true;
+        }
+      });
+    for (const s of el.querySelectorAll('.sxeT'))
+      s.onchange = () =>
+        mut(() => {
+          const i = +s.dataset.i,
+            nbk = n - nf;
+          if (r.oneway) {
+            const a = (r.tl || '').split('|');
+            while (a.length < n) a.push('');
+            a[i] = s.value;
+            r.tl = a.some((x) => x) ? a.join('|') : '';
+          } else if (L[i].dir > 0) {
+            const a = (r.tl || '').split('|');
+            while (a.length < nf) a.push('');
+            a[i - nbk] = s.value;
+            r.tl = a.some((x) => x) ? a.join('|') : '';
+          } else {
+            const a = (r.tlb || '').split('|');
+            while (a.length < nbk) a.push('');
+            a[nbk - 1 - i] = s.value;
+            r.tlb = a.some((x) => x) ? a.join('|') : '';
+          }
+          r.tlM = true;
+        });
+  }
+  /* ---------- szybkie menu przy klikniętej drodze: typ, liczba pasów, kierunek ---------- */
+  let popAt = null;
+  function showPop(sx, sy) {
+    return;
+    /* popup wylaczony na zyczenie */ popAt = [sx, sy];
+    popRender();
+  }
+  function hidePop() {
+    popAt = null;
+    q('sxPop').style.display = 'none';
+  }
+  function popRender() {
+    const el = q('sxPop'),
+      r = selR && roads().includes(selR) ? selR : null;
+    if (!r || !popAt || tool !== 'sel') {
+      el.style.display = 'none';
+      return;
+    }
+    const n = Math.max(1, r.lanes | 0);
+    el.innerHTML = `<div class="t">${TYPES.map((x) => `<button data-h="${x[0]}" class="${x[0] === r.hw ? 'on' : ''}"><i style="background:${colOf(x[0])}"></i>${x[1].replace(/ \(.*\)/, '')}</button>`).join('')}</div>
+    <div class="r"><span>pasy</span><button id="sxpM">−</button><b>${n}</b><button id="sxpP">+</button><button id="sxpO" title="Jednokierunkowa / dwukierunkowa">${r.oneway ? '→ jednokier.' : '⇄ dwukier.'}</button><button class="x" id="sxpX" title="Zamknij">✕</button></div>`;
+    el.style.display = 'block';
+    const w = el.offsetWidth,
+      h = el.offsetHeight;
+    let x = Math.max(8, Math.min(innerWidth - w - 8, popAt[0] - w / 2)),
+      y = popAt[1] - h - 18;
+    if (y < 8) y = popAt[1] + 18;
+    if (y + h > innerHeight - 8) y = Math.max(8, innerHeight - h - 8);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    for (const b of el.querySelectorAll('.t button'))
+      b.onclick = () => {
+        push();
+        r.hw = b.dataset.h;
+        r.lw = LW_CLASS[r.hw.replace('_link', '')] || r.lw;
+        const d = (TYPES.find((t) => t[0] === r.hw) || [0, 0, {}])[2];
+        if (d.oneway) {
+          r.oneway = true;
+          delete r.nf;
+        }
+        changed();
+      };
+    q('sxpM').onclick = () => stepLanes(r, -1);
+    q('sxpP').onclick = () => stepLanes(r, 1);
+    q('sxpX').onclick = hidePop;
+    q('sxpO').onclick = () => {
+      push();
+      const k = Math.max(1, r.lanes | 0);
+      if (r.oneway) {
+        r.oneway = false;
+        r.lanes = Math.max(2, k);
+        r.nf = Math.ceil(r.lanes / 2);
+        r.tl = '';
+        r.tlb = '';
+      } else {
+        r.oneway = true;
+        delete r.nf;
+        r.tlb = '';
+      }
+      changed();
+    };
+  }
+  function stepLanes(r, d) {
+    push();
+    const n = Math.max(1, r.lanes | 0);
+    if (r.oneway) {
+      const k = Math.max(1, Math.min(8, n + d));
+      r.lanes = k;
+      const a = (r.tl || '').split('|').slice(0, k);
+      while (a.length < k) a.push('');
+      r.tl = a.some((x) => x) ? a.join('|') : '';
+    } else {
+      let nf = r.nf == null ? Math.ceil(n / 2) : r.nf,
+        nb = n - nf;
+      if (d > 0) {
+        if (nf <= nb) nf++;
+        else nb++;
+      } else if (n > 2) {
+        if (nf > nb) nf--;
+        else nb--;
+      } else return;
+      r.lanes = nf + nb;
+      r.nf = nf;
+    }
+    changed();
+  }
+  /* ---------- punkty, węzły, skrzyżowania ---------- */
+  function vertexAt(sx, sy) {
+    let best = null,
+      bd = 13;
+    for (const r of roads())
+      for (let i = 0; i < r.pts.length; i++) {
+        const p = w2s(r.pts[i]),
+          d = Math.hypot(p[0] - sx, p[1] - sy);
+        if (d < bd) {
+          bd = d;
+          best = { r, i, key: r.nk[i] };
+        }
+      }
+    return best;
+  }
+  function midAt(sx, sy) {
+    const r = selR;
+    if (!r) return null;
+    for (let i = 1; i < r.pts.length; i++) {
+      const a = w2s(r.pts[i - 1]),
+        b = w2s(r.pts[i]),
+        m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if (Math.hypot(m[0] - sx, m[1] - sy) < 10 && Math.hypot(a[0] - b[0], a[1] - b[1]) > 28)
+        return { r, at: i, p: S2W(m[0], m[1]) };
+    }
+    return null;
+  }
+  function moveKey(key, w) {
+    for (const r of roads())
+      r.nk.forEach((k, j) => {
+        if (k === key) {
+          r.pts[j] = w.slice();
+          if (r.rp) r.rp = null;
+        }
+      });
+  }
+  function rekey(from, to, pos) {
+    for (const r of roads())
+      r.nk.forEach((k, j) => {
+        if (k === from) {
+          r.nk[j] = to;
+          if (pos) r.pts[j] = pos.slice();
+        }
+      });
+    for (const r of roads())
+      for (let j = r.nk.length - 1; j > 0; j--)
+        if (r.nk[j] === r.nk[j - 1]) {
+          r.nk.splice(j, 1);
+          r.pts.splice(j, 1);
+        }
+    S.doc.road = roads().filter((r) => r.pts.length >= 2);
+  }
+  const gstep = () => +q('sxGs').value || 1,
+    gsn = (w) =>
+      q('sxSnap').checked ? [Math.round(w[0] / gstep() / 1) * gstep(), Math.round(w[1] / gstep()) * gstep()] : w;
+  function drawGrid() {
+    if (!q('sxGrid').checked) return;
+    let g = gstep();
+    while (g * S.view.k < 7) g *= 5;
+    const a = S2W(0, innerHeight),
+      b = S2W(innerWidth, 0),
+      x0 = Math.floor(Math.min(a[0], b[0]) / g) * g,
+      x1 = Math.max(a[0], b[0]),
+      y0 = Math.floor(Math.min(a[1], b[1]) / g) * g,
+      y1 = Math.max(a[1], b[1]);
+    if ((x1 - x0) / g > 400 || (y1 - y0) / g > 400) return;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    for (let x = x0; x <= x1; x += g) {
+      const s = w2s([x, 0])[0],
+        mj = Math.round(x / g) % 5 === 0;
+      ctx.strokeStyle = mj ? 'rgba(20,30,60,.30)' : 'rgba(20,30,60,.13)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(s, 0);
+      ctx.lineTo(s, innerHeight);
+      ctx.stroke();
+    }
+    for (let y = y0; y <= y1; y += g) {
+      const s = w2s([0, y])[1],
+        mj = Math.round(y / g) % 5 === 0;
+      ctx.strokeStyle = mj ? 'rgba(20,30,60,.30)' : 'rgba(20,30,60,.13)';
+      ctx.beginPath();
+      ctx.moveTo(0, s);
+      ctx.lineTo(innerWidth, s);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  window.__cutHandles = () => cutHandles();
+  /* ---------- pasy przez wezly: kazdy pas = os (Bezier) ze stala szerokoscia; z nich tez asfalt wezla ---------- */
+  const LCOL = (i) => `hsl(${(i * 67) % 360},85%,42%)`;
+  window.__nodeLaneList = [];
+  function nodeLaneGeo(nv) {
+    if (nv.fkt) return null;
+    const o = nv.o,
+      ten = 0.4,
+      A = [];
+    nv.lanes.forEach((m, j) => {
+      const c = nv.cuts && nv.cuts[j],
+        r = roads()[m.ri];
+      if (!c || !r) return;
+      A.push({ j, m, c, r, nl: Math.max(1, r.lanes | 0), u: c.u || m.u, e1: c[1], e2: c[2] });
+    });
+    if (A.length < 2) return null;
+    let ref = null;
+    const lat = (p) => ref[0] * (p[1] - o[1]) - ref[1] * (p[0] - o[0]);
+    const slots = (a) => {
+      const L = lat(a.e1) <= lat(a.e2) ? [a.e1, a.e2] : [a.e2, a.e1],
+        out = [];
+      for (let i = 0; i < a.nl; i++) {
+        const t = (i + 0.5) / a.nl;
+        out.push([L[0][0] + (L[1][0] - L[0][0]) * t, L[0][1] + (L[1][1] - L[0][1]) * t]);
+      }
+      return out;
+    };
+    const lanes = [],
+      X = A.length === 3 ? A.reduce((a, b) => (b.nl > a.nl ? b : a)) : null;
+    if (
+      X &&
+      A.filter((a) => a !== X).every((a) => a.nl <= X.nl) &&
+      (() => {
+        const Y = A.filter((a) => a !== X);
+        return Y[0].nl + Y[1].nl >= X.nl && Y[0].nl + Y[1].nl <= X.nl + 1;
+      })()
+    ) {
+      const Y = A.filter((a) => a !== X);
+      ref = [-X.u[0], -X.u[1]];
+      const mc = (a) => lat([(a.e1[0] + a.e2[0]) / 2, (a.e1[1] + a.e2[1]) / 2]);
+      Y.sort((a, b) => mc(a) - mc(b));
+      const n = X.nl;
+      for (let i = 0; i < Y[0].nl; i++) lanes.push([X, i, Y[0], i]);
+      for (let i = 0; i < Y[1].nl; i++) lanes.push([X, n - Y[1].nl + i, Y[1], i]);
+    } else
+      for (let a = 0; a < A.length; a++)
+        for (let b = a + 1; b < A.length; b++) {
+          const p = A[a],
+            q2 = A[b];
+          if (p.u[0] * q2.u[0] + p.u[1] * q2.u[1] > -0.94 || p.nl !== q2.nl) continue;
+          for (let i = 0; i < p.nl; i++) lanes.push([p, i, q2, i]);
+        }
+    if (!lanes.length) return null;
+    const used = new Set();
+    lanes.forEach(([P, , Q]) => {
+      used.add(P);
+      used.add(Q);
+    });
+    const full = A.every((a) => used.has(a));
+    const out = lanes.map(([P, i, Q, j]) => {
+      ref = [-P.u[0], -P.u[1]];
+      const sp = slots(P)[i],
+        sq = slots(Q)[j],
+        w = Math.hypot(P.e2[0] - P.e1[0], P.e2[1] - P.e1[1]) / P.nl,
+        d = Math.hypot(sq[0] - sp[0], sq[1] - sp[1]),
+        h = Math.max(1, d * ten),
+        c1 = [sp[0] - P.u[0] * h, sp[1] - P.u[1] * h],
+        c2 = [sq[0] - Q.u[0] * h, sq[1] - Q.u[1] * h];
+      {
+        /* pas nie moze wchodzic na sasiedni: punkt kontrolny konca nie wychodzi poza poprzeczne polozenie startu (krzywa monotoniczna w poprzek) */ ref =
+          [-P.u[0], -P.u[1]];
+        const lp = lat(sp),
+          lq = lat(sq),
+          ld = ref[0] * -Q.u[1] - ref[1] * -Q.u[0],
+          s = Math.sign(lq - lp);
+        if (s && Math.abs(lq - lp) > 0.05 && s * (lat(c2) - lp) < 0 && Math.abs(ld) > 1e-6) {
+          const h2 = Math.max(0, (lp - lq) / ld);
+          if (h2 < h) {
+            c2[0] = sq[0] - Q.u[0] * h2;
+            c2[1] = sq[1] - Q.u[1] * h2;
+          }
+        }
+        const c1l = lat(c1);
+        if (s && s * (lq - c1l) < 0) {
+          c1[0] = sp[0];
+          c1[1] = sp[1];
+        }
+      }
+      const key = nv.k + '|' + P.r._id + ':' + i + '>' + Q.r._id + ':' + j,
+        ov = (S.laneH || {})[key];
+      if (ov) {
+        if (ov.a != null) {
+          c1[0] = sp[0] - P.u[0] * ov.a;
+          c1[1] = sp[1] - P.u[1] * ov.a;
+        }
+        if (ov.b != null) {
+          c2[0] = sq[0] - Q.u[0] * ov.b;
+          c2[1] = sq[1] - Q.u[1] * ov.b;
+        }
+      }
+      const rf0 = [-P.u[0], -P.u[1]],
+        nn0 = [-rf0[1], rf0[0]],
+        axf = (p) => rf0[0] * (p[0] - o[0]) + rf0[1] * (p[1] - o[1]),
+        ltf = (p) => nn0[0] * (p[0] - o[0]) + nn0[1] * (p[1] - o[1]),
+        A0 = axf(sp),
+        A1 = axf(sq),
+        La = A1 - A0,
+        L0 = ltf(sp),
+        L1 = ltf(sq),
+        DL = L1 - L0;
+      const bez = (tt) => {
+        const m = 1 - tt;
+        return [
+          m * m * m * sp[0] + 3 * m * m * tt * c1[0] + 3 * m * tt * tt * c2[0] + tt * tt * tt * sq[0],
+          m * m * m * sp[1] + 3 * m * m * tt * c1[1] + 3 * m * tt * tt * c2[1] + tt * tt * tt * sq[1],
+        ];
+      };
+      /* pas przywiera: biegnie rownolegle do drogi glownej (stala odleglosc poprzeczna), dopiero przed granica odnogi plynnie schodzi na jej poloznienie (Hermite, styczna do odnogi) */
+      const Lb = Math.min(La, (Math.max(10, 5 * Math.abs(DL)) * ten) / 0.4),
+        Ab = A1 - Lb,
+        qa = Q.u[0] * rf0[0] + Q.u[1] * rf0[1],
+        m1 = qa > 0.2 ? (Q.u[0] * nn0[0] + Q.u[1] * nn0[1]) / qa : Lb > 0 ? DL / Lb : 0;
+      const pt =
+          La > 0.5
+            ? (tt) => {
+                const a = A0 + La * tt;
+                let lat = L0;
+                if (a > Ab) {
+                  const x = Math.min(1, (a - Ab) / Lb),
+                    x2 = x * x,
+                    x3 = x2 * x;
+                  lat = (2 * x3 - 3 * x2 + 1) * L0 + (-2 * x3 + 3 * x2) * L1 + (x3 - x2) * Lb * m1;
+                }
+                return [o[0] + rf0[0] * a + nn0[0] * lat, o[1] + rf0[1] * a + nn0[1] * lat];
+              }
+            : bez,
+        N = 28,
+        cl = [],
+        L = [],
+        Rg = [];
+      {
+        /* pas nie moze wejsc na sasiedni: poprzeczne polozenie srodka pasa jest ograniczone do przedzialu miedzy startem a koncem, potem wygladzone */ const rf =
+            [-P.u[0], -P.u[1]],
+          lt = (p) => rf[0] * (p[1] - o[1]) - rf[1] * (p[0] - o[0]),
+          nn = [-rf[1], rf[0]],
+          l0 = lt(sp),
+          l1 = lt(sq),
+          lo = Math.min(l0, l1),
+          hi = Math.max(l0, l1);
+        const raw = [];
+        for (let s = 0; s <= N; s++) {
+          const p0 = pt(s / N),
+            lc = Math.max(lo, Math.min(hi, lt(p0)));
+          raw.push([p0[0] + nn[0] * (lc - lt(p0)), p0[1] + nn[1] * (lc - lt(p0))]);
+        }
+        for (let s = 0; s <= N; s++) {
+          const p0 = raw[s],
+            pa = raw[Math.max(0, s - 1)],
+            pb = raw[Math.min(N, s + 1)],
+            tx = pb[0] - pa[0],
+            ty = pb[1] - pa[1],
+            tl = Math.hypot(tx, ty) || 1,
+            nx = -ty / tl,
+            ny = tx / tl;
+          cl.push(p0);
+          L.push([p0[0] + (nx * w) / 2, p0[1] + (ny * w) / 2]);
+          Rg.push([p0[0] - (nx * w) / 2, p0[1] - (ny * w) / 2]);
+        }
+      }
+      return { P, i, Q, j, w, cl, L, R: Rg, key, sp, sq, c1, c2, man: !!ov };
+    });
+    return { full, lanes: out };
+  }
+  window.__nodeAsph = (nv) => {
+    try {
+      if (!q('sxNA').checked) return null;
+      const g = nodeLaneGeo(nv);
+      if (!g || !g.full) return null;
+      return g.lanes.map((l) => {
+        const ex = (E, u, s) => E.map((p, z) => (z === 0 ? [p[0] + u[0] * 0.15, p[1] + u[1] * 0.15] : p));
+        /* lekki zakladka na ramie */ const L = l.L.slice(),
+          R = l.R.slice();
+        L[0] = [L[0][0] + l.P.u[0] * 0.15, L[0][1] + l.P.u[1] * 0.15];
+        R[0] = [R[0][0] + l.P.u[0] * 0.15, R[0][1] + l.P.u[1] * 0.15];
+        const n = L.length - 1;
+        L[n] = [L[n][0] + l.Q.u[0] * 0.15, L[n][1] + l.Q.u[1] * 0.15];
+        R[n] = [R[n][0] + l.Q.u[0] * 0.15, R[n][1] + l.Q.u[1] * 0.15];
+        return L.concat(R.reverse());
+      });
+    } catch (e) {
+      console.warn(e);
+      return null;
+    }
+  };
+  let LH = [],
+    laneDrag = null;
+  function drawNodeMarks() {
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,.92)';
+    ctx.lineWidth = Math.max(1, 0.12 * S.view.k);
+    ctx.setLineDash([2.5 * S.view.k, 5 * S.view.k]);
+    for (const nv of S.nodeViz || []) {
+      if (nv.mini || !nv.cuts || !nv.lanes) continue;
+      const g = nodeLaneGeo(nv);
+      if (!g) continue;
+      for (const l of g.lanes) {
+        if (!l.i) continue;
+        ctx.beginPath();
+        l.L.forEach((p, z) => {
+          const s = w2s(p);
+          z ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+        });
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  function drawNodeLanes() {
+    LH = [];
+    window.__nodeLaneList = [];
+    if (!q('sxNL').checked) {
+      if (q('sxNM').checked) drawNodeMarks();
+      return;
+    }
+    let num = 0;
+    const info = [];
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.lineWidth = 1.6;
+    ctx.font = 'bold 11px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const nv of S.nodeViz || []) {
+      if (nv.mini || !nv.cuts || !nv.lanes) continue;
+      const g = nodeLaneGeo(nv);
+      if (!g) continue;
+      for (const l of g.lanes) {
+        num++;
+        const col = LCOL(num);
+        ctx.lineWidth = 1.6;
+        ctx.strokeStyle = col;
+        for (const E of [l.L, l.R]) {
+          ctx.beginPath();
+          E.forEach((p, z) => {
+            const s = w2s(p);
+            z ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+          });
+          ctx.stroke();
+        }
+        const mid = w2s(l.cl[l.cl.length >> 1]);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#fff';
+        ctx.strokeText(String(num), mid[0], mid[1]);
+        ctx.fillStyle = col;
+        ctx.fillText(String(num), mid[0], mid[1]);
+        if (tool === 'sel' && q('sxHd').checked && q('sxNL').checked) {
+          for (const [e, c, u2, nm] of [
+            [l.sp, l.c1, l.P.u, 'a'],
+            [l.sq, l.c2, l.Q.u, 'b'],
+          ]) {
+            const s0 = w2s(e),
+              s1 = w2s(c);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = col;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(s0[0], s0[1]);
+            ctx.lineTo(s1[0], s1[1]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = l.man ? col : '#fff';
+            ctx.fillRect(s1[0] - 4, s1[1] - 4, 8, 8);
+            ctx.strokeRect(s1[0] - 4, s1[1] - 4, 8, 8);
+            LH.push({ key: l.key, nm, e, u: u2, s: s1, num });
+          }
+        }
+        info.push({
+          n: num,
+          key: l.key,
+          h: (S.laneH || {})[l.key] || null,
+          node: nv.k,
+          from: { road: l.P.r._id, slot: l.i },
+          to: { road: l.Q.r._id, slot: l.j },
+          w: +l.w.toFixed(2),
+        });
+      }
+    }
+    ctx.restore();
+    window.__nodeLaneList = info;
+  }
+  function snapPoint(sx, sy) {
+    const w = S2W(sx, sy),
+      v = vertexAt(sx, sy);
+    if (v) return { p: v.r.pts[v.i].slice(), key: v.key };
+    let bs = 9 / S.view.k,
+      hit = null;
+    for (const r of roads())
+      for (let i = 1; i < r.pts.length; i++) {
+        const A = r.pts[i - 1],
+          B = r.pts[i],
+          dx = B[0] - A[0],
+          dy = B[1] - A[1],
+          L2 = dx * dx + dy * dy || 1,
+          t = Math.max(0, Math.min(1, ((w[0] - A[0]) * dx + (w[1] - A[1]) * dy) / L2)),
+          p = [A[0] + dx * t, A[1] + dy * t],
+          d = Math.hypot(w[0] - p[0], w[1] - p[1]);
+        if (d < bs && t > 0.02 && t < 0.98) {
+          bs = d;
+          hit = { r, i, p };
+        }
+      }
+    if (hit) {
+      const key = nk();
+      hit.r.pts.splice(hit.i, 0, hit.p);
+      hit.r.nk.splice(hit.i, 0, key);
+      return { p: hit.p, key };
+    }
+    return { p: gsn(w), key: nk() };
+  }
+  function finishDraw() {
+    if (drawPts.length < 2) {
+      drawPts = [];
+      render();
+      return;
+    }
+    push();
+    const r = mkRoad(
+      drawHw,
+      drawPts.map((p) => p.p),
+      drawPts.map((p) => p.key),
+    );
+    S.doc.road.push(r);
+    drawPts = [];
+    selR = r;
+    changed();
+  }
+  function delNode(key) {
+    push();
+    const drop = [];
+    for (const r of roads().slice()) {
+      const k = r.nk.indexOf(key);
+      if (k < 0) continue;
+      if (r.pts.length > 2) {
+        r.pts.splice(k, 1);
+        r.nk.splice(k, 1);
+      } else drop.push(r);
+    }
+    let msg = 'Usunięto punkt';
+    if (drop.length) {
+      S.doc.road = roads().filter((r) => !drop.includes(r));
+      msg = 'Usunięto węzeł i ' + drop.length + ' krótk' + (drop.length === 1 ? 'ą drogę' : 'ie drogi') + ' (2 punkty)';
+    }
+    if (selV === key) selV = null;
+    if (selR && !roads().includes(selR)) selR = null;
+    changed();
+    hint(msg);
+  }
+  function delVertex() {
+    if (!selV) return;
+    delNode(selV);
+  }
+  function splitVertex() {
+    if (!selV) return;
+    const us = [];
+    for (const r of roads())
+      r.nk.forEach((k, j) => {
+        if (k === selV) us.push([r, j]);
+      });
+    if (us.length < 2) {
+      hint('Ten punkt nie jest wspólny dla kilku dróg');
+      return;
+    }
+    push();
+    us.slice(1).forEach(([r, j], n) => {
+      r.nk[j] = nk();
+      r.pts[j] = [r.pts[j][0] + 0.8 * (n + 1), r.pts[j][1] + 0.8 * (n + 1)];
+    });
+    selV = null;
+    changed();
+    hint('Węzeł rozłączony (przesunięty o 0,8 m)');
+  }
+  /* ---------- nakładka: uchwyty, podgląd rysowania, znaczniki raportu ---------- */
+  /* os do rysowania: gdy poczatek drogi jest wyprofilowany (dwupasmowka przy rozjezdzie), os biegnie krzywa srodka pasow */
+  function axisPts(r) {
+    return r.pts;
+    /* szkielet OSM zawsze prosty (lamana po punktach), bez zaokraglen */ let P = r.pts;
+    for (const st of [true, false]) {
+      const bi = mainBlendInfo(r, st);
+      if (!bi) continue;
+      const pl = [];
+      for (let z = 0; z <= 24; z++) pl.push(hermAt(bi, z / 24));
+      const rest = bi.P.slice(1);
+      const full = pl.concat(rest);
+      P = st ? full : full.slice().reverse();
+      break;
+    }
+    return P;
+  }
+  function overlay() {
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    const dot = (p, rd, f, st, lw) => {
+      const s = w2s(p);
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], rd, 0, 7);
+      ctx.fillStyle = f;
+      ctx.fill();
+      ctx.lineWidth = lw || 1.5;
+      ctx.strokeStyle = st || '#1d2330';
+      ctx.stroke();
+    };
+    if (q('sxAx').checked) {
+      ctx.lineWidth = 1.6;
+      ctx.lineJoin = 'round';
+      for (const r of roads()) {
+        ctx.strokeStyle = colOf(r.hw);
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        axisPts(r).forEach((p, i) => {
+          const s = w2s(p);
+          i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+        });
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    } /* osie wszystkich dróg: warstwa włączana w menu */
+    if (q('sxDot').checked)
+      for (const r of report)
+        dot([r.x, r.y], 7, r.lvl === 'ok' ? '#2e9d4d' : r.lvl === 'wr' ? '#e08a00' : '#d32f2f', '#fff', 1.5);
+    if (selR) {
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ffd23f';
+      ctx.beginPath();
+      axisPts(selR).forEach((p, i) => {
+        const s = w2s(p);
+        i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+      });
+      ctx.stroke();
+    }
+    if (tool === 'sel')
+      for (const r of roads()) {
+        const sw = r === selR;
+        r.pts.forEach((p, i) =>
+          dot(p, sw ? 6 : 3.5, selV && selV === r.nk[i] ? '#ff5a36' : sw ? '#fff' : 'rgba(255,255,255,.8)'),
+        );
+        if (sw)
+          for (let i = 1; i < r.pts.length; i++) {
+            const a = w2s(r.pts[i - 1]),
+              b = w2s(r.pts[i]);
+            if (Math.hypot(a[0] - b[0], a[1] - b[1]) > 28)
+              dot(S2W((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), 4.5, 'rgba(30,136,229,.9)', '#fff', 1.2);
+          }
+      }
+    if (tool === 'join')
+      for (const r of roads())
+        r.pts.forEach((p, i) =>
+          dot(
+            p,
+            joinA && joinA.key === r.nk[i] ? 8 : 5,
+            joinA && joinA.key === r.nk[i] ? '#ffd23f' : 'rgba(255,255,255,.85)',
+          ),
+        );
+    if (tool === 'draw' && drawPts.length) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = colOf(drawHw);
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      drawPts.forEach((p, i) => {
+        const s = w2s(p.p);
+        i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+      });
+      ctx.lineTo(pointer[0], pointer[1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawPts.forEach((p) => dot(p.p, 4, colOf(drawHw)));
+    }
+    ctx.restore();
+  }
+  const render0 = render;
+  render = function () {
+    render0.apply(this, arguments);
+    try {
+      if (q('sxGeoTop').checked && q('sxBmS').value) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        drawTiles();
+        ctx.restore();
+      }
+    } catch (e) {
+      console.warn('geo', e);
+    }
+    try {
+      overlay();
+    } catch (e) {
+      console.warn('overlay', e);
+    }
+    if (window.__again && !window.__againBusy) {
+      window.__again = false;
+      window.__againBusy = true;
+      try {
+        touch();
+      } finally {
+        window.__againBusy = false;
+      }
+    }
+    try {
+      drawAngles();
+      drawLP();
+    } catch (e) {
+      console.warn('fake', e);
+    }
+    try {
+      drawEdgeLines();
+    } catch (e) {
+      console.warn('edge', e);
+    }
+    try {
+      drawNodeLanes();
+    } catch (e) {
+      console.warn('nl', e);
+    }
+    try {
+      drawGrid();
+    } catch (e) {
+      console.warn('grid', e);
+    }
+    try {
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      drawCutHandles();
+      ctx.restore();
+    } catch (e) {
+      console.warn('handles', e);
+    }
+  };
+
+  /* ---------- zdarzenia (przed edytorem: przesuwanie punktów) ---------- */
+  const stage = cv;
+  let down = null;
+  /* ---------- uchwyty zoltych kresek wezla: przeciaganie zmienia dlugosc ramienia ---------- */
+  const nbOn = () => {
+    const c = document.getElementById('cNodeBord');
+    return c && c.checked && q('sxHd').checked;
+  };
+  function cutHandles() {
+    const out = [];
+    if (!nbOn()) return out;
+    for (const nv of S.nodeViz || []) {
+      if (nv.mini || nv.fkt || !nv.cuts) continue;
+      nv.cuts.forEach((c, j) => {
+        const m = nv.lanes && nv.lanes[j];
+        if (!c || !m || !roads()[m.ri]) return;
+        out.push({ nv, j, m, p: [(c[1][0] + c[2][0]) / 2, (c[1][1] + c[2][1]) / 2] });
+      });
+    }
+    return out;
+  }
+  function cutAt(cx, cy) {
+    let best = null,
+      bd = 16;
+    for (const h of cutHandles()) {
+      const s = w2s(h.p),
+        d = Math.hypot(s[0] - cx, s[1] - cy);
+      if (d < bd) {
+        bd = d;
+        best = h;
+      }
+    }
+    return best;
+  }
+  let cutDrag = null;
+  let rotDrag = null;
+  function rotHandles() {
+    const out = [];
+    if (!window.__rotOn) return out;
+    if (tool !== 'sel' || !selR || !window.__cutMids) return out;
+    const all = roads(),
+      keys = new Set([selR.nk[0], selR.nk[selR.nk.length - 1]]);
+    all.forEach((r, ri) => {
+      const cm = window.__cutMids[ri];
+      if (!cm) return;
+      for (const en of ['s', 'e']) {
+        const key = en === 's' ? r.nk[0] : r.nk[r.nk.length - 1];
+        if (r !== selR && !keys.has(key)) continue;
+        const c = cm[en];
+        if (!c) continue;
+        const sh = (r.cutSh || {})[en] || (r._cs || {})[en] || (r._cs2 || {})[en] || [];
+        for (let ix = 0; ix < 2 * c.NL; ix++) {
+          const f = ((ix >> 1) + (ix & 1)) / c.NL,
+            b0 = [c.L[0] + (c.R[0] - c.L[0]) * f, c.L[1] + (c.R[1] - c.L[1]) * f];
+          out.push({
+            r,
+            en,
+            ix,
+            c,
+            own: r === selR,
+            base: b0,
+            p: [b0[0] + c.u[0] * (sh[ix] || 0), b0[1] + c.u[1] * (sh[ix] || 0)],
+          });
+        }
+      }
+    });
+    return out;
+  }
+  window.__rotH = () => rotHandles();
+  function drawRot() {
+    if (!window.__rotOn) return;
+    for (const h of rotHandles()) {
+      const s = w2s(h.p);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(s[0] - 6, s[1] - 6, 12, 12);
+      ctx.fillStyle = h.own ? '#ff3df0' : '#ffa0f6';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  function drawCutHandles() {
+    drawRot();
+    for (const h of cutHandles()) {
+      const s = w2s(h.p),
+        man = (roads()[h.m.ri].cutD || {})[h.nv.k] != null;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], 6, 0, 7);
+      ctx.fillStyle = man ? '#ff9800' : '#fff';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#1d2330';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+  stage.addEventListener(
+    'dblclick',
+    (e) => {
+      {
+        let lb = null,
+          bd = 9;
+        for (const x of LH) {
+          const d = Math.hypot(x.s[0] - e.clientX, x.s[1] - e.clientY);
+          if (d < bd) {
+            bd = d;
+            lb = x;
+          }
+        }
+        if (lb && S.laneH && S.laneH[lb.key]) {
+          e.stopImmediatePropagation();
+          push();
+          delete S.laneH[lb.key][lb.nm];
+          if (!Object.keys(S.laneH[lb.key]).length) delete S.laneH[lb.key];
+          changed();
+          return;
+        }
+      }
+      const h = tool === 'sel' && cutAt(e.clientX, e.clientY);
+      if (!h) return;
+      e.stopImmediatePropagation();
+      push();
+      const r = roads()[h.m.ri];
+      if (r.cutD) delete r.cutD[h.nv.k];
+      changed();
+    },
+    true,
+  );
+  stage.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (lpMode() && tool === 'sel') {
+        const h = lpHit(e.clientX, e.clientY);
+        if (h) {
+          e.stopImmediatePropagation();
+          push();
+          lpDrag = h;
+          down = null;
+          return;
+        }
+        e.stopImmediatePropagation();
+        down = [e.clientX, e.clientY];
+        moved = 0;
+        return;
+      }
+      if (tool === 'sel') {
+        for (const h of rotHandles()) {
+          const s = w2s(h.p);
+          if (Math.hypot(s[0] - e.clientX, s[1] - e.clientY) < 14) {
+            e.stopImmediatePropagation();
+            push();
+            rotDrag = h;
+            hint('Przeciągnij różowy róg wzdłuż krawędzi pasa (siatka działa); szerokość pasa stała');
+            return;
+          }
+        }
+      }
+      down = [e.clientX, e.clientY];
+      moved = 0;
+      if (tool !== 'sel' || (e.pointerType === 'touch' && false)) return;
+      {
+        let lb = null,
+          bd = 9;
+        for (const h of LH) {
+          const d = Math.hypot(h.s[0] - e.clientX, h.s[1] - e.clientY);
+          if (d < bd) {
+            bd = d;
+            lb = h;
+          }
+        }
+        if (lb) {
+          e.stopImmediatePropagation();
+          push();
+          laneDrag = lb;
+          hint('Pas ' + lb.num + ': przeciągnij uchwyt (długość łuku); dwuklik = auto');
+          return;
+        }
+      }
+      {
+        const ch = cutAt(e.clientX, e.clientY);
+        if (ch) {
+          e.stopImmediatePropagation();
+          push();
+          cutDrag = ch;
+          selR = roads()[ch.m.ri];
+          hint('Przeciągnij żółtą kreskę wzdłuż drogi; dwuklik = auto');
+          return;
+        }
+      }
+      const m = midAt(e.clientX, e.clientY);
+      if (m) {
+        e.stopImmediatePropagation();
+        push();
+        const key = nk();
+        m.r.pts.splice(m.at, 0, m.p);
+        m.r.nk.splice(m.at, 0, key);
+        drag = { r: m.r, key, fresh: true };
+        selV = key;
+        changed(false);
+        return;
+      }
+      const h = vertexAt(e.clientX, e.clientY);
+      if (h) {
+        e.stopImmediatePropagation();
+        push();
+        selR = h.r;
+        selV = h.key;
+        drag = { r: h.r, key: h.key };
+        renderEdit();
+        render();
+      }
+    },
+    true,
+  );
+  addEventListener(
+    'pointermove',
+    (e) => {
+      pointer = [e.clientX, e.clientY];
+      if (lpDrag) {
+        const w = gsn(S2W(e.clientX, e.clientY));
+        lpDrag.r.lp[lpDrag.i] = [+w[0].toFixed(2), +w[1].toFixed(2)];
+        S.dirty = true;
+        touch();
+        return;
+      }
+      if (rotDrag) {
+        let w = gsn(S2W(e.clientX, e.clientY));
+        const c = rotDrag.c,
+          base = rotDrag.base,
+          R0 = rotDrag.r;
+        {
+          /* snap do rogow sasiednich drog w wezle (krawedzie dwupasmowki, koniec trojpasmowki) */ let bd =
+              14 / S.view.k,
+            sn = null;
+          for (const h2 of rotHandles()) {
+            if (h2.r === R0 && h2.en === rotDrag.en) continue;
+            const d2 = Math.hypot(h2.p[0] - w[0], h2.p[1] - w[1]);
+            if (d2 < bd) {
+              bd = d2;
+              sn = h2.p;
+            }
+          }
+          if (sn) w = sn;
+        }
+        const v = Math.round(((w[0] - base[0]) * c.u[0] + (w[1] - base[1]) * c.u[1]) * 100) / 100;
+        R0.cutSh = R0.cutSh || {};
+        const arr = (R0.cutSh[rotDrag.en] =
+          R0.cutSh[rotDrag.en] ||
+          ((R0._cs || {})[rotDrag.en]
+            ? R0._cs[rotDrag.en]
+                .slice()
+                .concat(Array(2 * c.NL).fill(0))
+                .slice(0, 2 * c.NL)
+            : Array(2 * c.NL).fill(0)));
+        arr[rotDrag.ix] = v;
+        hint(
+          'Punkt ' +
+            rotDrag.ix +
+            ' ' +
+            (rotDrag.en === 's' ? 'początku' : 'końca') +
+            ': ' +
+            v +
+            ' m (przyciąga do rogów sąsiednich dróg)',
+        );
+        touch();
+        return;
+      }
+      if (laneDrag) {
+        const w = S2W(e.clientX, e.clientY),
+          d = laneDrag,
+          a = Math.max(0, (d.e[0] - w[0]) * d.u[0] + (d.e[1] - w[1]) * d.u[1]);
+        S.laneH = S.laneH || {};
+        const o = (S.laneH[d.key] = S.laneH[d.key] || {});
+        o[d.nm] = Math.round(a * 10) / 10;
+        render();
+        return;
+      }
+      if (cutDrag) {
+        const w = S2W(e.clientX, e.clientY),
+          o2 = cutDrag.nv.o,
+          u2 = cutDrag.m.u,
+          D = Math.max(0.3, (w[0] - o2[0]) * u2[0] + (w[1] - o2[1]) * u2[1]),
+          r = roads()[cutDrag.m.ri];
+        (r.cutD = r.cutD || {})[cutDrag.nv.k] = Math.round(D * 10) / 10;
+        touch();
+        return;
+      }
+      if (down) moved += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0);
+      if (drag) {
+        moveKey(drag.key, gsn(S2W(e.clientX, e.clientY)));
+        S.dirty = true;
+        try {
+          splitJunctions();
+          autoFork();
+        } catch (er) {}
+        touch();
+        analyze();
+      } else if (tool === 'draw' && drawPts.length) render();
+    },
+    true,
+  );
+  addEventListener('pointerup', (e) => {
+    if (lpDrag) {
+      lpDrag = null;
+      changed();
+      return;
+    }
+    if (rotDrag) {
+      rotDrag = null;
+      changed();
+      return;
+    }
+    const was = down;
+    down = null;
+    if (laneDrag) {
+      laneDrag = null;
+      changed();
+      return;
+    }
+    if (cutDrag) {
+      cutDrag = null;
+      changed();
+      return;
+    }
+    if (drag) {
+      const d = drag;
+      drag = null;
+      let joined = false;
+      const w = S2W(e.clientX, e.clientY);
+      let best = null,
+        bd = 13 / S.view.k;
+      for (const r of roads())
+        r.pts.forEach((p, i) => {
+          if (r.nk[i] === d.key) return;
+          const dd = Math.hypot(p[0] - w[0], p[1] - w[1]);
+          if (dd < bd) {
+            bd = dd;
+            best = { key: r.nk[i], p };
+          }
+        });
+      if (best) {
+        rekey(d.key, best.key, best.p);
+        selV = best.key;
+        joined = true;
+      }
+      if (moved > 4 || d.fresh || joined) changed();
+      else {
+        hist.pop();
+        renderEdit();
+        render();
+      }
+      return;
+    }
+    if (!was || moved > 6 || e.target !== cv) return;
+    tap(e.clientX, e.clientY);
+  });
+  cv.addEventListener('dblclick', (e) => {
+    if (tool === 'draw') {
+      drawPts.pop();
+      finishDraw();
+    }
+  });
+  function tap(sx, sy) {
+    if (tool === 'addp') {
+      if (vertexAt(sx, sy)) {
+        hint('Tu już jest punkt');
+        return;
+      }
+      let best = null,
+        bd = 14;
+      for (const r of roads())
+        for (let i = 1; i < r.pts.length; i++) {
+          const a = w2s(r.pts[i - 1]),
+            b = w2s(r.pts[i]),
+            dx = b[0] - a[0],
+            dy = b[1] - a[1],
+            L2 = dx * dx + dy * dy || 1,
+            tt = Math.max(0, Math.min(1, ((sx - a[0]) * dx + (sy - a[1]) * dy) / L2)),
+            px = a[0] + dx * tt,
+            py = a[1] + dy * tt,
+            d = Math.hypot(px - sx, py - sy);
+          if (d < bd && tt > 0.01 && tt < 0.99) {
+            bd = d;
+            best = { r, i, p: [px, py] };
+          }
+        }
+      if (!best) {
+        hint('Kliknij dokładnie w drogę');
+        return;
+      }
+      push();
+      const key = nk();
+      best.r.pts.splice(best.i, 0, gsn(S2W(best.p[0], best.p[1])));
+      best.r.nk.splice(best.i, 0, key);
+      selR = best.r;
+      selV = key;
+      changed();
+      hint('Dodano punkt – przeciągnij go w narzędziu „Zaznacz”');
+      return;
+    }
+    if (tool === 'delp') {
+      const h = vertexAt(sx, sy);
+      if (!h) {
+        hint('Kliknij punkt, który chcesz usunąć');
+        return;
+      }
+      delNode(h.key);
+      return;
+    }
+    if (tool === 'draw') {
+      drawPts.push(snapPoint(sx, sy));
+      render();
+      return;
+    }
+    if (tool === 'join') {
+      const h = vertexAt(sx, sy);
+      if (!h) {
+        joinA = null;
+        render();
+        return;
+      }
+      if (!joinA) {
+        joinA = h;
+        hint('Teraz kliknij drugi węzeł (zostanie dołączony do pierwszego)');
+        render();
+        return;
+      }
+      if (joinA.key === h.key) {
+        joinA = null;
+        render();
+        return;
+      }
+      push();
+      rekey(h.key, joinA.key, joinA.r.pts[joinA.r.nk.indexOf(joinA.key)]);
+      joinA = null;
+      changed();
+      hint('Połączono węzły');
+      return;
+    }
+    const i = hitRoad(S2W(sx, sy)),
+      r = i >= 0 ? roads()[i] : null;
+    if (tool === 'del') {
+      if (r) {
+        push();
+        S.doc.road.splice(i, 1);
+        if (selR === r) selR = null;
+        changed();
+      }
+      return;
+    }
+    selR = r;
+    selV = null;
+    renderEdit();
+    render();
+    if (r) showPop(sx, sy);
+    else hidePop();
+  }
+  /* ---------- narzędzia i menu ---------- */
+  function setTool(t) {
+    tool = t;
+    if (t !== 'sel') hidePop();
+    drawPts = [];
+    joinA = null;
+    q('sxBar').style.display = t === 'draw' ? 'flex' : 'none';
+    for (const [id, k] of [
+      ['sxSel', 'sel'],
+      ['sxDraw', 'draw'],
+      ['sxJoin', 'join'],
+      ['sxDel', 'del'],
+      ['sxAddP', 'addp'],
+      ['sxDelP', 'delp'],
+    ])
+      q(id).classList.toggle('on', k === t);
+    hint(
+      t === 'draw'
+        ? 'Rysowanie: ' + hwName(drawHw) + ' – klikaj punkty, „Zakończ” kończy'
+        : t === 'join'
+          ? 'Kliknij pierwszy węzeł, potem drugi – zostaną połączone'
+          : t === 'del'
+            ? 'Kliknij drogę, aby ją usunąć'
+            : 'Zaznacz drogę, aby ją edytować; przeciągnij punkt, aby go przesunąć',
+    );
+    render();
+  }
+  q('sxSel').onclick = () => setTool('sel');
+  q('sxDraw').onclick = () => setTool('draw');
+  q('sxJoin').onclick = () => setTool('join');
+  q('sxDel').onclick = () => setTool('del');
+  q('sxAddP').onclick = () => setTool('addp');
+  q('sxDelP').onclick = () => setTool('delp');
+  q('sxUndo').onclick = undo;
+  q('sxFin').onclick = finishDraw;
+  q('sxCan').onclick = () => {
+    drawPts = [];
+    render();
+  };
+  addEventListener('keydown', (e) => {
+    if (
+      (e.key === 'Delete' || e.key === 'Backspace') &&
+      selV &&
+      !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')
+    ) {
+      e.preventDefault();
+      delVertex();
+      return;
+    }
+    if (e.key === 'Enter' && tool === 'draw') finishDraw();
+    else if (e.key === 'Escape') {
+      drawPts = [];
+      render();
+    } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      e.preventDefault();
+      undo();
+    } else if (e.key === 'Delete' && selR && document.activeElement.tagName !== 'INPUT') {
+      push();
+      S.doc.road.splice(roads().indexOf(selR), 1);
+      selR = null;
+      changed();
+    }
+  });
+  const LYS = { sxOut: 1, sxBord: 1, sxHd: 1, sxNL: 1, sxNM: 1, sxAx: 1, sxDot: 1, sxGrid: 1 },
+    LYV = ['sxOut', 'sxBord', 'sxHd', 'sxNL', 'sxAx', 'sxDot', 'sxGrid'];
+  const lyApply = () => {
+    try {
+      $('cNodeLanes').checked = q('sxOut').checked;
+      $('cNodeBord').checked = q('sxBord').checked;
+    } catch (e) {}
+    touch();
+  };
+  q('sxBord').onchange = lyApply;
+  q('sxHd').onchange = () => render();
+  q('sxNM').onchange = () => render();
+  q('sxCutR').onclick = () => {
+    push();
+    for (const r of roads()) delete r.cutD;
+    S.laneH = {};
+    changed();
+    hint('Granice węzłów i łuki pasów: auto');
+  };
+  q('sxLyOnly').onclick = () => {
+    for (const k of LYV) q(k).checked = false;
+    q('sxNM').checked = true;
+    q('sxNA').checked = true;
+    lyApply();
+  };
+  q('sxLyAll').onclick = () => {
+    for (const k of LYV) q(k).checked = k !== 'sxGrid';
+    q('sxNM').checked = true;
+    lyApply();
+  };
+  function drawAngles() {
+    const by = new Map();
+    roads().forEach((r) => {
+      if (!r.nk || r.nk.length < 2) return;
+      [0, r.nk.length - 1].forEach((j) => {
+        const k = r.nk[j];
+        if (!by.has(k)) by.set(k, []);
+        by.get(k).push([r, j ? 1 : 0]);
+      });
+    });
+    for (const [k, A] of by) {
+      if (A.length !== 3) continue;
+      const X = A.reduce((m, a) => ((a[0].lanes | 0) > (m[0].lanes | 0) ? a : m)),
+        Y = A.filter((a) => a !== X),
+        br = Y.reduce((m, a) => ((a[0].lanes | 0) < (m[0].lanes | 0) ? a : m)),
+        mn = Y.find((a) => a !== br);
+      if (!br || !mn) continue;
+      const dir = ([r, e]) => {
+        const P = r.pts,
+          n = P.length,
+          o = e ? P[n - 1] : P[0];
+        let q = e ? P[n - 2] : P[1];
+        const d = Math.hypot(q[0] - o[0], q[1] - o[1]) || 1;
+        return [o, [(q[0] - o[0]) / d, (q[1] - o[1]) / d]];
+      };
+      const [o, a] = dir(mn),
+        [, b] = dir(br);
+      let a1 = Math.atan2(a[1], a[0]),
+        a2 = Math.atan2(b[1], b[0]),
+        da = a2 - a1;
+      while (da > Math.PI) da -= 2 * Math.PI;
+      while (da < -Math.PI) da += 2 * Math.PI;
+      const deg = (Math.abs(da) * 180) / Math.PI,
+        s = w2s(o);
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      const R = 34;
+      ctx.beginPath();
+      ctx.arc(s[0], s[1], R, a1, a2, da < 0);
+      ctx.strokeStyle = '#18c000';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      const am = a1 + da / 2,
+        tx = s[0] + Math.cos(am) * (R + 20),
+        ty = s[1] + Math.sin(am) * (R + 20);
+      ctx.font = 'bold 15px system-ui';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#fff';
+      const txt = deg.toFixed(1) + '°';
+      ctx.strokeText(txt, tx, ty);
+      ctx.fillStyle = '#0a7a00';
+      ctx.fillText(txt, tx, ty);
+      ctx.restore();
+    }
+  }
+  function drawEdgeLines() {
+    if (window.__noE) return;
+    const nodes3 = [];
+    {
+      const by = new Map();
+      roads().forEach((r) => {
+        if (!r.nk || r.nk.length < 2) return;
+        [0, r.nk.length - 1].forEach((j) => {
+          const k = r.nk[j];
+          if (!by.has(k)) by.set(k, []);
+          by.get(k).push([r, j ? 1 : 0]);
+        });
+      });
+      for (const [k, A] of by) {
+        if (A.length !== 3) continue;
+        const X = A.reduce((m, a) => ((a[0].lanes | 0) > (m[0].lanes | 0) ? a : m)),
+          [r, e] = X,
+          P0 = e ? r.pts[r.pts.length - 1] : r.pts[0],
+          q1 = e ? r.pts[r.pts.length - 2] : r.pts[1],
+          l = Math.hypot(q1[0] - P0[0], q1[1] - P0[1]) || 1;
+        nodes3.push({ P: P0, u: [(q1[0] - P0[0]) / l, (q1[1] - P0[1]) / l] });
+      }
+    }
+    const L = layout(),
+      k = S.view.k,
+      wl = 0.16;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'butt';
+    ctx.strokeStyle = '#f4f4f0';
+    for (const P of L.polys) {
+      if (!P.L || P.L.length < 2 || !P.R || P.R.length < 2) continue;
+      ctx.save();
+      ctx.beginPath();
+      P.P.forEach((q, i) => {
+        const s = w2s(q);
+        i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+      });
+      ctx.closePath();
+      ctx.clip();
+      ctx.lineWidth = wl * 2 * k;
+      for (const E0 of [P.L, P.R]) {
+        const E = E0.map((q) => q.slice());
+        if (E.length > 1)
+          for (const [ei, ej] of [
+            [0, 1],
+            [E.length - 1, E.length - 2],
+          ])
+            for (const nd of nodes3) {
+              const q0 = E[ei],
+                dd = Math.hypot(q0[0] - nd.P[0], q0[1] - nd.P[1]);
+              if (dd > 4) continue;
+              const dx = E[ej][0] - q0[0],
+                dy = E[ej][1] - q0[1],
+                l = Math.hypot(dx, dy) || 1,
+                d = [dx / l, dy / l],
+                dn = d[0] * nd.u[0] + d[1] * nd.u[1],
+                al = (q0[0] - nd.P[0]) * nd.u[0] + (q0[1] - nd.P[1]) * nd.u[1];
+              if (Math.abs(al - 0.06) < 0.25 && Math.abs(dn) > 0.5) {
+                const s = (0.06 - al) / dn;
+                E[ei] = [q0[0] + d[0] * s, q0[1] + d[1] * s];
+                break;
+              }
+            }
+        ctx.beginPath();
+        E.forEach((q, i) => {
+          const s = w2s(q);
+          i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  const lpMode = () => q('sxPMl').checked;
+  function drawLP() {
+    if (!lpMode()) return;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    for (const r of roads()) {
+      if (!r.lp || r.lp.length < 2) continue;
+      const cl = window.__lpCR(r.lp, 0.5);
+      ctx.strokeStyle = '#00b8d4';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      cl.forEach((p, i) => {
+        const s = w2s(p);
+        i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+      });
+      ctx.stroke();
+      r.lp.forEach((p, i) => {
+        const s = w2s(p);
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 6, 0, 7);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#00b8d4';
+        ctx.stroke();
+      });
+    }
+    ctx.restore();
+  }
+  function lpHit(cx, cy) {
+    let best = null,
+      bd = 14;
+    for (const r of roads())
+      (r.lp || []).forEach((p, i) => {
+        const s = w2s(p),
+          dd = Math.hypot(s[0] - cx, s[1] - cy);
+        if (dd < bd) {
+          bd = dd;
+          best = { r, i };
+        }
+      });
+    return best;
+  }
+  let lpDrag = null;
+  q('sxLpG').onclick = () => {
+    push();
+    window.__noLP = true;
+    window.__lpRec = true;
+    window.__cl = {};
+    for (const r of roads()) delete r.lp;
+    try {
+      layout();
+    } catch (e) {
+      console.warn(e);
+    }
+    window.__noLP = false;
+    window.__lpRec = false;
+    for (const r of roads()) {
+      const cl = (window.__cl || {})[r._id];
+      if (!cl || cl.length < 2) continue;
+      const cu = [0];
+      for (let i = 1; i < cl.length; i++)
+        cu.push(cu[i - 1] + Math.hypot(cl[i][0] - cl[i - 1][0], cl[i][1] - cl[i - 1][1]));
+      const tot = cu[cu.length - 1],
+        n = Math.max(3, Math.min(8, Math.round(tot / 10) + 1)),
+        pts = [];
+      for (let k = 0; k < n; k++) {
+        const s = (tot * k) / (n - 1);
+        let g = 1;
+        while (g < cu.length - 1 && cu[g] < s) g++;
+        const f = (s - cu[g - 1]) / (cu[g] - cu[g - 1] || 1);
+        pts.push([
+          +(cl[g - 1][0] + (cl[g][0] - cl[g - 1][0]) * f).toFixed(2),
+          +(cl[g - 1][1] + (cl[g][1] - cl[g - 1][1]) * f).toFixed(2),
+        ]);
+      }
+      r.lp = pts;
+    }
+    q('sxPMl').checked = true;
+    changed();
+    hint('Linie pasów wygenerowane – przeciągaj niebieskie punkty (render idzie po nich)');
+  };
+  q('sxRot').onchange = () => {
+    window.__rotOn = q('sxRot').checked;
+    render();
+  };
+  q('sxLpX').onclick = () => {
+    push();
+    for (const r of roads()) delete r.lp;
+    changed();
+    hint('Linie pasów usunięte – znów automat');
+  };
+  q('sxPMo').onchange = q('sxPMl').onchange = () => render();
+  function drawFake() {
+    if (!q('sxAx').checked || !window.__fake) return;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.strokeStyle = 'rgba(255,255,255,.95)';
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([2, 5]);
+    for (const id in window.__fake) {
+      if (!roads().some((r) => String(r._id) === id)) continue;
+      ctx.beginPath();
+      window.__fake[id].forEach((p, z) => {
+        const s = w2s(p);
+        z ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]);
+      });
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  const geoApply = () => {
+    try {
+      const v = q('sxBmS').value,
+        top = q('sxGeoTop').checked;
+      if (v) $('bm').value = v;
+      q('sxGeo').checked = !!v && !top;
+      $('cTile').checked = !!v && !top;
+    } catch (e) {}
+    S.dirty = true;
+    touch();
+  };
+  q('sxBmS').onchange = () => geoApply();
+  q('sxGeoTop').onchange = geoApply;
+  q('sxGrid').onchange = () => render();
+  q('sxNL').onchange = () => render();
+  q('sxNA').onchange = () => touch();
+  q('sxAR').oninput = () => {
+    window.__arcR = +q('sxAR').value;
+    q('sxARv').textContent = q('sxAR').value;
+    touch();
+    saveScene();
+  };
+  window.__arcR = 18;
+  q('sxWL').oninput = () => {
+    window.__wtl = +q('sxWL').value;
+    q('sxWLv').textContent = q('sxWL').value;
+    touch();
+    saveScene();
+  };
+  q('sxRad').oninput = () => {
+    window.__nodeRad = +q('sxRad').value;
+    q('sxRadV').textContent = +q('sxRad').value ? q('sxRad').value + ' m' : 'auto';
+    touch();
+    saveScene();
+  };
+  q('sxSm').oninput = () => {
+    window.__lsm = +q('sxSm').value;
+    q('sxSmV').textContent = q('sxSm').value;
+    touch();
+    saveScene();
+  };
+  q('sxOT').oninput = () => {
+    q('sxOTv').textContent = +q('sxOT').value ? q('sxOT').value + ' m' : 'cała droga';
+    changed(false);
+  };
+  q('sxGs').onchange = () => render();
+  q('sxOut').onchange = () => {
+    $('cNodeLanes').checked = q('sxOut').checked;
+    touch();
+  };
+  q('sxDot').onchange = () => render();
+  q('sxAx').onchange = () => render();
+  q('sxTypes').innerHTML = TYPES.map(
+    (t) => `<button data-h="${t[0]}"><span class="sw" style="background:${colOf(t[0])}"></span>${t[1]}</button>`,
+  ).join('');
+  for (const b of q('sxTypes').children)
+    b.onclick = () => {
+      drawHw = b.dataset.h;
+      for (const x of q('sxTypes').children) x.classList.toggle('on', x === b);
+      setTool('draw');
+    };
+  q('sxCfg').onclick = () => {
+    const cfg = {
+        sandbox: 'sandbox-drog',
+        roads: roads().map((r, i) => ({
+          i,
+          id: r._id,
+          hw: r.hw,
+          lanes: r.lanes,
+          nf: r.nf,
+          oneway: !!r.oneway,
+          lw: r.lw,
+          tl: r.tl || '',
+          tlb: r.tlb || '',
+          off: r.off,
+          offS: r.offS,
+          offE: r.offE,
+          cutD: r.cutD || null,
+          cutSh: r.cutSh || null,
+          lp: r.lp || null,
+          cutShNote: 'cutSh = 2 wartosci na pas [lewy,prawy] w m wzdluz osi; s=poczatek, e=koniec',
+          nodeLanes: undefined,
+          offApplied: [+offAt(r, 0).toFixed(3), +offAt(r, 1).toFixed(3)],
+          pts: r.pts.map((p) => p.map((v) => +v.toFixed(2))),
+          nk: r.nk,
+        })),
+        nodeLanes: window.__nodeLaneList,
+        nodeR: S.nodeR || {},
+        laneH: S.laneH || {},
+        report: report.map((x) => ({
+          at: [+x.x.toFixed(1), +x.y.toFixed(1)],
+          level: x.lvl,
+          msg: x.msg,
+          detail: x.detail,
+        })),
+        view: { x: +S.view.x.toFixed(1), y: +S.view.y.toFixed(1), k: +S.view.k.toFixed(2) },
+      },
+      txt = JSON.stringify(cfg);
+    const done = (ok) =>
+      hint(
+        ok
+          ? 'Skopiowano config dla Claude (' + txt.length + ' znaków) – wklej do czatu'
+          : 'Nie udało się skopiować – zaznacz tekst z okna',
+      );
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(txt).then(
+        () => done(true),
+        () => fallbackCopy(txt, done),
+      );
+    else fallbackCopy(txt, done);
+  };
+  function fallbackCopy(txt, done) {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;left:8px;top:60px;width:min(90vw,500px);height:160px;z-index:99';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (e) {}
+    if (ok) ta.remove();
+    else {
+      ta.onblur = () => ta.remove();
+    }
+    done(ok);
+  }
+  q('sxClr').onclick = () => {
+    push();
+    S.doc.road = [];
+    selR = null;
+    changed();
+  };
+  q('sxExp').onclick = () => {
+    try {
+      navigator.clipboard.writeText(snap());
+      hint('Skopiowano JSON sceny');
+    } catch (e) {}
+  };
+  /* ---------- scenariusze ---------- */
+  window.__forkNode = true;
+  window.__noGapClose = true;
+  window.__noSeams = true;
+  window.__noBlue = true;
+  window.__cutRot = true;
+  window.__noEdge = true;
+  /* bez ciaglych linii krawedzi i kraweznika - tylko linie przerywane */ window.__cutFirstPt = true;
+  window.__forkTiny = true;
+  window.__forkTinyAll = true;
+  window.__forkNoNode = true;
+  window.__forkWide = true;
+  window.__nodeRad = 8; /* bez domykania szczelin: osobne drogi blisko siebie sie nie zlewaja */ /* rozjazdy jako wezly (wielokat + luki) zamiast szkieletu */
+  /* ---- generator scenariuszy: grupy, do 6 pasów ---- */
+  const SC = {},
+    SCG = [];
+  const grp = (g, items) => {
+    SCG.push({
+      g,
+      names: items.map(([n, f]) => {
+        SC[g + ' · ' + n] = f;
+        return g + ' · ' + n;
+      }),
+    });
+  };
+  const ST = (hw, o, pts) => [hw, o, pts]; /* odcinek: klasa, opcje, punkty */
+  const lnk = (n) => (n === 1 ? 'primary_link' : 'primary');
+  const wide = (hw, ow, n, tl) => Object.assign({ lanes: n }, ow ? { oneway: true } : {}, tl ? { tl } : {});
+  const through = (n) => Array(n).fill('through').join('|');
+  /* 1. zmiana liczby pasów na przelocie (jednokierunkowe) */
+  const nar = [],
+    wid = [];
+  for (const [n, m] of [
+    [6, 5],
+    [5, 4],
+    [4, 3],
+    [3, 2],
+    [2, 1],
+    [6, 4],
+    [5, 3],
+    [4, 2],
+    [3, 1],
+  ]) {
+    nar.push([
+      n + ' → ' + m + ' pasów',
+      () => [
+        ST('primary', wide('primary', 1, n), [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, m), [
+          [0, 0],
+          [80, 0],
+        ]),
+      ],
+    ]);
+    wid.push([
+      m + ' → ' + n + ' pasów',
+      () => [
+        ST('primary', wide('primary', 1, m), [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, n), [
+          [0, 0],
+          [80, 0],
+        ]),
+      ],
+    ]);
+  }
+  grp('Zwężenia (jednokier.)', nar);
+  grp('Poszerzenia (jednokier.)', wid);
+  /* 2. dwukierunkowe */
+  grp(
+    'Dwukierunkowe: zmiana pasów',
+    [
+      [2, 4],
+      [4, 2],
+      [2, 6],
+      [6, 2],
+      [4, 6],
+      [6, 4],
+      [1, 2],
+      [2, 3],
+      [3, 2],
+    ].map(([n, m]) => [
+      n + ' → ' + m + ' pasów',
+      () => [
+        ST('primary', { lanes: n }, [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', { lanes: m }, [
+          [0, 0],
+          [80, 0],
+        ]),
+      ],
+    ]),
+  );
+  /* 3. rozjazdy N -> a + b (b jako odnoga w prawo) */
+  const forks = [];
+  for (const [n, a, b] of [
+    [2, 1, 1],
+    [3, 2, 1],
+    [3, 2, 2],
+    [3, 1, 2],
+    [4, 3, 1],
+    [4, 2, 2],
+    [4, 3, 2],
+    [5, 4, 1],
+    [5, 3, 2],
+    [5, 3, 3],
+    [6, 5, 1],
+    [6, 4, 2],
+    [6, 3, 3],
+    [6, 4, 3],
+  ])
+    forks.push([
+      n + ' → ' + a + ' + ' + b + (a + b === n + 1 ? ' (wspólny pas)' : ''),
+      () => [
+        ST('primary', wide('primary', 1, n), [
+          [-90, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, a), [
+          [0, 0],
+          [90, 0],
+        ]),
+        ST(lnk(b), wide('primary', 1, b), [
+          [0, 0],
+          [35, 16],
+          [90, 42],
+        ]),
+      ],
+    ]);
+  grp('Rozjazdy (odnoga w prawo)', forks);
+  const forksL = [];
+  for (const [n, a, b] of [
+    [3, 2, 1],
+    [4, 3, 1],
+    [4, 2, 2],
+    [5, 4, 1],
+    [5, 3, 2],
+    [6, 4, 2],
+  ])
+    forksL.push([
+      n + ' → ' + a + ' + ' + b + ' (odnoga w lewo)',
+      () => [
+        ST('primary', wide('primary', 1, n), [
+          [-90, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, a), [
+          [0, 0],
+          [90, 0],
+        ]),
+        ST(lnk(b), wide('primary', 1, b), [
+          [0, 0],
+          [35, -16],
+          [90, -42],
+        ]),
+      ],
+    ]);
+  grp('Rozjazdy (odnoga w lewo)', forksL);
+  /* 4. włączenia a + b -> N */
+  const merges = [];
+  for (const [a, b, n] of [
+    [1, 1, 2],
+    [2, 1, 3],
+    [2, 2, 3],
+    [3, 1, 4],
+    [3, 2, 4],
+    [3, 2, 5],
+    [4, 1, 5],
+    [4, 2, 6],
+    [3, 3, 6],
+    [5, 1, 6],
+  ])
+    merges.push([
+      a + ' + ' + b + ' → ' + n,
+      () => [
+        ST('primary', wide('primary', 1, a), [
+          [-90, 0],
+          [0, 0],
+        ]),
+        ST(lnk(b), wide('primary', 1, b), [
+          [-90, 42],
+          [-35, 16],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, n), [
+          [0, 0],
+          [90, 0],
+        ]),
+      ],
+    ]);
+  grp('Włączenia', merges);
+  /* 5. jezdnia biegnie dalej + boczna droga (bez pasa wyłączania) */
+  grp(
+    'Jezdnia + boczna (bez wyłączania)',
+    [2, 3, 4, 5, 6]
+      .map((n) => [
+        n + ' → ' + n + ' + boczna 1 pas',
+        () => [
+          ST('primary', wide('primary', 1, n), [
+            [-90, 0],
+            [0, 0],
+          ]),
+          ST('primary', wide('primary', 1, n), [
+            [0, 0],
+            [90, 0],
+          ]),
+          ST('tertiary', wide('tertiary', 1, 1), [
+            [0, 0],
+            [40, 24],
+            [90, 34],
+          ]),
+        ],
+      ])
+      .concat(
+        [4, 6].map((n) => [
+          n + ' → ' + n + ' + boczna 2 pasy',
+          () => [
+            ST('primary', wide('primary', 1, n), [
+              [-90, 0],
+              [0, 0],
+            ]),
+            ST('primary', wide('primary', 1, n), [
+              [0, 0],
+              [90, 0],
+            ]),
+            ST('secondary', wide('secondary', 1, 2), [
+              [0, 0],
+              [40, 24],
+              [90, 34],
+            ]),
+          ],
+        ]),
+      ),
+  );
+  /* 6. skrzyżowania z pasami skrętu (turn:lanes) */
+  const TLS = [
+    ['left|through|right', 3],
+    ['left|left|through|right', 4],
+    ['left|through|through|right', 4],
+    ['left|left|through|through|right', 5],
+    ['left|through|through|through|right', 5],
+    ['left|left|through|through|through|right', 6],
+    ['left|through;right', 2],
+    ['left|through|through;right', 3],
+    ['through|through|right|right', 4],
+    ['left|left|through|through|right|right', 6],
+  ];
+  grp(
+    'Skrzyżowanie z pasami skrętu',
+    TLS.map(([tl, n]) => [
+      n + ' pasów: ' + tl,
+      () => [
+        ST('secondary', wide('secondary', 1, n, tl), [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('secondary', wide('secondary', 1, Math.max(2, n - 1)), [
+          [0, 0],
+          [80, 0],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [0, 0],
+          [0, 55],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [0, 0],
+          [0, -55],
+        ]),
+      ],
+    ]),
+  );
+  /* 7. ten sam układ pasów, różne turn:lanes po obu stronach węzła (test uskoku osi) */
+  grp(
+    'Przelot: różne turn:lanes',
+    [
+      [
+        'left|left|through|through|through ↔ ...|through;right',
+        'left|left|through|through|through',
+        'left|left|through|through|through;right',
+        5,
+      ],
+      ['through|through|right ↔ through|through|through', 'through|through|right', 'through|through|through', 3],
+      ['left|through|through ↔ through|through|through', 'left|through|through', 'through|through|through', 3],
+      ['left|through|right ↔ through|through|through', 'left|through|right', 'through|through|through', 3],
+      [
+        'left|left|through|through ↔ through|through|through|through',
+        'left|left|through|through',
+        'through|through|through|through',
+        4,
+      ],
+      [
+        'through|through|through|right ↔ left|through|through|through',
+        'through|through|through|right',
+        'left|through|through|through',
+        4,
+      ],
+    ].map(([n, a, b, k]) => [
+      n,
+      () => [
+        ST('primary', wide('primary', 1, k, a), [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, k, b), [
+          [0, 0],
+          [80, 0],
+        ]),
+      ],
+    ]),
+  );
+  /* 8. skrzyżowania T / X / kąty */
+  const cls = ['primary', 'secondary', 'tertiary', 'residential'];
+  grp('Skrzyżowania T i X', [
+    [
+      'T: główna 2 pasy + dojazd',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [0, 0],
+          [0, 50],
+        ]),
+      ],
+    ],
+    [
+      'T: główna 4 pasy + boczna 2',
+      () => [
+        ST('primary', { lanes: 4 }, [
+          [-60, 0],
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('tertiary', { lanes: 2 }, [
+          [0, 0],
+          [0, 50],
+        ]),
+      ],
+    ],
+    [
+      'T: dwie drogi tej samej klasy (2 pasy)',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [0, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [0, 0],
+          [0, 55],
+        ]),
+      ],
+    ],
+    [
+      'X: 2 × 2 pasy',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [0, -60],
+          [0, 0],
+          [0, 60],
+        ]),
+      ],
+    ],
+    [
+      'X: 4 pasy × 2 pasy',
+      () => [
+        ST('primary', { lanes: 4 }, [
+          [-60, 0],
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [0, -60],
+          [0, 0],
+          [0, 60],
+        ]),
+      ],
+    ],
+    [
+      'X: 6 pasów × 4 pasy',
+      () => [
+        ST('primary', { lanes: 6 }, [
+          [-70, 0],
+          [0, 0],
+          [70, 0],
+        ]),
+        ST('primary', { lanes: 4 }, [
+          [0, -70],
+          [0, 0],
+          [0, 70],
+        ]),
+      ],
+    ],
+    [
+      'X: główna + 2 dojazdy przesunięte',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [60, 0],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [-12, -50],
+          [-12, 0],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [14, 0],
+          [14, 50],
+        ]),
+      ],
+    ],
+    [
+      'Skrzyżowanie 5-ramienne',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [0, -60],
+          [0, 0],
+          [0, 60],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [0, 0],
+          [45, 45],
+        ]),
+      ],
+    ],
+  ]);
+  grp(
+    'Zakręty i kąty',
+    [30, 60, 90, 120, 150]
+      .map((d) => [
+        'skręt o ' + d + '°',
+        () => {
+          const r = (d * Math.PI) / 180;
+          return [
+            ST('secondary', { lanes: 2 }, [
+              [-70, 0],
+              [0, 0],
+            ]),
+            ST('secondary', { lanes: 2 }, [
+              [0, 0],
+              [Math.cos(r) * 70, Math.sin(r) * 70],
+            ]),
+          ];
+        },
+      ])
+      .concat([
+        [
+          'Y: ostry kąt 40°',
+          () => [
+            ST('secondary', { lanes: 2 }, [
+              [-70, 0],
+              [0, 0],
+            ]),
+            ST('secondary', { lanes: 2 }, [
+              [0, 0],
+              [60, 22],
+            ]),
+            ST('secondary', { lanes: 2 }, [
+              [0, 0],
+              [60, -22],
+            ]),
+          ],
+        ],
+        [
+          'Y: kąt 25°',
+          () => [
+            ST('primary', { lanes: 4 }, [
+              [-70, 0],
+              [0, 0],
+            ]),
+            ST('primary', { lanes: 2 }, [
+              [0, 0],
+              [70, 15],
+            ]),
+            ST('primary', { lanes: 2 }, [
+              [0, 0],
+              [70, -15],
+            ]),
+          ],
+        ],
+      ]),
+  );
+  /* 9. autostrady, łącznice, dwie jezdnie */
+  grp('Autostrady i łącznice', [
+    [
+      'Dwie jezdnie 3+3',
+      () => [
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [-100, -8],
+          [100, -8],
+        ]),
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [100, 8],
+          [-100, 8],
+        ]),
+      ],
+    ],
+    [
+      'Zjazd 3 → 3 + łącznica 1',
+      () => [
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [-100, 0],
+          [0, 0],
+        ]),
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [0, 0],
+          [100, 0],
+        ]),
+        ST('motorway_link', { oneway: true, lanes: 1 }, [
+          [0, 0],
+          [30, 12],
+          [90, 40],
+        ]),
+      ],
+    ],
+    [
+      'Zjazd 3 → 2 + łącznica 2',
+      () => [
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [-100, 0],
+          [0, 0],
+        ]),
+        ST('motorway', { oneway: true, lanes: 2 }, [
+          [0, 0],
+          [100, 0],
+        ]),
+        ST('motorway_link', { oneway: true, lanes: 2 }, [
+          [0, 0],
+          [30, 12],
+          [90, 40],
+        ]),
+      ],
+    ],
+    [
+      'Wjazd 2 + 1 → 3',
+      () => [
+        ST('motorway', { oneway: true, lanes: 2 }, [
+          [-100, 0],
+          [0, 0],
+        ]),
+        ST('motorway_link', { oneway: true, lanes: 1 }, [
+          [-90, 40],
+          [-30, 12],
+          [0, 0],
+        ]),
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [0, 0],
+          [100, 0],
+        ]),
+      ],
+    ],
+    [
+      'Dwie jezdnie + łącznica w prawo',
+      () => [
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [-100, -8],
+          [100, -8],
+        ]),
+        ST('motorway', { oneway: true, lanes: 3 }, [
+          [100, 8],
+          [-100, 8],
+        ]),
+        ST('motorway_link', { oneway: true, lanes: 1 }, [
+          [-20, -8],
+          [10, -30],
+          [60, -60],
+        ]),
+      ],
+    ],
+    [
+      'Ekspresowa 2 → 3 + łącznica',
+      () => [
+        ST('trunk', { oneway: true, lanes: 2 }, [
+          [-90, 0],
+          [0, 0],
+        ]),
+        ST('trunk', { oneway: true, lanes: 3 }, [
+          [0, 0],
+          [90, 0],
+        ]),
+        ST('primary_link', { oneway: true, lanes: 1 }, [
+          [-90, 40],
+          [-30, 12],
+          [0, 0],
+        ]),
+      ],
+    ],
+  ]);
+  /* 10. nietypowe */
+  grp('Nietypowe', [
+    [
+      'Dwie drogi blisko równolegle (rampa przy jezdni)',
+      () => [
+        ST('primary', { oneway: true, lanes: 5 }, [
+          [-60, 0],
+          [0, 0],
+        ]),
+        ST('primary', { oneway: true, lanes: 5 }, [
+          [0, 0],
+          [60, 0],
+        ]),
+        ST('secondary', { oneway: true, lanes: 1 }, [
+          [0, 0],
+          [10, 11.6],
+          [52, 11.4],
+        ]),
+      ],
+    ],
+    [
+      'Krótki odcinek między dwoma węzłami',
+      () => [
+        ST('secondary', { lanes: 2 }, [
+          [-60, 0],
+          [0, 0],
+        ]),
+        ST('secondary', { lanes: 4 }, [
+          [0, 0],
+          [12, 0],
+        ]),
+        ST('secondary', { lanes: 2 }, [
+          [12, 0],
+          [72, 0],
+        ]),
+        ST('residential', { lanes: 2 }, [
+          [6, 0],
+          [6, 40],
+        ]),
+      ],
+    ],
+    [
+      'Dwa rozjazdy po sobie (5 → 4 + 1 → 3 + 1)',
+      () => [
+        ST('primary', { oneway: true, lanes: 5 }, [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', { oneway: true, lanes: 4 }, [
+          [0, 0],
+          [70, 0],
+        ]),
+        ST('primary_link', { oneway: true, lanes: 1 }, [
+          [0, 0],
+          [30, 14],
+          [80, 40],
+        ]),
+        ST('primary', { oneway: true, lanes: 3 }, [
+          [70, 0],
+          [150, 0],
+        ]),
+        ST('primary_link', { oneway: true, lanes: 1 }, [
+          [70, 0],
+          [100, 14],
+          [150, 40],
+        ]),
+      ],
+    ],
+    [
+      'Szeroka jezdnia 6 pasów + zawracanie',
+      () => [
+        ST('primary', { oneway: true, lanes: 6 }, [
+          [-80, 0],
+          [0, 0],
+        ]),
+        ST('primary', { oneway: true, lanes: 6 }, [
+          [0, 0],
+          [80, 0],
+        ]),
+        ST('secondary', { oneway: true, lanes: 1 }, [
+          [0, 0],
+          [30, -20],
+          [0, -40],
+          [-30, -20],
+        ]),
+      ],
+    ],
+  ]);
+  /* kąty rozjazdu 3 -> 2+1 (0-90 st.): pasy ustawione, do ustalenia polozenia linii OSM odnogi */
+  const L0 = 6,
+    KT = 8,
+    mkAng = (a) => () => {
+      const r = (a * Math.PI) / 180,
+        c = Math.cos(r),
+        s = Math.sin(r),
+        K = [L0 + KT, 5.25],
+        f = (d) => [+(K[0] + d * c).toFixed(2), +(K[1] + d * s).toFixed(2)],
+        P1 = f(25),
+        P2 = f(70);
+      /* luk niepotrzebny */ const arc0 = Array.from({ length: 7 }, (_, z) => {
+        const u2 = z / 6,
+          m = 1 - u2,
+          A = [L0, 5.25],
+          Bz = f(KT);
+        return [
+          +(m * m * A[0] + 2 * m * u2 * K[0] + u2 * u2 * Bz[0]).toFixed(2),
+          +(m * m * A[1] + 2 * m * u2 * K[1] + u2 * u2 * Bz[1]).toFixed(2),
+        ];
+      });
+      const sc = [
+        ST('primary', wide('primary', 1, 3, 'through|through|right'), [
+          [-90, 0],
+          [0, 0],
+        ]),
+        ST('primary', wide('primary', 1, 2), [
+          [0, 0],
+          [90, 0],
+        ]),
+        ST('primary_link', wide('primary', 1, 1), [[0, 0], P1, P2]),
+      ];
+      sc.fork = true;
+      return sc;
+    };
+  const mkCombo = (kind, side, a) => () => {
+    const r = (a * Math.PI) / 180,
+      c = Math.cos(r),
+      s = Math.sin(r) * side,
+      f = (d) => [+(d * c).toFixed(2), +(d * s).toFixed(2)];
+    const sc =
+      kind === 'wyjazd'
+        ? [
+            ST('primary', wide('primary', 1, 3, side > 0 ? 'through|through|right' : 'left|through|through'), [
+              [-90, 0],
+              [0, 0],
+            ]),
+            ST('primary', wide('primary', 1, 2), [
+              [0, 0],
+              [90, 0],
+            ]),
+            ST('primary_link', wide('primary', 1, 1), [[0, 0], f(25), f(70)]),
+          ]
+        : [
+            ST('primary', wide('primary', 1, 2), [
+              [-90, 0],
+              [0, 0],
+            ]),
+            ST('primary_link', wide('primary', 1, 1), [
+              [-f(70)[0], f(70)[1]],
+              [-f(25)[0], f(25)[1]],
+              [0, 0],
+            ]),
+            ST('primary', wide('primary', 1, 3), [
+              [0, 0],
+              [90, 0],
+            ]),
+          ];
+    sc.fork = true;
+    return sc;
+  };
+  const comboNames = [];
+  for (const kind of ['wyjazd', 'wjazd'])
+    for (const [side, sn] of [
+      [1, 'prawa'],
+      [-1, 'lewa'],
+    ])
+      for (const a of [25])
+        comboNames.push([kind + ' ' + sn + ' · ' + String(a).padStart(2, '0') + '°', mkCombo(kind, side, a)]);
+  grp('Rozjazd 3 ↔ 2+1 kombinacje', comboNames);
+  const mk211 = (kind, side, a) => () => {
+    const r = (a * Math.PI) / 180,
+      c = Math.cos(r),
+      s = Math.sin(r) * side,
+      f = (d) => [+(d * c).toFixed(2), +(d * s).toFixed(2)];
+    const sc =
+      kind === 'wyjazd'
+        ? [
+            ST('primary', wide('primary', 1, 2), [
+              [-90, 0],
+              [0, 0],
+            ]),
+            ST('primary', wide('primary', 1, 1), [
+              [0, 0],
+              [90, 0],
+            ]),
+            ST('primary_link', wide('primary', 1, 1), [[0, 0], f(25), f(70)]),
+          ]
+        : [
+            ST('primary', wide('primary', 1, 1), [
+              [-90, 0],
+              [0, 0],
+            ]),
+            ST('primary_link', wide('primary', 1, 1), [
+              [-f(70)[0], f(70)[1]],
+              [-f(25)[0], f(25)[1]],
+              [0, 0],
+            ]),
+            ST('primary', wide('primary', 1, 2), [
+              [0, 0],
+              [90, 0],
+            ]),
+          ];
+    sc.fork = true;
+    return sc;
+  };
+  const n211 = [];
+  for (const kind of ['wyjazd', 'wjazd'])
+    for (const [side, sn] of [
+      [1, 'prawa'],
+      [-1, 'lewa'],
+    ])
+      for (const a of [25])
+        n211.push(['2 → 1+1 ' + kind + ' ' + sn + ' · ' + String(a).padStart(2, '0') + '°', mk211(kind, side, a)]);
+  grp('Rozjazd 2 → 1+1', n211);
+  //
+  grp(
+    'Kąty rozjazdu 3 → 2+1',
+    Array.from({ length: 19 }, (_, i) => i * 5).map((a) => ['kąt ' + String(a).padStart(2, '0') + '°', mkAng(a)]),
+  );
+  function loadScenario(name) {
+    window.__fake = {};
+    const sf = SC[name];
+    if (!sf) return;
+    const sc = typeof sf === 'function' ? sf() : sf;
+    push();
+    const nOld = roads().length;
+    const by = new Map(),
+      key = (p) => {
+        const k = p[0].toFixed(2) + ',' + p[1].toFixed(2);
+        if (!by.has(k)) by.set(k, nk());
+        return by.get(k);
+      };
+    for (const [hw, o, pts] of sc) {
+      const r = mkRoad(
+        hw,
+        pts.map((p) => p.slice()),
+        pts.map(key),
+        o.tl ? { tl: o.tl, tlM: true } : {},
+      );
+      if (o.lanes) {
+        r.lanes = o.lanes;
+        if (!r.oneway) r.nf = Math.ceil(o.lanes / 2);
+      }
+      if (o.oneway) {
+        r.oneway = true;
+        delete r.nf;
+      }
+      S.doc.road.push(r);
+    }
+    selR = null;
+    {
+      /* scenariusz laduje sie tam, gdzie patrzysz (srodek ekranu), widok sie nie zmienia */ const cw = S2W(
+          innerWidth / 2,
+          innerHeight / 2,
+        ),
+        ox = Math.round(cw[0] + (sc.fork ? 0 : 0)),
+        oy = Math.round(cw[1]);
+      const dx = ox - (sc.fork ? 40 : 0),
+        dy = oy;
+      roads()
+        .slice(nOld)
+        .forEach((r) =>
+          r.pts.forEach((p) => {
+            p[0] += dx;
+            p[1] += dy;
+          }),
+        );
+    }
+    changed();
+  }
+  /* na razie tylko rozjazd 3 -> 2+1: podstawowy + kąty 0-90 */ {
+    const keep = ['Rozjazdy (odnoga w prawo) · 3 → 2 + 1'].concat(
+      SCG.filter(
+        (g) => g.g.startsWith('Kąty rozjazdu') || g.g.startsWith('Rozjazd 3 ↔') || g.g.startsWith('Rozjazd 2 → 1+1'),
+      ).flatMap((g) => g.names),
+    );
+    SCG.length = 0;
+    SCG.push({ g: 'Rozjazd 3 → 2 + 1', names: keep });
+  }
+  try {
+    const og = JSON.parse(localStorage.getItem('sxGroups') || '{}');
+    document.querySelectorAll('#sxL details.grp').forEach((d) => {
+      if (og[d.dataset.g] != null) d.open = og[d.dataset.g];
+      d.addEventListener('toggle', () => {
+        try {
+          const o = JSON.parse(localStorage.getItem('sxGroups') || '{}');
+          o[d.dataset.g] = d.open;
+          localStorage.setItem('sxGroups', JSON.stringify(o));
+        } catch (e) {}
+      });
+    });
+  } catch (e) {} /* menu: grupy zwijane, stan pamietany */
+  q('sxScen').innerHTML = SCG.map(
+    (g) =>
+      `<optgroup label="${g.g} (${g.names.length})">${g.names.map((n) => `<option value="${n}">${n.split(' · ').slice(1).join(' · ') === '3 → 2 + 1' ? 'bazowy (prawa odnoga)' : n.split(' · ').slice(1).join(' · ')}</option>`).join('')}</optgroup>`,
+  ).join('');
+  q('sxGo').onclick = () => loadScenario(q('sxScen').value);
+  /* ---------- panele zwijane ---------- */
+  const small = () => innerWidth < 900;
+  if (small()) {
+    q('sxL').classList.add('off');
+    q('sxR').classList.add('off');
+  }
+  q('sxbL').onclick = () => {
+    q('sxL').classList.toggle('off');
+    if (small()) q('sxR').classList.add('off');
+  };
+  q('sxbR').onclick = () => {
+    q('sxR').classList.toggle('off');
+    if (small()) q('sxL').classList.add('off');
+  };
+  try {
+    $('cNodeBord').checked = q('sxBord').checked;
+  } catch (e) {}
+  if (!restoreScene()) loadScenario(Object.keys(SC)[0]);
+  setTool('sel');
+  window.__sx = {
+    get report() {
+      return report;
+    },
+    changed: () => changed(),
+  };
+})();

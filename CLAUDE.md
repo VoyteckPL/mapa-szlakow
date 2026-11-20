@@ -1,0 +1,31 @@
+# Mapa Szlaków – zasady pracy
+
+Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
+
+## Jak pracujemy
+- Małe kroki, oszczędzaj tokeny: czytaj tylko potrzebne fragmenty (grep po nazwie funkcji, potem Read z offset/limit), nie całe pliki.
+- Poprawki jako **reguły ogólne**, nie jednorazowe łaty pod jeden przypadek.
+- Rozwijamy teraz tylko **sandbox** (`sandbox-drog.html` + folder `sandbox/`). Nie ruszaj `index.html` (główna mapa) ani `edytor-pasow.html` bez wyraźnej prośby.
+- Nigdy nie wysyłaj zmian do OSM. Sandbox rysuje drogi testowe lokalnie.
+- Rozpoznawanie pasów z ortofoto jest porzucone – nie rozwijać.
+- Zmiany commituj i wypychaj na `main` bez pytania (GitHub Pages: https://voyteckpl.github.io/mapa-szlakow/sandbox-drog.html).
+- Wojtek ogląda wynik sam (lokalnie `python -m http.server 8000` → `localhost:8000/sandbox-drog.html`, F5). Zrzuty ekranu rób tylko, gdy to naprawdę potrzebne.
+
+## Budowa sandboksu
+`sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):
+- `1-uklad.js` – stałe, geometria, model drogi, `offBase/offAt` (offset osi w pasach), `comp()` (oś, szerokość `w`, offset `d` drogi), `skelFork`, **`layout()`** (węzły, rozjazdy, zszywanie styków, linie, strzałki).
+- `2-rysowanie.js` – render na canvas: asfalt, oznakowanie (`drawNodeDash`, `laneAdj` – linie pasów przy zmianie liczby pasów), obrysy pasów, `render()`.
+- `3-ui.js` – stan, cofnij, UI, `laneGeom()` (granice pasów: `lb(G, q, j)`), presety zjazdów, wskaźnik, zapis.
+- `4-edytor.js` – dodatki edytora (wczytywanie OSM itp.).
+- `5-ustawienia.js` – ustawienia węzłów, warstwy (localStorage).
+- `6-sandbox.js` – właściwy sandbox (IIFE): typy dróg, rysowanie, `autoFork`, raport połączeń, menu, scenariusze testowe (`grp(...)`), „Kopiuj do Claude (config)”.
+- `baza.css`, `sandbox.css` – style.
+
+## Ustalone reguły geometrii
+- Nieparzysta jezdnia jednokierunkowa (3, 5 pasów) na styku z jezdnią o 1 pas węższą/szerszą: oś na granicy pasów (offset ½ pasa), stały do końca drogi; pas dodatkowy / kończący się po prawej (po lewej, gdy turn:lanes wyróżnia pierwszy pas).
+- Zmiana liczby pasów: węższa jezdnia pełna do węzła, szersza zaczyna się jej przekrojem i rozszerza klinem za węzłem; zwęża się tylko pas w klinie (obrysy i linie pasów ciągłe).
+- Wolny koniec drogi (nic się nie łączy): oś OSM na środku jezdni.
+- Wojtek wkleja JSON z przycisku „Kopiuj do Claude (config)” – to opis sceny (drogi, punkty, offsety, raport).
+
+## Testy
+Playwright jest dostępny w środowisku Claude w chmurze; lokalnie wystarczy przeglądarka. Po zmianie sprawdź kilka scenariuszy z listy „Scenariusze”, nie tylko jeden.

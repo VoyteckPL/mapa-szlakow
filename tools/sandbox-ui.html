@@ -49,6 +49,7 @@
   <label class="chk"><input type="checkbox" id="sxAx" checked> linie dróg (osie wszystkich dróg)</label>
   <label class="chk"><input type="checkbox" id="sxDot" checked> znaczniki węzłów (raport)</label>
   <h4>Scenariusze</h4><div class="row"><select id="sxScen" style="flex:1;min-width:0"></select><button id="sxGo">Wczytaj</button></div>
+  <div class="row"><button id="sxOsm" style="flex:1" title="Pobiera drogi OSM z tego widoku (zoom co najmniej 16) i wstawia je na scenę">Wczytaj dane OSM z tego widoku</button><button id="sxOsmX" title="Usuń drogi z OSM, zostaw narysowane">✕ OSM</button></div>
   <div class="row"><button id="sxClr">Wyczyść wszystko</button><button id="sxExp">Kopiuj JSON</button></div>
   <div class="row"><button id="sxCfg" class="on" style="flex:1">Kopiuj do Claude (config)</button></div>
 </div>
@@ -359,7 +360,9 @@ function loadScenario(name) { window.__fake = {}; const sf = SC[name]; if (!sf) 
   for (const [hw, o, pts] of sc) { const r = mkRoad(hw, pts.map(p => p.slice()), pts.map(key), o.tl ? { tl: o.tl, tlM: true } : {}); if (o.lanes) { r.lanes = o.lanes; if (!r.oneway) r.nf = Math.ceil(o.lanes / 2); } if (o.oneway) { r.oneway = true; delete r.nf; } S.doc.road.push(r); }
   selR = null; { /* scenariusz laduje sie tam, gdzie patrzysz (srodek ekranu), widok sie nie zmienia */ const cw = S2W(innerWidth / 2, innerHeight / 2), ox = Math.round(cw[0] + (sc.fork ? 0 : 0)), oy = Math.round(cw[1]); const dx = ox - (sc.fork ? 40 : 0), dy = oy; for (const r of roads()) r.pts.forEach(p => { p[0] += dx; p[1] += dy; }); } changed(); }
 /* na razie tylko rozjazd 3 -> 2+1: podstawowy + kąty 0-90 */ { const keep = ['Rozjazdy (odnoga w prawo) · 3 → 2 + 1'].concat(SCG.filter(g => g.g.startsWith('Kąty rozjazdu')).flatMap(g => g.names)); SCG.length = 0; SCG.push({ g: 'Rozjazd 3 → 2 + 1', names: keep }); }
-q('sxScen').innerHTML = SCG.map(g => `<optgroup label="${g.g} (${g.names.length})">${g.names.map(n => `<option value="${n}">${n.split(' · ').slice(1).join(' · ') === '3 → 2 + 1' ? 'bazowy (prawa odnoga)' : n.split(' · ').slice(1).join(' · ')}</option>`).join('')}</optgroup>`).join(''); q('sxGo').onclick = () => loadScenario(q('sxScen').value);
+q('sxScen').innerHTML = SCG.map(g => `<optgroup label="${g.g} (${g.names.length})">${g.names.map(n => `<option value="${n}">${n.split(' · ').slice(1).join(' · ') === '3 → 2 + 1' ? 'bazowy (prawa odnoga)' : n.split(' · ').slice(1).join(' · ')}</option>`).join('')}</optgroup>`).join(''); q('sxOsm').onclick = async () => { try { window.__noAsk = true; hint('Pobieram OSM z tego widoku…'); await window.__loadFresh('overpass'); try { splitJunctions(); } catch (e) {} changed(); hint('Wczytano drogi OSM: ' + roads().filter(r => r.osm && !r.sb).length + ' (przybliż do zoomu 16+ jeśli 0)'); } catch (e) { hint('Błąd wczytywania OSM: ' + (e && e.message || e)); } };
+q('sxOsmX').onclick = () => { push(); S.doc.road = roads().filter(r => !(r.osm && !r.sb)); changed(); hint('Usunięto drogi OSM'); };
+q('sxGo').onclick = () => loadScenario(q('sxScen').value);
 /* ---------- panele zwijane ---------- */
 const small = () => innerWidth < 900; if (small()) { q('sxL').classList.add('off'); q('sxR').classList.add('off'); }
 q('sxbL').onclick = () => { q('sxL').classList.toggle('off'); if (small()) q('sxR').classList.add('off'); }; q('sxbR').onclick = () => { q('sxR').classList.toggle('off'); if (small()) q('sxL').classList.add('off'); };

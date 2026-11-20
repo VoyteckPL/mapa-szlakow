@@ -23,3 +23,6 @@ Skrzyżowania T/X nie są jeszcze testowane (tylko węzły „liniowe”, ramion
 1. Wojtek przegląda listę „✗” i mówi, które sceny są faktycznie złe, a które OK (np. boczna) → test dostaje regułę typu węzła.
 2. Zapis wzorców (granice pasów) dla scen zatwierdzonych jako dobre.
 3. Etap 1 planu: `sandbox/silnik/` – normalizacja, graf, profil, `granica()`; typy KONIEC, KONTYNUACJA.
+
+## 2026-11-20 19:09 – zmiana kierunku (propozycja Wojtka, czeka na „rób”)
+Sandbox od zera (`sandbox2.html` + `sandbox2/`), stary zostaje. Etap 1: wszystkie osie na środku, czyste połączenia odporne na duże kąty (testy 100%). Etap 2: offsety jako reguły = przesunięcie osi narastające wzdłuż drogi, liczone PRZED połączeniem; kod połączeń nie wie o offsetach.

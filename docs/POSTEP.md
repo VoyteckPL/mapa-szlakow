@@ -26,3 +26,9 @@ Skrzyżowania T/X nie są jeszcze testowane (tylko węzły „liniowe”, ramion
 
 ## 2026-11-20 19:09 – zmiana kierunku (propozycja Wojtka, czeka na „rób”)
 Sandbox od zera (`sandbox2.html` + `sandbox2/`), stary zostaje. Etap 1: wszystkie osie na środku, czyste połączenia odporne na duże kąty (testy 100%). Etap 2: offsety jako reguły = przesunięcie osi narastające wzdłuż drogi, liczone PRZED połączeniem; kod połączeń nie wie o offsetach.
+
+## 2026-11-20 – sandbox2, etap 1 (osie na środku) – zrobione
+`sandbox2.html`: 19 scen w 5 grupach (ikony), przeciąganie węzłów/punktów (dwuklik dodaje/usuwa punkt), klik drogi → typ, pasy ±, →, ⇄; ⧉ kopiuje scenę, ⤓ wkleja, ↶ cofa, ✓ testy.
+Reguły w `3-polaczenia.js`: ciąg z łukami (odsunięcie łuku ≤ pół szer.+2 m), klin w szerszej drodze za węzłem, rozjazd/włączenie w korytarzu (gałąź w swoich pasach pnia, nie skręca do drugiej), skrzyżowanie = przycięte ramiona + wielokąt z łukami narożników.
+Testy: każda scena + 12 losowych wariantów = 247; **242 OK**. Pozostałe 5: rozjazdy/włączenia przy ostrym skręcie pnia (>45°) – gałęzie lekko na siebie nachodzą.
+Dalej: uwagi Wojtka do scen (wkleja ⧉ + numer węzła) → poprawki reguł; potem etap 2 (offsety jako reguły).

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sandbox dróg 2</title>
+<link rel="stylesheet" href="sandbox2/styl.css">
+</head>
+<body>
+<div id="bar">
+  <button id="bUndo" title="Cofnij (Ctrl+Z)">↶</button>
+  <button id="bFit" title="Dopasuj widok">⤢</button>
+  <button id="bOsie" class="on" title="Osie OSM, punkty, kierunki">⟋</button>
+  <span class="sep"></span>
+  <button id="bCopy" title="Kopiuj scenę dla Claude">⧉</button>
+  <button id="bPaste" title="Wklej scenę">⤓</button>
+  <span class="sep"></span>
+  <button id="bTest" title="Testy geometrii (wszystkie sceny + losowe kąty)">✓</button>
+  <span id="stat"></span>
+</div>
+<div id="side"><div id="sceny"></div><div id="testy"></div></div>
+<canvas id="cv"></canvas>
+<div id="ed"></div>
+<div id="mod"><div><textarea id="modT" spellcheck="false"></textarea><div class="row"><button id="modOk">Wczytaj</button><button id="modX">Zamknij</button></div></div></div>
+<div id="toast"></div>
+<script src="sandbox2/1-geom.js"></script>
+<script src="sandbox2/2-model.js"></script>
+<script src="sandbox2/3-polaczenia.js"></script>
+<script src="sandbox2/4-rysuj.js"></script>
+<script src="sandbox2/5-ui.js"></script>
+<script src="sandbox2/6-testy.js"></script>
+</body>
+</html>

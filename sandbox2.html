@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Sandbox dróg 2</title>
-<link rel="stylesheet" href="sandbox2/styl.css">
+<link rel="stylesheet" href="sandbox2/styl.css?v=2">
 </head>
 <body>
 <div id="bar">
@@ -25,11 +25,9 @@
 <div id="ed"></div>
 <div id="mod"><div><textarea id="modT" spellcheck="false"></textarea><div class="row"><button id="modOk">Wczytaj</button><button id="modX">Zamknij</button></div></div></div>
 <div id="toast"></div>
-<script src="sandbox2/1-geom.js"></script>
-<script src="sandbox2/2-model.js"></script>
-<script src="sandbox2/3-polaczenia.js"></script>
-<script src="sandbox2/4-rysuj.js"></script>
-<script src="sandbox2/5-ui.js"></script>
-<script src="sandbox2/6-testy.js"></script>
+<script>
+/* skrypty ładowane po kolei z parametrem czasu – przeglądarka nigdy nie trzyma starej wersji */
+(function(){var f=['sandbox2/1-geom.js', 'sandbox2/2-model.js', 'sandbox2/3-polaczenia.js', 'sandbox2/4-rysuj.js', 'sandbox2/5-ui.js', 'sandbox2/6-testy.js'],v=Date.now(),i=0;(function n(){if(i>=f.length)return;var e=document.createElement('script');e.src=f[i++]+'?v='+v;e.onload=n;document.body.appendChild(e);})();})();
+</script>
 </body>
 </html>

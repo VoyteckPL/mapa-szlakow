@@ -190,7 +190,7 @@ cv.addEventListener(
   (e) => {
     e.preventDefault();
     const w0 = S2W(e.offsetX, e.offsetY);
-    S2.V.z = Math.max(0.3, Math.min(60, S2.V.z * Math.exp(-e.deltaY * 0.0015)));
+    S2.V.z = Math.max(0.3, Math.min(60, S2.V.z * Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)))); /* ctrl = szczypanie na gładziku */
     const w1 = S2W(e.offsetX, e.offsetY);
     S2.V.cx += w0[0] - w1[0];
     S2.V.cy += w0[1] - w1[1];
@@ -200,6 +200,8 @@ cv.addEventListener(
 );
 addEventListener('resize', przelicz);
 addEventListener('keydown', (e) => {
+  if (document.activeElement.tagName !== 'TEXTAREA' && (e.key === '+' || e.key === '=')) zoomBy(1.4);
+  if (document.activeElement.tagName !== 'TEXTAREA' && (e.key === '-' || e.key === '_')) zoomBy(1 / 1.4);
   if ((e.ctrlKey || e.metaKey) && e.key === 'z' && document.activeElement.tagName !== 'TEXTAREA') {
     e.preventDefault();
     $('bUndo').click();

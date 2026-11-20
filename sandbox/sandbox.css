@@ -1,0 +1,331 @@
+:root {
+  --pn: #fff;
+  --tx: #1d2330;
+  --mu: #667085;
+  --ok: #2e9d4d;
+  --wr: #e08a00;
+  --er: #d32f2f;
+  --bd: #d8dce3;
+}
+#lc,
+#edPop,
+#edP,
+#tagPop,
+#sbP,
+#nrbar,
+#offBar,
+#hint,
+#smWrap,
+#panel,
+#brand {
+  display: none !important;
+}
+.sx {
+  position: fixed;
+  top: 8px;
+  bottom: 8px;
+  width: 270px;
+  background: #fff;
+  color: #1d2330;
+  border-radius: 10px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
+  padding: 52px 10px 8px;
+  overflow: auto;
+  z-index: 30;
+  font:
+    13px/1.35 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+#sxL {
+  left: 8px;
+}
+#sxR {
+  right: 8px;
+  width: 300px;
+}
+.sx.off {
+  display: none;
+}
+.sx h4 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #3949ab;
+}
+.sx h4:first-of-type {
+  margin-top: 0;
+}
+.sx button,
+.sx select,
+.sx input {
+  font: inherit;
+  color: #1d2330;
+  background: #fff;
+  border: 1px solid #d8dce3;
+  border-radius: 6px;
+  padding: 3px 7px;
+}
+.sx button {
+  cursor: pointer;
+}
+.sx button:hover {
+  background: #eef4fc;
+}
+.sx button.on {
+  background: #e8eaf6;
+  border-color: #3949ab;
+  font-weight: 600;
+}
+.sx .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 3px 0;
+  align-items: center;
+}
+.sx .types button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0;
+}
+.sx .sw {
+  width: 22px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+.sx label.chk {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 2px 0;
+}
+.sx .lane {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 0;
+  font-size: 12px;
+}
+.sx .lane span {
+  width: 50px;
+  color: #667085;
+}
+.sx .lane select {
+  flex: 1;
+  min-width: 0;
+}
+.sx .rep {
+  margin: 2px 0;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border-left: 4px solid;
+  cursor: pointer;
+  background: rgba(128, 128, 128, 0.07);
+  font-size: 12px;
+}
+.sx .rep.ok {
+  border-color: #2e9d4d;
+}
+.sx .rep.wr {
+  border-color: #e08a00;
+}
+.sx .rep.er {
+  border-color: #d32f2f;
+}
+.sx .rep small {
+  color: #667085;
+  display: block;
+}
+.sx .cnt {
+  display: flex;
+  gap: 6px;
+  margin: 3px 0 6px;
+}
+.sx .cnt b {
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 12px;
+}
+.cnt .ok {
+  background: #2e9d4d;
+}
+.cnt .wr {
+  background: #e08a00;
+}
+.cnt .er {
+  background: #d32f2f;
+}
+.sx .mu {
+  color: #667085;
+  font-size: 11px;
+}
+.sxfab {
+  position: fixed;
+  top: 8px;
+  z-index: 40;
+  width: 40px;
+  height: 40px;
+  font-size: 18px;
+  border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1px solid #d8dce3;
+  cursor: pointer;
+}
+#sxbL {
+  left: 8px;
+}
+#sxbR {
+  right: 8px;
+}
+#sxPop {
+  position: fixed;
+  z-index: 45;
+  background: #fff;
+  color: #1d2330;
+  border-radius: 12px;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+  padding: 8px;
+  width: min(330px, calc(100vw - 16px));
+  font: 13px system-ui;
+}
+#sxPop .t {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#sxPop .t button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  font-size: 12px;
+  border: 1px solid #d8dce3;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  color: #1d2330;
+}
+#sxPop .t button.on {
+  border-color: #3949ab;
+  background: #e8eaf6;
+  font-weight: 600;
+}
+#sxPop .t i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+#sxPop .r {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+}
+#sxPop .r button {
+  min-width: 34px;
+  height: 32px;
+  border: 1px solid #d8dce3;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  color: #1d2330;
+}
+#sxPop .r b {
+  min-width: 22px;
+  text-align: center;
+}
+#sxPop .x {
+  margin-left: auto;
+}
+#sxHint {
+  position: fixed;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  background: rgba(20, 24, 32, 0.85);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 14px;
+  font: 12px system-ui;
+  pointer-events: none;
+  z-index: 50;
+  max-width: 90vw;
+  text-align: center;
+}
+.sx details.grp {
+  border-top: 1px solid #e3e6ec;
+  padding: 5px 0 3px;
+}
+.sx details.grp > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #3949ab;
+  padding: 3px 0;
+  user-select: none;
+}
+.sx details.grp > summary::-webkit-details-marker {
+  display: none;
+}
+.sx details.grp > summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  transition: transform 0.15s;
+}
+.sx details.grp[open] > summary::before {
+  transform: rotate(90deg);
+}
+.sx details.grp .sub {
+  font-size: 11px;
+  color: #667085;
+  margin: 6px 0 1px;
+}
+.sx details.grp label.chk input[type='range'] {
+  flex: 1;
+  min-width: 60px;
+}
+.sx details.grp label.chk b {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sx .types {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+.sx .types button {
+  margin: 0;
+  font-size: 12px;
+  padding: 3px 5px;
+}
+#sxL {
+  padding-top: 54px;
+}
+@media (max-width: 900px) {
+  .sx {
+    width: min(300px, 76vw);
+  }
+  #sxR {
+    width: min(320px, 80vw);
+  }
+}

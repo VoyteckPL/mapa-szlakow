@@ -4523,5 +4523,8 @@
       return report;
     },
     changed: () => changed(),
+    SC /* wszystkie scenariusze (testy) */,
+    SCG,
+    load: (n) => loadScenario(n),
   };
 })();

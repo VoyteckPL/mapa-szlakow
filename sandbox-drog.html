@@ -119,6 +119,9 @@
   <details class="grp" data-g="scen" open><summary>Scenariusze i eksport</summary>
     <div class="row"><select id="sxScen" style="flex:1;min-width:0"></select><button id="sxGo">Wczytaj</button></div>
     <div class="row"><button id="sxClr">Wyczyść wszystko</button><button id="sxExp">Kopiuj JSON</button></div>
+    <h4>Testy geometrii</h4>
+    <div class="row"><button id="sxTestGo">Testy</button><label class="mu"><input type="checkbox" id="sxTestAll"> wszystkie sceny</label></div>
+    <div id="sxTest" style="max-height:40vh;overflow:auto;font-size:12px"></div>
     <div class="row"><button id="sxCfg" class="on" style="flex:1">Kopiuj do Claude (config)</button></div>
   </details>
 </div>
@@ -129,5 +132,6 @@
 <div id="sxPop" style="display:none"></div>
 <div id="sxHint"></div>
 <script src="sandbox/6-sandbox.js"></script>
+<script src="sandbox/7-testy.js"></script>
 </body>
 </html>

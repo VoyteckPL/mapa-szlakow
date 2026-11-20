@@ -18,6 +18,7 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - `3-ui.js` – stan, cofnij, UI, `laneGeom()` (granice pasów: `lb(G, q, j)`), presety zjazdów, wskaźnik, zapis.
 - `4-edytor.js` – dodatki edytora (wczytywanie OSM itp.).
 - `5-ustawienia.js` – ustawienia węzłów, warstwy (localStorage).
+- `7-testy.js` – testy geometrii (przycisk „Testy”; w chmurze `node tools/testy-sandbox.js`).
 - `6-sandbox.js` – właściwy sandbox (IIFE): typy dróg, rysowanie, `autoFork`, raport połączeń, menu, scenariusze testowe (`grp(...)`), „Kopiuj do Claude (config)”.
 - `baza.css`, `sandbox.css` – style.
 
@@ -29,6 +30,7 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 
 ## Plan przebudowy
 Docelowy model silnika (jezdnia = oś + profil pasów + kotwica osi, nazwane typy węzłów, asercje geometrii) i etapy: `docs/PLAN-silnik.md`. Nowe reguły dopasowuj do tego modelu.
+**Postęp i następny krok: `docs/POSTEP.md` – czytaj na początku każdej rozmowy, aktualizuj po każdym etapie.**
 
 ## Testy
 Playwright jest dostępny w środowisku Claude w chmurze; lokalnie wystarczy przeglądarka. Po zmianie sprawdź kilka scenariuszy z listy „Scenariusze”, nie tylko jeden.

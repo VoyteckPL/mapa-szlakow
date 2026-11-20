@@ -329,3 +329,6 @@
     width: min(320px, 80vw);
   }
 }
+#sxTest .tr{cursor:pointer;padding:1px 2px}
+#sxTest .tr.bad{color:#c0392b}
+#sxTest .tr.ok{color:#2e7d32}

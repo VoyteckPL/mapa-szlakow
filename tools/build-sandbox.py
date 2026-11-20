@@ -11,7 +11,7 @@ def rep(o, n):
 rep("const EMBED = /[?&]embed=1/.test(location.search), EDIT = EMBED && /[?&]edit=1/.test(location.search),", "const EMBED = true, EDIT = false,")
 rep("<title>Roads and Lanes</title>", "<title>Sandbox dróg</title>")
 rep("  resize(); ui();\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;",
-    "  resize(); ui();\n  { S.org = { lat: 54.5, lon: 18.4 }; S.view = { x: 0, y: 0, k: 6 }; render(); return; } /* sandbox: bez wczytywania danych */\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;")
+    "  resize(); ui();\n  { S.org = { lat: 54.4991, lon: 18.4615 }; /* wezel Chwarzno (Gdynia) */ S.view = { x: 0, y: 0, k: 6 }; render(); return; } /* sandbox: bez wczytywania danych */\n  const h = decodeURIComponent(location.hash || '') + ' ' + location.search;")
 ui = open(root + '/tools/sandbox-ui.html', encoding='utf-8').read()
 rep('<input type="checkbox" id="cTile" checked>', '<input type="checkbox" id="cTile">')
 rep("</body>", ui + "</body>")

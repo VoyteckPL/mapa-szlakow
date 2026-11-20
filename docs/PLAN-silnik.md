@@ -40,7 +40,7 @@ Każdy scenariusz z „Scenariusze” dostaje automatyczne asercje:
 Przycisk „Testy” w sandboksie (tabela OK/BŁĄD) + ten sam kod w Playwright w chmurze. Zrzuty referencyjne opcjonalnie, dla kilku kluczowych scen.
 
 ## Etapy (każdy = mały PR, wszystkie testy zielone przed następnym)
-0. **Asercje na obecnym kodzie** (bez zmian geometrii) → lista scenariuszy, które naprawdę są złe.
+0. **Asercje na obecnym kodzie** (bez zmian geometrii) → lista scenariuszy, które naprawdę są złe. Przypadki, które już działają dobrze (np. 3 → 2+1), Wojtek zatwierdza jako **wzorzec**: zapisujemy ich geometrię (granice pasów w punktach kontrolnych) i zrzut, a nowy silnik musi dać to samo. Dorobek nie przepada – staje się testem.
 1. Nowy silnik obok starego (`sandbox/silnik/`), przełącznik „silnik: stary / nowy”. Graf + profil + `granica()`; typy `KONIEC`, `KONTYNUACJA`.
 2. `ZMIANA_PASÓW` – przeniesienie ustalonych reguł z CLAUDE.md.
 3. `ROZJAZD` (2→1+1, 3→2+1, odnoga w lewo/prawo).

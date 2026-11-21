@@ -1,6 +1,7 @@
 // Sandbox v1 – geometria w lokalnym układzie [m]. Bez łuków: wszystko kanciaste.
 // Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa) – bez poboczy,
-// o0/o1 – offset jezdni względem linii OSM na początku/końcu, w pasach (+ = w prawo), liniowo po długości.
+// o – offset jezdni względem linii OSM w pasach (+ = w prawo), STAŁY na całej drodze (wariant A, Wojtek 2026-11-21):
+// krawędzie pasów zawsze równoległe do linii OSM, szerokość pasa stała.
 // Reguła styku w węźle (Nm), wariant 2 (Wojtek 2026-11-21): każda droga zachowuje szerokość pasa W POPRZEK siebie.
 //  Pień = jedyna droga po jednej stronie węzła (1 wchodzi + kilka wychodzi albo kilka wchodzi + 1 wychodzi).
 //  Każda odnoga styka się z pniem po dwusiecznej kąta pień–odnoga (miter), więc jej pasy trafiają sztywno
@@ -8,6 +9,7 @@
 //  która go pokrywa; granica między odnogami sięga dalej z dwóch przekrojów (bez szczelin). Koniec pnia jest
 //  więc „łamany”, kanciasty. Pas pnia bez odnogi: przekrój prostopadły. Wolny koniec: prostopadły.
 var G = (function () {
+  function offOf(r) { return r.o != null ? r.o : (r.o0 || r.o1 || 0); } // stare sceny: o0/o1
   var R = 6378137;
   function toXY(o, ll) {
     return [(ll.lng - o.lng) * Math.PI / 180 * R * Math.cos(o.lat * Math.PI / 180), (ll.lat - o.lat) * Math.PI / 180 * R];
@@ -43,7 +45,7 @@ var G = (function () {
     var Sof = function (B) { return tIn ? miter(dirIn(T, P), dirOut(B, P)) : miter(dirIn(B, P), dirOut(T, P)); };
     if (r !== T) return { f: konst(Sof(r)), typ: typ };
     var tDir = tIn ? dirIn(T, P) : dirOut(T, P), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
-    var cand = Bs.map(function (B) { var o = tIn ? B.o0 : B.o1; // offset odnogi w węźle
+    var cand = Bs.map(function (B) { var o = offOf(B); // offset odnogi
       return { S: Sof(B), lo: (-B.lanes / 2 - o) * B.w - 1e-6, hi: (B.lanes / 2 - o) * B.w + 1e-6 }; });
     return { typ: typ, f: function (d) {
       var best = null, bv = Infinity;
@@ -66,11 +68,11 @@ var G = (function () {
       else S.push(konst(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1]))));
     }
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
-    function line(dFn) { return pts.map(function (p, i) { var d = dFn(r.o0 + (r.o1 - r.o0) * s[i] / Ltot); var v = S[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
+    function line(dFn) { return pts.map(function (p, i) { var d = dFn(offOf(r)); var v = S[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
     var lanes = [];
     for (var j = 0; j <= L; j++) (function (j) { lanes.push(line(function (o) { return (L / 2 - j - o) * w; })); })(j);
     return { lanes: lanes,
       asfalt: [lanes[0], lanes[L]] }; // bez poboczy
   }
-  return { toXY: toXY, toLL: toLL, lines: lines, nodeType: nodeType };
+  return { toXY: toXY, toLL: toLL, lines: lines, nodeType: nodeType, offOf: offOf };
 })();

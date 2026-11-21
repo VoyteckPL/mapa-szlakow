@@ -150,7 +150,39 @@ var G = (function () {
   // Offset przy końcu: stały na odcinku H (do końca skośnego styku + 1 m), potem PROSTO na środek na PRZEJ m
   // (kanciasto, bez łuków). Krawędzie = równoległe do osi jezdni (oś OSM przesunięta o offset) z miterami,
   // więc pas ma stałą szerokość także w przesunięciu.
+  // Drogi nie nachodzą na siebie (Wojtek 17:59, 18:03 – R3 → R4 obok R2): punkt OSM węższej drogi leżący „obok” szerszej
+  // drogi X (rzut na odcinek X) bliżej niż (szer. w węźle + szer. X)/2 od osi OSM X → odsunięty prostopadle do tego odcinka.
+  // Liczone raz dla sceny (cache po obiekcie P); geometria wszystkich dróg używa przesuniętych punktów.
+  var clrCache = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
+  function clearP(sc, P) {
+    if (clrCache && clrCache.has(P)) { var cc = clrCache.get(P); if (cc.sig === sc) return cc.Q; }
+    var Q = {}, ids = Object.keys(P); ids.forEach(function (id) { Q[id] = P[id]; });
+    var rs = sc.roads.filter(function (x) { return x.pts.length > 1; });
+    ids.forEach(function (id) {
+      var mine = rs.filter(function (x) { return x.pts.indexOf(id) >= 0; }); if (!mine.length) return;
+      var wN = Math.max.apply(null, mine.map(function (x) { return x.lanes * x.w; })), lN = Math.max.apply(null, mine.map(function (x) { return x.lanes; }));
+      rs.forEach(function (X) {
+        if (X.pts.indexOf(id) >= 0 || X.lanes <= lN) return; // ustępuje tylko węższa droga
+        var D = (wN + X.lanes * X.w) / 2, p = Q[id], best = null;
+        for (var k = 0; k < X.pts.length - 1; k++) { var a = P[X.pts[k]], b = P[X.pts[k + 1]], u = unit(a, b), Ls = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          var v = [p[0] - a[0], p[1] - a[1]], t = dot(v, u); if (t < 0 || t > Ls) continue;
+          var g = dot(v, left(u)); if (!best || Math.abs(g) < Math.abs(best.g)) best = { g: g, n: left(u) }; }
+        if (best && Math.abs(best.g) > 1e-6 && Math.abs(best.g) < D) { var sgn = best.g < 0 ? -1 : 1; Q[id] = add(p, best.n, sgn * D - best.g); }
+      });
+    });
+    if (clrCache) clrCache.set(P, { sig: sc, Q: Q });
+    return Q;
+  }
+  function odsunPtE(o, p) { // najbliższy odcinek łamanej ref, przy którym p leży „obok” (rzut w odcinku); za blisko → na zewnątrz
+    var best = null;
+    for (var k = 0; k < o.ref.length - 1; k++) { var a = o.ref[k], b = o.ref[k + 1], u = unit(a, b), Ls = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      var v = [p[0] - a[0], p[1] - a[1]], t = dot(v, u); if (t <= (k ? -1e-6 : 1e-6) || t > Ls + 1e-6) continue;
+      var nn = left(u); if (dot(o.side, left(unit(o.ref[0], o.ref[1]))) < 0) nn = [-nn[0], -nn[1]];
+      var g = dot(v, nn); if (!best || Math.abs(g) < Math.abs(best.g)) best = { g: g, n: nn }; }
+    return best && best.g < o.D && best.g > -(o.G || o.D) ? add(p, best.n, o.D - best.g) : p;
+  }
   function lines(sc, r, P) {
+    P = clearP(sc, P);
     var pts = r.pts.map(function (id) { return P[id]; }), n = pts.length, s = [0];
     for (var i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
@@ -165,6 +197,9 @@ var G = (function () {
     if (nk) T = Math.max(T, Math.min((Ltot - H0 - H1) / nk, Math.max(E0.tMin || 0, E1.tMin || 0))); // odnoga: nie wjeżdża na prostą
     // odnoga przy Nm: przejście na oś przez CAŁY pierwszy odcinek OSM – jeden prosty pas bez wierzchołków po drodze (Wojtek 17:04)
     if (nk === 1 && br0) T = Math.max(T, s[1]); if (nk === 1 && br1) T = Math.max(T, Ltot - s[n - 2]);
+    // …a gdy 1. węzeł odnogi trzyma już odstęp od drogi na wprost (np. po odsunięciu, wzorce 17:57/18:03) – dokładnie do niego
+    function wolny(E, q) { return E.odsun && E.odsun.ref.length > 1 && odsunPtE(E.odsun, q) === q; }
+    if (nk === 1 && br0 && n > 2 && wolny(E0, pts[1])) T = s[1]; if (nk === 1 && br1 && n > 2 && wolny(E1, pts[n - 2])) T = Ltot - s[n - 2];
     if (nk && (Ltot - H0 - H1) / nk - T < 5) T = (Ltot - H0 - H1) / nk; // reszta < 5 m: przejście do końca (bez krótkiego załamania)
     function off(x) {
       var v = 0;
@@ -190,18 +225,10 @@ var G = (function () {
     // odsunięcie od drogi na wprost (zob. endSection.odsun): WSZYSTKIE punkty osi odnogi leżące wzdłuż pierwszego odcinka tej
     // drogi – CAŁA łamana tej drogi (wzorzec 17:57 i 17:59: odnoga nigdzie nie nachodzi na R2 ani na pień)
     // + pień jako przeszkoda dla odnogi > 90° (odsun2)
-    function odsunPt(o, p) { // najbliższy odcinek łamanej ref, przy którym p leży „obok” (rzut w odcinku); za blisko → na zewnątrz
-      var best = null;
-      for (var k = 0; k < o.ref.length - 1; k++) { var a = o.ref[k], b = o.ref[k + 1], u = unit(a, b), Ls = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        var v = [p[0] - a[0], p[1] - a[1]], t = dot(v, u); if (t <= (k ? -1e-6 : 1e-6) || t > Ls + 1e-6) continue;
-        var nn = left(u); if (dot(o.side, left(unit(o.ref[0], o.ref[1]))) < 0) nn = [-nn[0], -nn[1]];
-        var g = dot(v, nn); if (!best || Math.abs(g) < Math.abs(best.g)) best = { g: g, n: nn }; }
-      return best && best.g < o.D && best.g > -(o.G || o.D) ? add(p, best.n, o.D - best.g) : p;
-    }
     [[E0, 0, 'odsun'], [E1, 1, 'odsun'], [E0, 0, 'odsun2'], [E1, 1, 'odsun2']].forEach(function (z) { var o = z[0][z[2]], Eo = z[1] ? E0 : E1; if (!o || o.ref.length < 2) return;
       for (var q = 1; q < m; q++) { var ii = z[1] ? m - 1 - q : q;
         if ((ii === 0 || ii === m - 1) && Eo.typ !== 'koniec') break; // drugi koniec w węźle – styk ustala węzeł
-        A[ii] = odsunPt(o, A[ii]); } });
+        A[ii] = odsunPtE(o, A[ii]); } });
     // zakręt odnogi > 100° (wzorzec 137,7°): od styku w kierunku wyjścia e, aż oś jest ½ szer. odnogi za zewn. krawędzią pnia
     [[E0, 0], [E1, 1]].forEach(function (z) { var Z = z[0].zakret; if (!Z) return;
       var i0 = z[1] ? m - 1 : 0, Cj = A[i0], e = Z.e, de = dot(e, Z.n), sz = (Z.D - dot([Cj[0] - Z.C[0], Cj[1] - Z.C[1]], Z.n)) / (de || 1);

@@ -60,7 +60,16 @@ var G = (function () {
       if (Math.abs(det) > 0.26) { var sB = c / det, t = c * dot(uB, tDir) / det;
         var ok = tIn ? (sB >= 0 && t >= -1e-6) : (sB <= 0 && t <= 1e-6);
         if (ok && Math.abs(sB) < seg - 1) { X = add(N, uB, sB); cB = 0; } }
-      return { B: B, S: Sof(B), lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB };
+      // Narożnik wewnętrzny styku nie wychodzi za przekrój pnia w węźle (Wojtek 2026-11-21 16:31, wzorce 3-2+1, 15–90°):
+      // gdy oba narożniki skośnego styku leżą za węzłem, cały styk cofa się wzdłuż pnia, aż bliższy (wewnętrzny) trafi na przekrój w węźle.
+      // Odnoga zaczyna się wtedy obok swojej linii OSM (automatyczny offset) i wraca na nią regułą offsetu.
+      var S = Sof(B), sg = tIn ? 1 : -1, e = Infinity;
+      [lo, hi].forEach(function (d) { var q = add(X, S, d - c + cB); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
+      if (e > 1e-6) { // nowy środek styku Cn = stary − sg·tDir·e, zapisany jako X' (na linii odnogi) + S·cB'
+        var Cn = add(add(X, S, cB), tDir, -sg * e), D = uB[0] * S[1] - uB[1] * S[0], rx = Cn[0] - N[0], ry = Cn[1] - N[1];
+        var sX = (rx * S[1] - ry * S[0]) / D; cB = (uB[0] * ry - uB[1] * rx) / D; X = add(N, uB, sX);
+      }
+      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB };
     });
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w }; }

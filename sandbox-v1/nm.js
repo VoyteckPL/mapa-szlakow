@@ -63,7 +63,8 @@
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
       var g = lanesOf(r, p);
-      L.polygon(g.asfalt[0].concat(g.asfalt[1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
+      for (var k = 0; k + 1 < g.lanes.length; k++) // asfalt osobno dla każdego pasa (między jego krawędziami)
+        L.polygon(g.lanes[k].concat(g.lanes[k + 1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
       g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
       [0, -1].forEach(function (k, e) { if (!g.zamkn[e]) return; // poprzeczne krawędzie końców pasów

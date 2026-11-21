@@ -75,3 +75,4 @@ Wojtek: na drodze z kilkoma pasami nie dało się ruszyć jednego wierzchołka (
 ## 2026-11-21 16:00 – ✎: rozsuwanie wierzchołków w jednym miejscu
 Wierzchołki bliżej niż 6 px (np. styk dróg w Nm) mają uchwyty rozsunięte wachlarzem (cienka linia do prawdziwego punktu) i etykietę `droga:krawędź/pasy`, np. `R2:3/3p` = krawędź 3 (od lewej, 0 = lewa krawędź) drogi R2 o 3 pasach. Przeciąganie uchwytu przesuwa prawdziwy punkt (z poprawką o rozsunięcie).
 - 16:05 (Wojtek): etykiety tylko na żądanie. Grupa wierzchołków w jednym miejscu = jeden fioletowy uchwyt; klik rozwija wachlarz z etykietami (jedna grupa naraz), klik w mapę zwija. Klik w pojedynczy wierzchołek pokazuje/chowa jego etykietę.
+- 16:02 (Wojtek): asfalt rysowany osobno dla każdego pasa (wielokąt między krawędziami k i k+1), a nie jeden dla całej drogi – ręczna edycja jednej krawędzi zmienia tylko sąsiednie pasy.

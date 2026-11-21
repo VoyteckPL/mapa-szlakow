@@ -19,11 +19,11 @@
   function roads() { return S.sc.roads.filter(function (r) { return r.pts.length > 1; }); }
   function ensure(r) { // pierwsza edycja: kopia wyliczonych krawędzi
     if (!S.sc.edits) S.sc.edits = {};
-    var g = H.lanes(r, (function (g) { g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, S.P())));
+    var g = H.lanes(r, (function (g) { if (!g.pasy) g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, S.P())));
     if (!S.sc.edits[r.id] || S.sc.edits[r.id].length !== 2 * r.lanes) S.sc.edits[r.id] = g.pasy.map(cp);
     return S.sc.edits[r.id];
   }
-  function all() { var p = S.P(); return roads().map(function (r) { return { r: r, L: H.lanes(r, (function (g) { g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, p))).pasy }; }); }
+  function all() { var p = S.P(); return roads().map(function (r) { return { r: r, L: H.lanes(r, (function (g) { if (!g.pasy) g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, p))).pasy }; }); }
   function px(q) { return map.latLngToContainerPoint(S.ll(q)); }
 
   // przyciąganie punktu q (xy); skip(idDrogi, j, i) – wierzchołki, które się teraz ruszają

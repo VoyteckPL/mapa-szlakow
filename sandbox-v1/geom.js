@@ -64,9 +64,9 @@ var G = (function () {
     });
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w }; }
-    return { typ: typ, pien: true, pt: function (d) { // koniec pnia: zamknięcie rysują odnogi
-      var best = null, bv = Infinity;
-      cand.forEach(function (k) { if (d < k.lo || d > k.hi) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
+    return { typ: typ, pien: true, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
+      var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
+      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
         if (v < bv) { bv = v; best = p; } });
       return best || add(N, nT, d);
     } };
@@ -119,7 +119,14 @@ var G = (function () {
         return [A[i][0] + M[0] * rj, A[i][1] + M[1] * rj];
       }));
     }
-    return { lanes: lanes, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
+    // pasy: każdy pas ma własną lewą i prawą krawędź (Wojtek 2026-11-21 16:11) – na rozwidleniu granica między pasami
+    // różnych odnóg kończy się dla każdego pasa na styku jego odnogi (pas do prostej – w węźle, pas do odnogi – na jej skosie).
+    var pasy = [];
+    for (j = 0; j < L; j++) [0, 1].forEach(function (b) {
+      var l = lanes[j + b].map(function (q) { return q.slice(); }), h = (L / 2 - j - 0.5) * w, rj = (L / 2 - j - b) * w;
+      l[0] = E0.pt(rj + dc[0], h + dc[0]); l[m - 1] = E1.pt(rj + dc[m - 1], h + dc[m - 1]); pasy.push(l);
+    });
+    return { lanes: lanes, pasy: pasy, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
   }
   return { toXY: toXY, toLL: toLL, lines: lines, nodeType: nodeType, endInfo: endSection };
 })();

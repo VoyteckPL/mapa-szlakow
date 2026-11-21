@@ -59,7 +59,7 @@
   // każdy pas ma własne krawędzie (lewa, prawa) – wspólna granica zdublowana, więc pasy edytuje się niezależnie.
   // pasy = płaska lista 2·L polilinii: pas j → [2j] lewa, [2j+1] prawa (od lewej).
   H.split = function (lanes) { var o = []; for (var j = 0; j + 1 < lanes.length; j++) o.push(lanes[j].map(function (q) { return q.slice(); }), lanes[j + 1].map(function (q) { return q.slice(); })); return o; };
-  function lanesOf(r, p) { var g = G.lines(sc, r, p); g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
+  function lanesOf(r, p) { var g = G.lines(sc, r, p); if (!g.pasy) g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
   function drawLines() {
     gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers();
     var p = P();

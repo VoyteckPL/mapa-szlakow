@@ -23,23 +23,23 @@
   function snapLL(p) { if (!snap) return { lat: p.lat, lng: p.lng }; var q = xy(p); return ll([Math.round(q[0] / GRID) * GRID, Math.round(q[1] / GRID) * GRID]); }
   function newId(pre, obj) { var m = 0; Object.keys(obj).forEach(function (k) { m = Math.max(m, +k.slice(pre.length) || 0); }); return pre + (m + 1); }
   function addNode(lat, lng, main) { var id = newId('n', sc.nodes); sc.nodes[id] = { lat: lat, lng: lng, main: !!main }; return id; }
-  function road(pts, lanes, o0, o1) {
+  function road(pts, lanes, o) {
     var ids = {}; sc.roads.forEach(function (r) { ids[r.id] = 1; });
-    var r = { id: newId('R', ids), pts: pts, lanes: lanes || 2, w: 3.5, o0: o0 || 0, o1: o1 || 0 };
+    var r = { id: newId('R', ids), pts: pts, lanes: lanes || 2, w: 3.5, o: o || 0 };
     sc.roads.push(r); return r;
   }
   function commit() { var s = JSON.stringify(sc); if (s === last) return; if (last) hist.push(last); if (hist.length > 100) hist.shift(); last = s; try { localStorage.setItem(KEY, s); } catch (e) {} }
   function undo() { if (!hist.length) return; last = hist.pop(); sc = JSON.parse(last); try { localStorage.setItem(KEY, last); } catch (e) {} sel = null; drawing = null; draw(); }
-  function setScene(s) { sc = s; var ids = Object.keys(sc.nodes); if (sc.srodek) O = sc.srodek; else if (ids.length) O = { lat: sc.nodes[ids[0]].lat, lng: sc.nodes[ids[0]].lng }; sc.srodek = O; }
+  function setScene(s) { sc = s; sc.roads = sc.roads.filter(function (r) { return r.pts.length > 1; }); var ids = Object.keys(sc.nodes); if (sc.srodek) O = sc.srodek; else if (ids.length) O = { lat: sc.nodes[ids[0]].lat, lng: sc.nodes[ids[0]].lng }; sc.srodek = O; }
 
   // --- szablony (metry; jazda na wschód, prawo = południe). Nm = węzeł 0,0 ---
   function at(x, y, main) { var p = ll([x, y]); return addNode(p.lat, p.lng, main); }
   function prosto(La, Lb) { return function () { var m = at(0, 0, true);
-    road([at(-120, 0), at(-60, 0), m], La); road([m, at(60, -8), at(120, -20)], Lb, (Lb - La) / 2, 0); }; } // nowy/kończący pas po prawej
+    road([at(-120, 0), at(-60, 0), m], La); road([m, at(60, -8), at(120, -20)], Lb, (Lb - La) / 2); }; } // nowy/kończący pas po prawej
   function rozw(La, Lb, Lc) { return function () { var m = at(0, 0, true);
     road([at(-150, 0), at(-75, 0), m], La);
-    road([m, at(75, 0), at(150, 0)], Lb, (Lb - La) / 2, 0);   // na lewych pasach pnia
-    road([m, at(50, -12), at(110, -40)], Lc, (La - Lc) / 2, 0); }; } // na prawych pasach pnia
+    road([m, at(75, 0), at(150, 0)], Lb, (Lb - La) / 2);   // na lewych pasach pnia
+    road([m, at(50, -12), at(110, -40)], Lc, (La - Lc) / 2); }; } // na prawych pasach pnia
   var TPL = [
     { k: '1', t: 'Prosto', it: [['2-2', prosto(2, 2)], ['3-3', prosto(3, 3)], ['4-4', prosto(4, 4)]] },
     { k: '2', t: 'Zmiana liczby pasów', it: [['2-3', prosto(2, 3)], ['3-2', prosto(3, 2)], ['3-4', prosto(3, 4)], ['4-3', prosto(4, 3)]] },
@@ -62,6 +62,8 @@
       L.polygon(g.asfalt[0].concat(g.asfalt[1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
       g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
+      [0, -1].forEach(function (k) { // poprzeczne krawędzie końców pasów
+        pl(g.lanes.map(function (l) { return l[k < 0 ? l.length - 1 : 0]; }), { color: '#ffeb3b', weight: 2, interactive: false }, gEdge); });
       var isSel = sel && sel.t === 'road' && sel.id === r.id;
       var osmLine = L.polyline(r.pts.map(function (id) { return sc.nodes[id]; }), { color: isSel ? '#ff1744' : '#2979ff', weight: isSel ? 4 : 2.5, dashArray: '8 6' }).addTo(gLin);
       var hit = L.polyline(osmLine.getLatLngs(), { opacity: 0, weight: 18 }).addTo(gLin); // szeroka strefa klikania
@@ -204,7 +206,7 @@
       uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; krawedzie od lewej',
       wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2) }; }),
       drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = G.lines(sc, r, p);
-        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0, offset_kon: r.o1,
+        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset: G.offOf(r),
           krawedzie_pasow: g.lanes.map(pts) }; }),
       scena: sc };
   }
@@ -227,18 +229,16 @@
       num(body, '≡', 'Liczba pasów', function () { return r.lanes; }, function (v) { r.lanes = v; }, 1, 1, 8);
       num(body, '↔', 'Szerokość pasa [m]', function () { return r.w; }, function (v) { r.w = v; }, 0.25, 2.5, 5);
       var rw = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', rw).textContent = r.id;
-      btn(rw, '⇄', 'Odwróć kierunek', function () { r.pts.reverse(); var a = r.o0; r.o0 = -r.o1; r.o1 = -a; commit(); draw(); });
+      btn(rw, '⇄', 'Odwróć kierunek', function () { r.pts.reverse(); r.o = -G.offOf(r); delete r.o0; delete r.o1; commit(); draw(); });
       btn(rw, '🗑', 'Usuń drogę (Del)', function () { sc.roads.splice(sc.roads.indexOf(r), 1); cleanup(); sel = null; commit(); draw(); });
     } else {
       var id = sel.id, n = sc.nodes[id]; if (!n) { sel = null; return panel(); }
       var top = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', top).textContent = id;
       var nb = btn(top, '◉', 'Nm (węzeł główny)', function () { n.main = !n.main; commit(); draw(); }); nb.classList.toggle('on', !!n.main);
       btn(top, '🗑', 'Usuń punkt (Del)', function () { delNode(id); sel = null; commit(); draw(); });
-      sc.roads.forEach(function (r) { // offset na końcach dróg w tym punkcie
-        ['o0', 'o1'].forEach(function (k, e) {
-          if (r.pts[e ? r.pts.length - 1 : 0] !== id) return;
-          num(body, r.id, 'Offset ' + r.id + ' [pasy, + w prawo]', function () { return r[k]; }, function (v) { r[k] = v; }, 0.5, -8, 8, sgn);
-        });
+      sc.roads.forEach(function (r) { // offset dróg kończących się w tym punkcie
+        if (r.pts[0] !== id && r.pts[r.pts.length - 1] !== id) return;
+        num(body, r.id, 'Offset ' + r.id + ' [pasy, + w prawo, cała droga]', function () { return G.offOf(r); }, function (v) { r.o = v; delete r.o0; delete r.o1; }, 0.5, -8, 8, sgn);
       });
     }
   }

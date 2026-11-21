@@ -18,6 +18,7 @@
       var r = S.sc.roads.filter(function (x) { return x.id === S.sel.id; })[0]; if (!r) { S.sel = null; return panel(); }
       num(body, '≡', 'Liczba pasów', function () { return r.lanes; }, function (v) { r.lanes = v; }, 1, 1, 8);
       num(body, '↔', 'Szerokość pasa [m]', function () { return r.w; }, function (v) { r.w = v; }, 0.25, 2.5, 5);
+      if (H.turnPanel) H.turnPanel(body, r);
       var rw = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', rw).textContent = r.id;
       btn(rw, '⇄', 'Odwróć kierunek', function () { r.pts.reverse(); var a = r.o0 || 0; r.o0 = -(r.o1 || 0); r.o1 = -a; commit(); draw(); });
       btn(rw, '🗑', 'Usuń drogę (Del)', function () { S.sc.roads.splice(S.sc.roads.indexOf(r), 1); cleanup(); S.sel = null; commit(); draw(); });

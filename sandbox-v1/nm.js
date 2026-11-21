@@ -65,7 +65,7 @@
   H.split = function (lanes) { var o = []; for (var j = 0; j + 1 < lanes.length; j++) o.push(lanes[j].map(function (q) { return q.slice(); }), lanes[j + 1].map(function (q) { return q.slice(); })); return o; };
   function lanesOf(r, p) { var g = G.lines(sc, r, p); if (!g.pasy) g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
   function drawLines() {
-    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers(); if (H.drawAng) H.drawAng();
+    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers(); if (H.drawAng) H.drawAng(); if (H.clearTurn) H.clearTurn();
     var p = P();
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
@@ -83,7 +83,7 @@
       var hit = L.polyline(osmLine.getLatLngs(), { opacity: 0, weight: 18 }).addTo(gLin); // szeroka strefa klikania
       hit.on('click', function (e) { L.DomEvent.stopPropagation(e); if (drawing) return; sel = { t: 'road', id: r.id }; draw(); });
       hit.on('dblclick', function (e) { L.DomEvent.stopPropagation(e); });
-      arrow(r);
+      arrow(r); if (H.drawTurn) H.drawTurn(r, g);
     });
   }
   function arrow(r) { // strzałka kierunku w połowie długości linii OSM
@@ -161,7 +161,7 @@
     sc.roads = sc.roads.filter(function (r) { return r.pts.length >= 2; }); delete sc.nodes[id]; cleanup();
   }
   document.addEventListener('keydown', function (e) {
-    if (e.target.tagName === 'TEXTAREA') return;
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT') return;
     if (e.key === 'Escape' || e.key === 'Enter') { if (drawing) endDraw(); else if (sel) { sel = null; draw(); } }
     if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }

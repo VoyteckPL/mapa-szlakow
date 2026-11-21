@@ -12,11 +12,11 @@ files.forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8')
 const G = vm.runInContext('G', ctx);
 
 const O = { lat: 54.5189, lng: 18.5305 };
-function scena(name, build) {
+function scena(name, build, turn) {
   const sc = { nodes: {}, roads: [], tpl: name, srodek: O }; let n = 0, k = 0;
   const at = (x, y, main) => { const id = 'n' + ++n, p = G.toLL(O, [x, y]); sc.nodes[id] = { lat: p.lat, lng: p.lng, main: !!main }; return id; };
   const road = (pts, lanes, o0, o1) => { sc.roads.push({ id: 'R' + ++k, pts, lanes, w: 3.5, o0: o0 || 0, o1: o1 || 0 }); };
-  build(at, road); return { n: name, sc };
+  build(at, road); if (turn) sc.roads[0].turn = turn; return { n: name, sc };
 }
 const rad = (a) => (a * Math.PI) / 180, S = [];
 // szablony z nm.js
@@ -27,6 +27,12 @@ const kombi = [[2, 1, 1], [3, 2, 1], [3, 1, 2], [4, 2, 2], [4, 3, 1]];
 kombi.forEach(([a, b, c]) => S.push(scena('rozw ' + a + '-' + b + '+' + c, (at, road) => {
   const m = at(0, 0, true); road([at(-150, 0), at(-75, 0), m], a); road([m, at(75, 0), at(150, 0)], b); road([m, at(50, -12), at(110, -40)], c);
 })));
+// turn:lanes pnia (geom/turn.js): przydział pasów pnia do odnóg i offset pnia
+[[3, [[2, 75, 0], [1, 50, -12]], ['through|through|right', 'left;through|through|right', 'through|through;right|right', 'through|right|right']],
+ [4, [[1, 40, 40], [2, 75, 0], [1, 40, -40]], ['left|through|through|right', 'left|left;through|through|right', 'left;through|through|through;right|right', 'slight_left|through|through|sharp_right']]]
+  .forEach(([La, br, tt]) => tt.forEach((t) => S.push(scena('turn ' + La + ' ' + t, (at, road) => {
+    const m = at(0, 0, true); road([at(-150, 0), at(-75, 0), m], La); br.forEach(([l, x, y]) => road([m, at(x, y), at(2 * x, 2 * y)], l));
+  }, t))));
 // przegląd kątów odnogi (rozwidlenie i włączenie), odnoga w prawo i w lewo, daleki i bliski 1. węzeł
 kombi.forEach(([a, b, c]) => [1, -1].forEach((s) => [60, 12].forEach((d1) => {
   for (let k = 3; k <= 177; k += 6) {

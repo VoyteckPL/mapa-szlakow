@@ -16,8 +16,8 @@
   var v = '?v=' + Date.now(), l = document.createElement('link');
   l.rel = 'stylesheet'; l.href = 'sandbox-v1/nm.css' + v; document.head.appendChild(l);
   // GEOM = geometria (bez przeglądarki; ta sama lista w tools/test-v1.js), potem mapa i UI
-  var GEOM = ['sandbox-v1/geom/baza.js', 'sandbox-v1/geom/odsun.js', 'sandbox-v1/geom/rozw-tepy.js', 'sandbox-v1/geom/styk.js', 'sandbox-v1/geom/pasy.js'];
-  GEOM.concat(['sandbox-v1/nm.js', 'sandbox-v1/nm-katy.js', 'sandbox-v1/nm-menu.js', 'sandbox-v1/nm-panel.js', 'sandbox-v1/nm-start.js', 'sandbox-v1/edycja.js', 'sandbox-v1/ustawienia.js']).reduce(function (p, src) {
+  var GEOM = ['sandbox-v1/geom/baza.js', 'sandbox-v1/geom/odsun.js', 'sandbox-v1/geom/rozw-tepy.js', 'sandbox-v1/geom/turn.js', 'sandbox-v1/geom/styk.js', 'sandbox-v1/geom/pasy.js'];
+  GEOM.concat(['sandbox-v1/nm.js', 'sandbox-v1/nm-katy.js', 'sandbox-v1/nm-menu.js', 'sandbox-v1/nm-panel.js', 'sandbox-v1/nm-turn.js', 'sandbox-v1/nm-start.js', 'sandbox-v1/edycja.js', 'sandbox-v1/ustawienia.js']).reduce(function (p, src) {
     return p.then(function () { return new Promise(function (ok) { var s = document.createElement('script'); s.src = src + v; s.onload = ok; document.body.appendChild(s); }); });
   }, Promise.resolve());
 })();

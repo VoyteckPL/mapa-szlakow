@@ -39,8 +39,12 @@
     var st = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), a0 = 0;
     for (var ii = 0; ord[ii] !== st; ii++) a0 += ord[ii].B.lanes;
     var oT = T.lanes / 2 - a0 - st.B.lanes / 2, cur = (T.lanes / 2 - oT) * T.w;
-    var cand = ord.map(function (o) {
+    // turn:lanes pnia (geom/turn.js): zakresy pasów pnia dla odnóg z tagu; prosta – środek swoich pasów na osi pnia
+    var tr = tIn ? G.u.turnRegions(T, ord, st) : null;
+    if (tr) { var rs = tr[ord.indexOf(st)]; oT = T.lanes / 2 - rs.a - rs.k / 2; }
+    var cand = ord.map(function (o, oi) {
       var B = o.B, hi = cur, lo = cur - B.lanes * B.w, c = (hi + lo) / 2; cur = lo;
+      if (tr) { c = (T.lanes / 2 - oT - tr[oi].a - tr[oi].k / 2) * T.w; hi = c + B.lanes * B.w / 2; lo = c - B.lanes * B.w / 2; }
       var uB = tIn ? dirOut(B, P) : dirIn(B, P), det = tDir[0] * uB[1] - tDir[1] * uB[0];
       var seg = tIn ? Math.hypot(P[B.pts[1]][0] - N[0], P[B.pts[1]][1] - N[1]) : Math.hypot(P[B.pts[B.pts.length - 2]][0] - N[0], P[B.pts[B.pts.length - 2]][1] - N[1]);
       // Dwa warianty styku: (m) ukos – środek pasów pnia przecina linię odnogi w X, dwusieczna pień–odnoga, narożnik

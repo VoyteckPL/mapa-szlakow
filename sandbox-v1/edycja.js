@@ -41,6 +41,9 @@
   function px(q) { return map.latLngToContainerPoint(S.ll(q)); }
 
   // przyciąganie punktu q (xy); skip(idDrogi, j, i) – wierzchołki, które się teraz ruszają
+  // 🧲 siatka (Wojtek 18:48): przyciąganie do LINII siatki – każda oś osobno, gdy linia bliżej niż TOL px (węzeł siatki = obie)
+  function gridSnap(q) { var G0 = S.grid(), mpp = 1 / Math.max(1e-9, px([0, 0]).distanceTo(px([1, 0]))), o = q.slice();
+    [0, 1].forEach(function (a) { var v = Math.round(q[a] / G0) * G0; if (Math.abs(v - q[a]) / mpp < TOL) o[a] = v; }); return o; }
   function snapV(q, skip) { var P0 = px(q), hit = false; all().forEach(function (o) { o.L.forEach(function (l, j) { l.forEach(function (v, i) { if (!skip(o.r.id, j, i) && P0.distanceTo(px(v)) < TOL) hit = true; }); }); }); return hit; }
   function snapTo(q, skip) {
     var P0 = px(q), best = null, bd = TOL, A = all();
@@ -50,7 +53,7 @@
       if (skip(o.r.id, j, i) || skip(o.r.id, j, i + 1)) continue;
       var a = l[i], b = l[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], t = ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy || 1);
       t = Math.max(0, Math.min(1, t)); var c = [a[0] + dx * t, a[1] + dy * t], d = P0.distanceTo(px(c)); if (d < bd) { bd = d; best = c; } } }); }); }
-    if (!best && S.snapOn()) { var G0 = S.grid(); best = [Math.round(q[0] / G0) * G0, Math.round(q[1] / G0) * G0]; }
+    if (!best && S.snapOn()) best = gridSnap(q);
     return best || q;
   }
   // linie pomocnicze (📐, Wojtek 18:40): przez wyjściowe położenie wierzchołka – przedłużenia sąsiednich odcinków jego
@@ -75,6 +78,8 @@
       if (s2 >= -1e-6 && s2 <= 1 + 1e-6) X.push([g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t]); } }); });
     Gs.forEach(function (h) { if (h === g) return; var D = g.u[0] * h.u[1] - g.u[1] * h.u[0]; if (Math.abs(D) < 1e-9) return;
       var rx = h.p[0] - g.p[0], ry = h.p[1] - g.p[1], t = (rx * h.u[1] - ry * h.u[0]) / D; X.push([g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t]); });
+    if (S.snapOn()) { var G0 = S.grid(); [0, 1].forEach(function (a) { if (Math.abs(g.u[a]) < 1e-6) return;
+      var v = Math.round(best.c[a] / G0) * G0, t = (v - g.p[a]) / g.u[a]; X.push([g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t]); }); }
     var res = best.c, bx = TOL; X.forEach(function (x) { var d = px(x).distanceTo(px(best.c)); if (d < bx) { bx = d; res = x; } });
     var far = 400 / Math.max(1e-9, px([0, 0]).distanceTo(px([1, 0]))); // ~400 px w metrach
     L.polyline([S.ll([g.p[0] - g.u[0] * far, g.p[1] - g.u[1] * far]), S.ll([g.p[0] + g.u[0] * far, g.p[1] + g.u[1] * far])], { color: '#00e5ff', weight: 1, dashArray: '4 4', interactive: false }).addTo(gG);

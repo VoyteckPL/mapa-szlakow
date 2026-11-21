@@ -1,5 +1,5 @@
 // Sandbox v1 – geometria w lokalnym układzie [m]. Bez łuków: wszystko kanciaste.
-// Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa), sr/sl (pobocze prawe/lewe),
+// Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa) – bez poboczy,
 // o0/o1 – offset jezdni względem linii OSM na początku/końcu, w pasach (+ = w prawo), liniowo po długości.
 // Reguła styku w węźle (Nm): przekrój wspólny dla stykających się dróg, więc pasy stykają się sztywno
 // i zachowują szerokość wzdłuż przekroju:
@@ -59,7 +59,7 @@ var G = (function () {
     var lanes = [];
     for (var j = 0; j <= L; j++) (function (j) { lanes.push(line(function (o) { return (L / 2 - j - o) * w; })); })(j);
     return { lanes: lanes,
-      asfalt: [line(function (o) { return (L / 2 - o) * w + r.sl; }), line(function (o) { return (-L / 2 - o) * w - r.sr; })] };
+      asfalt: [lanes[0], lanes[L]] }; // bez poboczy
   }
   return { toXY: toXY, toLL: toLL, lines: lines, nodeType: nodeType };
 })();

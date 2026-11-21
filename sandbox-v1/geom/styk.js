@@ -69,8 +69,22 @@
       else if (k > 0) { var Cm = add(Xm, Sm, cBm), C = [Cp[0] + (Cm[0] - Cp[0]) * k, Cp[1] + (Cm[1] - Cp[1]) * k];
         S = [nT[0] + (Sm[0] - nT[0]) * k, nT[1] + (Sm[1] - nT[1]) * k]; var o2 = onB(C, S); X = o2.X; cB = o2.cB; }
       var ob = o === st ? null : G.u.rozw({ tIn: tIn, tDir: tDir, nT: nT, N: N, P: P, st: st, ord: ord, T: T, dalej: dalej }, o, B, lo, hi, c, uB);
-      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB, ob: ob };
+      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, lo0: lo, hi0: hi, c: c, X: X, cB: cB, ob: ob };
     });
+    // Krawędź pasa pnia przy odnodze nie wjeżdża na jezdnię sąsiada od strony prostej (wzorzec 18:31: pień wchodzi pod kątem
+    // 16,7°, prosta ma ukos, granica pasów 2|3 przedłużona do narożnika odnogi wchodziła na R2). Gdy wewn. narożnik styku
+    // odnogi leży na jezdni sąsiada (za jego zewn. krawędzią) – przeniesiony na narożnik sąsiada, zewn. narożnik bez zmian;
+    // styk = odcinek między nimi. Płynnie: głębokość 0 → bez zmian, ≥ 0,1 m → cały. Pień w linii z prostą – bez zmian.
+    function ptT(k, d) { return k.f ? k.f(d) : add(k.X, k.S, d - k.c + k.cB); }
+    var si = ord.indexOf(st), uSt = tIn ? dirOut(st.B, P) : dirIn(st.B, P);
+    [1, -1].forEach(function (dir) { for (var i = si + dir; i >= 0 && i < cand.length; i += dir) {
+      var k = cand[i], nb = cand[i - dir]; if (k.ob || nb.ob) break;
+      var db = dir > 0 ? k.hi0 : k.lo0, de = dir > 0 ? k.lo0 : k.hi0, A = ptT(nb, db), A0 = ptT(k, db), Cs = ptT(nb, nb.c);
+      var cr = function (v) { return uSt[0] * v[1] - uSt[1] * v[0]; }, sd = cr([Cs[0] - A[0], Cs[1] - A[1]]) < 0 ? -1 : 1;
+      var g = sd * cr([A0[0] - A[0], A0[1] - A[1]]); if (g <= 1e-9) continue;
+      var t = Math.min(1, g / 0.1), Ai = [A0[0] + (A[0] - A0[0]) * t, A0[1] + (A[1] - A0[1]) * t];
+      k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, ptT(k, de));
+    } });
     // punkty OSM drogi X za węzłem N (w kierunku od węzła); odp = X zaczyna się w N
     function dalej(X, odp) { var q = X.pts.map(function (id) { return P[id]; }); if (!odp) q.reverse(); return q.slice(1); }
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
@@ -85,10 +99,10 @@
       var odsun = st.B === r ? null : { ref: [Cs].concat(dalej(st.B, tIn)), D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2, side: [Cm[0] - Cs[0], Cm[1] - Cs[1]] };
       if (me.ob) return { pt: me.ob.odn, typ: typ, oAuto: -me.ob.cB / r.w, tMin: tMin, odsun: odsun, odsun2: me.ob.pienOdsun, zakret: me.ob.zakret,
         extra: me.ob.K ? { d: me.ob.dK, K: me.ob.K } : null };
-      return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
+      return { pt: me.f ? function (d) { return me.f(d + me.c - me.cB); } : function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h, bezOb) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
-      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? k.ob.hold(d) : k.ob.pien(d)) : add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
+      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? k.ob.hold(d) : k.ob.pien(d)) : ptT(k, d), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
         if (v < bv) { bv = v; best = p; } });
       return best || add(N, nT, d);
     } };

@@ -140,3 +140,4 @@ Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wz
 - Zgodność: narożniki 1:1 we wzorcach 85, 70, 65°; 45° 0,33 m (wzorzec 5,97 → potem przesunięty na 6,30 – wygląda na przypadkowe); 80° 0,36 m (n6 załamane 5°, we wzorcu krawędź prosto z 2. odcinka); 90°: pas pnia kończy się na przekroju (0; −3,5), we wzorcu 1,75 – jak w 85–45°.
 - **Dalej:** wzorce < 45° (jak wygląda długi klin wzdłuż prostej) i > 90°.
 - 19:10 ✎ zaznaczanie wielu wierzchołków: Ctrl/⌘+klik przełącza (turkusowa obwódka; Ctrl+klik w fioletową grupę = cała grupa), przeciągnięcie zaznaczonego przesuwa wszystkie zaznaczone o ten sam wektor (przyciąganie liczone dla chwytanego), każdy ruch w dzienniku operacji. Klik w mapę / Esc czyści.
+- 19:12 ✎ 📐: linie pomocnicze także z SĄSIEDNICH krawędzi – przedłużenie każdego odcinka krawędzi pasa z końcem < 80 px od chwytanego wierzchołka; przyciąganie do przecięć tych linii (wyrównanie wierzchołków w jednej linii na styku).

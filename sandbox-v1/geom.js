@@ -99,8 +99,12 @@ var G = (function () {
       var Xin = x(add(Cb, lB, si * wh), aBe, K, aS), Xout = x(add(Cb, lB, -si * wh), aBe, add(N, nT, dOut), aT);
       if (!Xin || !Xout || dot([Xin[0] - K[0], Xin[1] - K[1]], aS) < -1e-6 || dot([Xout[0] - N[0], Xout[1] - N[1]], aT) < -1e-6) return null;
       var cBo = dot([Cb[0] - N[0], Cb[1] - N[1]], lB), lin = function (A0, A1, u) { return [A0[0] + (A1[0] - A0[0]) * u, A0[1] + (A1[1] - A0[1]) * u]; };
-      return { cB: cBo, K: K, dK: cBo - si * wh,
-        pien: function (d) { return lin(K, Xout, (d - dIn) / (dOut - dIn)); },
+      // płynnie od 90° (Wojtek 17:39): kp 0 → 1 między 90° a 93°; przy 90° styk = ukos Xin–Xout (jak wzorzec 90°),
+      // od 93° styk K–Xout. J = koniec wewn. krawędzi pasa pnia (Xin → K); odcinek stały pnia też płynnie.
+      var kp = Math.max(0, Math.min(1, (Math.acos(Math.max(-1, Math.min(1, dot(aB, aS)))) * 180 / Math.PI - 90) / 3)), J = lin(Xin, K, kp);
+      return { cB: cBo, K: J, dK: cBo - si * wh,
+        pien: function (d) { return lin(J, Xout, (d - dIn) / (dOut - dIn)); },
+        hold: function (d) { return lin(lin(Xin, Xout, (d - dIn) / (dOut - dIn)), add(N, nT, d), kp); },
         odn: function (d) { return lin(Xout, Xin, (d - cBo + si * wh) / (2 * si * wh)); } };
     }
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
@@ -117,7 +121,7 @@ var G = (function () {
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h, bezOb) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
-      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? add(N, nT, d) : k.ob.pien(d)) : add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
+      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? k.ob.hold(d) : k.ob.pien(d)) : add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
         if (v < bv) { bv = v; best = p; } });
       return best || add(N, nT, d);
     } };

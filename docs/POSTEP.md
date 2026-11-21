@@ -59,3 +59,8 @@ Reguła styku (geom.js), wariant 2 (Wojtek 13:10, „najwyżej cofniemy”): ka�
 Rysowanie: DWUKLIK w pusty obszar = punkt (klik tylko odznacza) (nowa linia, od zaznaczonego punktu jeśli jest), klik w węzeł podczas rysowania = połączenie i koniec, Esc/Enter koniec, Del usuwa, Ctrl+Z / ↶ cofa. 🧲 przyciąganie do siatki 5 m; siatka i asfalt to warstwy (domyślnie wył.). Podkład domyślny ortofoto. Linia OSM przerywana. ⧉: opis + 📋 kopiuj config (z polem `scena`), ⤓ wczytaj config.
 Szablony: 1 prosto (2-2, 3-3, 4-4), 2 zmiana pasów (2-3, 3-2, 3-4, 4-3), 3 rozwidlenia (2-1+1, 3-2+1, 3-1+2, 4-2+2, 4-3+1).
 Dalej: uwagi Wojtka do styku w Nm (np. pobocza na rozwidleniu nachodzą na odnogę).
+
+## 2026-11-21 15:18 – rozwidlenie/włączenie: styk na linii odnogi
+Wojtek: „środek pasa odnogi na środku linii odnogi; połączenie pasów pod kątem ma wypadać na środku linii”.
+Reguła (geom.js `endSection`): pasy pnia dzielone między odnogi po kolei od lewej (odnogi sortowane od lewej); offset odnogi w węźle jest automatyczny (panel go nie pokazuje). Odnoga ma środek pasa na swojej linii OSM, skośny styk (dwusieczna) leży w punkcie, gdzie środek przydzielonych pasów pnia przecina linię odnogi; pasy pnia biegną do niego prosto. Brak przecięcia (kąt < 15° albo dalej niż pierwszy odcinek odnogi) → styk w węźle + automatyczny offset wracający na środek.
+Znane: szablon 3-2+1 (odnoga 13,5°) – odnogi wracają na środek na 20 m i lekko na siebie nachodzą (~0,2 m).

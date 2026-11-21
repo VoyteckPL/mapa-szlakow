@@ -25,7 +25,7 @@
   function addNode(lat, lng, main) { var id = newId('n', sc.nodes); sc.nodes[id] = { lat: lat, lng: lng, main: !!main }; return id; }
   function road(pts, lanes, o0, o1) {
     var ids = {}; sc.roads.forEach(function (r) { ids[r.id] = 1; });
-    var r = { id: newId('R', ids), pts: pts, lanes: lanes || 2, w: 3.5, sr: 2.5, sl: 0.5, o0: o0 || 0, o1: o1 || 0 };
+    var r = { id: newId('R', ids), pts: pts, lanes: lanes || 2, w: 3.5, o0: o0 || 0, o1: o1 || 0 };
     sc.roads.push(r); return r;
   }
   function commit() { var s = JSON.stringify(sc); if (s === last) return; if (last) hist.push(last); if (hist.length > 100) hist.shift(); last = s; try { localStorage.setItem(KEY, s); } catch (e) {} }
@@ -60,7 +60,6 @@
       if (r.pts.length < 2) return;
       var g = G.lines(sc, r, p);
       L.polygon(g.asfalt[0].concat(g.asfalt[1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
-      g.asfalt.forEach(function (l) { pl(l, { color: '#000', weight: 1.5, interactive: false }, gEdge); });
       g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
       var isSel = sel && sel.t === 'road' && sel.id === r.id;
@@ -205,8 +204,8 @@
       uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; krawedzie od lewej',
       wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2) }; }),
       drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = G.lines(sc, r, p);
-        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, pobocze_p: r.sr, pobocze_l: r.sl, offset_pocz: r.o0, offset_kon: r.o1,
-          krawedzie_pasow: g.lanes.map(pts), asfalt: g.asfalt.map(pts) }; }),
+        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0, offset_kon: r.o1,
+          krawedzie_pasow: g.lanes.map(pts) }; }),
       scena: sc };
   }
 
@@ -227,7 +226,6 @@
       var r = sc.roads.filter(function (x) { return x.id === sel.id; })[0]; if (!r) { sel = null; return panel(); }
       num(body, '≡', 'Liczba pasów', function () { return r.lanes; }, function (v) { r.lanes = v; }, 1, 1, 8);
       num(body, '↔', 'Szerokość pasa [m]', function () { return r.w; }, function (v) { r.w = v; }, 0.25, 2.5, 5);
-      num(body, '⛉', 'Pobocze prawe [m]', function () { return r.sr; }, function (v) { r.sr = v; }, 0.25, 0, 4);
       var rw = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', rw).textContent = r.id;
       btn(rw, '⇄', 'Odwróć kierunek', function () { r.pts.reverse(); var a = r.o0; r.o0 = -r.o1; r.o1 = -a; commit(); draw(); });
       btn(rw, '🗑', 'Usuń drogę (Del)', function () { sc.roads.splice(sc.roads.indexOf(r), 1); cleanup(); sel = null; commit(); draw(); });

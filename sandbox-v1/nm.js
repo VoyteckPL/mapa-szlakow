@@ -15,7 +15,7 @@
   var tlo = L.layerGroup(); tlo.on('add', function () { map.getContainer().style.background = '#f3ecd9'; }); tlo.on('remove', function () { map.getContainer().style.background = ''; });
   var lay = L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm, [ic('Tło kremowe', '🟨')]: tlo },
     { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka', '▦')]: gGrid, [ic('Kąty między drogami', '∠')]: gAng },
-    { position: 'topright', collapsed: true }).addTo(map);
+    { position: 'topright', collapsed: false }).addTo(map);
   map.createPane('asf').style.zIndex = 350;
 
   // --- scena, historia ---
@@ -30,8 +30,10 @@
     var r = { id: newId('R', ids), pts: pts, lanes: lanes || 2, w: 3.5, o0: o0 || 0, o1: o1 || 0 };
     sc.roads.push(r); return r;
   }
-  function commit() { var s = JSON.stringify(sc); if (s === last) return; if (last) hist.push(last); if (hist.length > 100) hist.shift(); last = s; try { localStorage.setItem(KEY, s); } catch (e) {} }
-  function undo() { if (!hist.length) return; last = hist.pop(); sc = JSON.parse(last); try { localStorage.setItem(KEY, last); } catch (e) {} sel = null; drawing = null; draw(); }
+  function commit() { var s = JSON.stringify(sc); if (s === last) return; if (last) hist.push(last); if (hist.length > 100) hist.shift(); last = s; fut = []; try { localStorage.setItem(KEY, s); } catch (e) {} }
+  var fut = []; // w przód (ponów)
+  function undo() { if (!hist.length) return; if (last) fut.push(last); last = hist.pop(); sc = JSON.parse(last); try { localStorage.setItem(KEY, last); } catch (e) {} sel = null; drawing = null; draw(); }
+  function redo() { if (!fut.length) return; if (last) hist.push(last); last = fut.pop(); sc = JSON.parse(last); try { localStorage.setItem(KEY, last); } catch (e) {} sel = null; drawing = null; draw(); }
   function setScene(s) { sc = s; sc.roads = sc.roads.filter(function (r) { return r.pts.length > 1; });
     var cnt = {}; sc.roads.forEach(function (r) { [r.pts[0], r.pts[r.pts.length - 1]].forEach(function (id) { cnt[id] = (cnt[id] || 0) + 1; }); });
     sc.roads.forEach(function (r) { if (r.o == null) return; // stara scena: jeden offset -> przy końcu w węźle
@@ -186,7 +188,8 @@
   document.addEventListener('keydown', function (e) {
     if (e.target.tagName === 'TEXTAREA') return;
     if (e.key === 'Escape' || e.key === 'Enter') { if (drawing) endDraw(); else if (sel) { sel = null; draw(); } }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
     if (e.key === 'Delete' && sel) { if (sel.t === 'node') delNode(sel.id); else { sc.roads = sc.roads.filter(function (r) { return r.id !== sel.id; }); cleanup(); } sel = null; commit(); draw(); }
   });
 
@@ -214,28 +217,18 @@
     });
   });
 
-  // prawy górny: config, siatka/przyciąganie, cofnij
-  ctl('topright', function (d) {
-    var body = foldable(d, '⧉', 'Config dla Claude'); body.classList.add('sv-copy');
-    var ta = L.DomUtil.create('textarea', '', body); ta.placeholder = 'Opisz problem…';
-    var row = L.DomUtil.create('div', 'sv-row', body);
-    btn(row, '📋', 'Kopiuj config + opis', function () {
-      var b = this, txt = JSON.stringify(config(ta.value), null, 1);
-      copy(txt); b.textContent = '✓'; setTimeout(function () { b.textContent = '📋'; }, 1200);
-    });
-    btn(row, '⤓', 'Wczytaj config (z pola lub schowka)', function () {
-      var v = ta.value.trim();
-      (v.charAt(0) === '{' ? Promise.resolve(v) : navigator.clipboard.readText()).then(function (t) {
-        var o = JSON.parse(t); setScene(o.scena || o); sel = null; drawing = null; commit(); map.setView([O.lat, O.lng]); draw(); ta.value = '';
-      }).catch(function () { ta.value = ''; ta.placeholder = 'Wklej tu config i kliknij ⤓'; });
-    });
+  // menu warstw Leaflet (zawsze otwarte, ikona zwija/rozwija listę): wzorce, przyciąganie/siatka, cofnij/ponów (Wojtek 18:08)
+  (function () {
+    var C = lay.getContainer(), list = C.querySelector('.leaflet-control-layers-list'), tg = C.querySelector('.leaflet-control-layers-toggle');
+    tg.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); list.classList.toggle('sv-hide'); });
+    var box = L.DomUtil.create('div', 'sv-lmenu', list);
     // wzorce: zrzuty kolejnych ustawień (kąt, offsety, ręczne krawędzie) zbierane lokalnie, na koniec kopiowane razem
     var WK = 'sv1-wzorce', wz = function () { try { return JSON.parse(localStorage.getItem(WK)) || []; } catch (e) { return []; } };
-    var row2 = L.DomUtil.create('div', 'sv-row', body), cnt;
-    btn(row2, '💾', 'Zapisz wzorzec (aktualna scena + opis z pola); potem ręczne zmiany są czyszczone', function () {
-      var c = config(ta.value); delete c.scena.edits; delete c.scena.editSig; delete c.scena.log; delete sc.log; c.nr = wz().length + 1;
+    var row2 = L.DomUtil.create('div', 'sv-row', box), cnt;
+    btn(row2, '💾', 'Zapisz wzorzec (aktualna scena); potem ręczne zmiany są czyszczone', function () {
+      var c = config(''); delete c.scena.edits; delete c.scena.editSig; delete c.scena.log; delete sc.log; c.nr = wz().length + 1;
       var a = wz(); a.push(c); try { localStorage.setItem(WK, JSON.stringify(a)); } catch (e) {}
-      delete sc.edits; ta.value = ''; commit(); draw(); upd();
+      delete sc.edits; commit(); draw(); upd();
     });
     btn(row2, '📚', 'Kopiuj wszystkie wzorce', function () {
       var b = this; copy(JSON.stringify({ strona: 'sandbox-v1.html', wzorce: wz() }, null, 1)); b.textContent = '✓'; setTimeout(function () { b.textContent = '📚'; }, 1200);
@@ -243,15 +236,15 @@
     btn(row2, '🗑', 'Usuń wszystkie zapisane wzorce', function () { if (wz().length && confirm('Usunąć ' + wz().length + ' wzorców?')) { localStorage.removeItem(WK); upd(); } });
     cnt = L.DomUtil.create('span', 'sv-val', row2);
     function upd() { cnt.textContent = wz().length + ' wz.'; } upd();
-  });
-  ctl('topright', function (d) {
-    var s = btn(d, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
-    var sa = btn(d, '∠5', 'Przyciąganie kąta co 5° (względem drugiej drogi w sąsiednim węźle)', function () { snapA = !snapA; sa.classList.toggle('on', snapA); });
-    sa.classList.add('sv-tpl');
-    var gb = btn(d, '▦' + GRID, 'Rozdzielczość siatki [m]', function () { GRID = GRIDS[(GRIDS.indexOf(GRID) + 1) % GRIDS.length]; gb.textContent = '▦' + GRID; drawGrid(); });
+    var row3 = L.DomUtil.create('div', 'sv-row', box);
+    var s = btn(row3, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
+    var gb = btn(row3, '▦' + GRID, 'Rozdzielczość siatki [m]', function () { GRID = GRIDS[(GRIDS.indexOf(GRID) + 1) % GRIDS.length]; gb.textContent = '▦' + GRID; drawGrid(); });
     gb.classList.add('sv-tpl');
-    btn(d, '↶', 'Cofnij (Ctrl+Z)', undo);
-  });
+    var sa = btn(row3, '∠5', 'Przyciąganie kąta co 5° (względem drugiej drogi w sąsiednim węźle)', function () { snapA = !snapA; sa.classList.toggle('on', snapA); });
+    sa.classList.add('sv-tpl');
+    var row4 = L.DomUtil.create('div', 'sv-row', box);
+    btn(row4, '↶', 'Cofnij (Ctrl+Z)', undo); btn(row4, '↷', 'Ponów (Ctrl+Y / Ctrl+Shift+Z)', redo);
+  })();
   function copy(txt) {
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(function () {
       var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();

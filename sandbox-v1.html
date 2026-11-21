@@ -15,7 +15,7 @@
 (function () {
   var v = '?v=' + Date.now(), l = document.createElement('link');
   l.rel = 'stylesheet'; l.href = 'sandbox-v1/nm.css' + v; document.head.appendChild(l);
-  ['sandbox-v1/geom.js', 'sandbox-v1/nm.js'].reduce(function (p, src) {
+  ['sandbox-v1/geom.js', 'sandbox-v1/nm.js', 'sandbox-v1/edycja.js'].reduce(function (p, src) {
     return p.then(function () { return new Promise(function (ok) { var s = document.createElement('script'); s.src = src + v; s.onload = ok; document.body.appendChild(s); }); });
   }, Promise.resolve());
 })();

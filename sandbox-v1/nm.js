@@ -1,6 +1,6 @@
 // Sandbox v1: węzeł Nm. Leaflet, rysowanie klikiem, przeciągane punkty, krawędzie pasów.
 (function () {
-  var KEY = 'sv1-scena', GRID = 5, O = { lat: 54.5189, lng: 18.5305 };
+  var KEY = 'sv1-scena', GRID = 1.75, GRIDS = [0.875, 1.75, 3.5, 5, 10], H = window.SVH = {}, O = { lat: 54.5189, lng: 18.5305 };
   var map = L.map('map', { zoomControl: false, maxZoom: 22, doubleClickZoom: false }).setView([O.lat, O.lng], 18);
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
@@ -11,8 +11,8 @@
   var gLin = L.layerGroup().addTo(map), gPts = L.layerGroup().addTo(map);
   var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gTmp = L.layerGroup().addTo(map);
   var ic = function (t, s) { return '<span title="' + t + '">' + s + '</span>'; };
-  L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm },
-    { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka ' + GRID + ' m', '▦')]: gGrid },
+  var lay = L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm },
+    { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka', '▦')]: gGrid },
     { position: 'topright', collapsed: true }).addTo(map);
   map.createPane('asf').style.zIndex = 350;
 
@@ -56,12 +56,13 @@
   // --- rysowanie ---
   function P() { var o = {}; for (var k in sc.nodes) o[k] = xy(sc.nodes[k]); return o; }
   function pl(line, opt, g) { return L.polyline(line.map(ll), opt).addTo(g); }
+  function lanesOf(r, p) { var g = G.lines(sc, r, p); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
   function drawLines() {
     gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers();
     var p = P();
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
-      var g = G.lines(sc, r, p);
+      var g = lanesOf(r, p);
       L.polygon(g.asfalt[0].concat(g.asfalt[1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
       g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
@@ -95,10 +96,12 @@
     });
   }
   var raf = 0; function live() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; drawLines(); }); }
-  function draw() { drawLines(); drawPts(); panel(); drawGrid(); gTmp.clearLayers(); }
+  function draw() { drawLines(); drawPts(); panel(); drawGrid(); gTmp.clearLayers(); if (H.afterDraw) H.afterDraw(); }
   function drawGrid() {
     gGrid.clearLayers(); if (!map.hasLayer(gGrid) || map.getZoom() < 16) return;
-    var b = map.getBounds(), a = xy(b.getSouthWest()), c = xy(b.getNorthEast()), st = { color: '#fff', weight: 1, opacity: .35, interactive: false };
+    var b = map.getBounds(), a = xy(b.getSouthWest()), c = xy(b.getNorthEast());
+    if ((c[0] - a[0]) / GRID + (c[1] - a[1]) / GRID > 600) return; // za gęsto przy tym zoomie
+    var st = { color: '#fff', weight: 1, opacity: .35, interactive: false };
     for (var x = Math.floor(a[0] / GRID) * GRID; x <= c[0]; x += GRID) pl([[x, a[1]], [x, c[1]]], st, gGrid);
     for (var y = Math.floor(a[1] / GRID) * GRID; y <= c[1]; y += GRID) pl([[a[0], y], [c[0], y]], st, gGrid);
   }
@@ -116,7 +119,7 @@
     sel = null; draw();
   });
   map.on('dblclick', function (e) {
-    if (!e.originalEvent.target.isConnected) return;
+    if (!e.originalEvent.target.isConnected || H.editing) return;
     var from = prevNode && Date.now() - prevT < 600 && sc.nodes[prevNode] ? prevNode : null; prevNode = null;
     var p = snapLL(e.latlng), id = addNode(p.lat, p.lng);
     if (drawing) drawing.pts.push(id);
@@ -195,7 +198,9 @@
     });
   });
   ctl('topright', function (d) {
-    var s = btn(d, '🧲', 'Przyciąganie do siatki ' + GRID + ' m', function () { snap = !snap; s.classList.toggle('on', snap); });
+    var s = btn(d, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
+    var gb = btn(d, '▦' + GRID, 'Rozdzielczość siatki [m]', function () { GRID = GRIDS[(GRIDS.indexOf(GRID) + 1) % GRIDS.length]; gb.textContent = '▦' + GRID; drawGrid(); });
+    gb.classList.add('sv-tpl');
     btn(d, '↶', 'Cofnij (Ctrl+Z)', undo);
   });
   function copy(txt) {
@@ -208,9 +213,9 @@
     return { strona: 'sandbox-v1.html', opis: opis, szablon: sc.tpl,
       uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; krawedzie od lewej',
       wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2) }; }),
-      drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = G.lines(sc, r, p);
+      drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = lanesOf(r, p);
         return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0,
-          krawedzie_pasow: g.lanes.map(pts) }; }),
+          krawedzie_pasow: g.lanes.map(pts), recznie: g.edyt || undefined }; }),
       scena: sc };
   }
 
@@ -249,6 +254,9 @@
     }
   }
 
+  // API dla edycja.js
+  window.SV = { map: map, layers: lay, get sc() { return sc; }, xy: xy, ll: ll, P: P, commit: commit, draw: draw, drawLines: drawLines,
+    grid: function () { return GRID; }, snapOn: function () { return snap; }, ctl: ctl, btn: btn };
   // --- start ---
   var saved = null; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
   if (saved && saved.roads) { setScene(saved); last = JSON.stringify(sc); map.setView([O.lat, O.lng], 18); draw(); }

@@ -64,3 +64,7 @@ Dalej: uwagi Wojtka do styku w Nm (np. pobocza na rozwidleniu nachodzą na odnog
 Wojtek: „środek pasa odnogi na środku linii odnogi; połączenie pasów pod kątem ma wypadać na środku linii”.
 Reguła (geom.js `endSection`): pasy pnia dzielone między odnogi po kolei od lewej (odnogi sortowane od lewej); offset odnogi w węźle jest automatyczny (panel go nie pokazuje). Odnoga ma środek pasa na swojej linii OSM, skośny styk (dwusieczna) leży w punkcie, gdzie środek przydzielonych pasów pnia przecina linię odnogi; pasy pnia biegną do niego prosto. Brak przecięcia (kąt < 15° albo dalej niż pierwszy odcinek odnogi) → styk w węźle + automatyczny offset wracający na środek.
 Znane: szablon 3-2+1 (odnoga 13,5°) – odnogi wracają na środek na 20 m i lekko na siebie nachodzą (~0,2 m).
+
+## 2026-11-21 15:39 – ręczna edycja krawędzi pasów (`sandbox-v1/edycja.js`)
+Warstwa ✎ (w panelu warstw, domyślnie wył.): każdy wierzchołek i odcinek krawędzi pasa przeciągany; dwuklik w odcinek dodaje wierzchołek, w wierzchołek usuwa. Opcje (panel pod 🧲, widoczny przy ✎): ⊙ przyciąganie do wierzchołków, ⟋ do krawędzi pasów, ⟷ cały przekrój naraz (szerokość zachowana), ↺ usuń ręczne zmiany. Siatka: rozdzielczość ▦ (0,875 / 1,75 / 3,5 / 5 / 10 m, domyślnie 1,75 = pół pasa), 🧲 przyciąga też uchwyty.
+Zapis: `sc.edits[idDrogi]` = krawędzie (xy m) – nadpisują wyliczone; w configu `krawedzie_pasow` po edycji + `recznie: true`. Cel: Wojtek ręcznie ustawia dobry kształt i wysyła config → z tego wyprowadzamy regułę.

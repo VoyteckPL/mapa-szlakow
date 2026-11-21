@@ -22,7 +22,7 @@
     var deg = 180 / Math.PI, th = Math.acos(Math.max(-1, Math.min(1, dot(aBe, aS)))) * deg;
     if (th <= 90) return null;
     var e = th <= 100 ? th : th >= 115 ? 90 : 100 - 10 * (th - 100) / 15, zakret = th > 100;
-    if (zakret) { var pp = left(aS); if (dot(pp, [Cb[0] - K[0], Cb[1] - K[1]]) < 0) pp = [-pp[0], -pp[1]]; var er = e / deg; // pp: na stronę pasów odnogi
+    if (zakret) { var pp = left(aS); if (dot(pp, aBe) < 0) pp = [-pp[0], -pp[1]]; var er = e / deg; // pp: na stronę odnogi (wg kierunku do jej 1. węzła; nie K→Cb – przy pniu pod kątem do prostej K→Cb bywa prawie równoległe do prostej → zła strona, krawędzie odnogi zamienione, wzorzec 20:04)
       aBe = [aS[0] * Math.cos(er) + pp[0] * Math.sin(er), aS[1] * Math.cos(er) + pp[1] * Math.sin(er)]; }
     var lB = left([sg * aBe[0], sg * aBe[1]]), si = dot(lB, aS) < 0 ? -1 : 1, wh = B.lanes * B.w / 2;
     function x(p, u, q, v) { var D = u[0] * v[1] - u[1] * v[0]; if (Math.abs(D) < 1e-6) return null;

@@ -12,6 +12,8 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - Wojtek ogląda wynik sam (lokalnie `python -m http.server 8000` → `localhost:8000/sandbox-drog.html`, F5). Zrzuty ekranu rób tylko, gdy to naprawdę potrzebne.
 
 ## Budowa starego sandboksu (tylko podgląd)
+**Aktualny sandbox: `nm.html` + `nm/` (od 2026-11-21, zob. docs/POSTEP.md).**
+
 `sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):
 - `1-uklad.js` – stałe, geometria, model drogi, `offBase/offAt` (offset osi w pasach), `comp()` (oś, szerokość `w`, offset `d` drogi), `skelFork`, **`layout()`** (węzły, rozjazdy, zszywanie styków, linie, strzałki).
 - `2-rysowanie.js` – render na canvas: asfalt, oznakowanie (`drawNodeDash`, `laneAdj` – linie pasów przy zmianie liczby pasów), obrysy pasów, `render()`.

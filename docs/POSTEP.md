@@ -46,3 +46,8 @@ Dalej: Wojtek dobiera „złoty środek” suwakami i wkleja ustawienia; potem r
 ## 2026-11-21 – porządki
 Na prośbę Wojtka usunięte: `sandbox2.html` + `sandbox2/`, `skrzyzowanie.html` + `skrz/`, `tools/testy-sandbox2.js` (wcześniej też edytor-pasow-v2, presety-zjazdow, rozjazdy, rozjazdy-dziwne, rozpoznawanie-pasow). Kod jest w historii git, gdyby był potrzebny. Następny krok do ustalenia z Wojtkiem.
 - Usunięte też mapa-drog, mapa-osm, skrzyzowania, wezel-demo, wezel-piaskownica. Zostają: index, edytor-pasow, autostrady, rozjazd-szkielet, sandbox-drog.
+
+## 2026-11-21 – nowy sandbox od zera: `nm.html` + `nm/`
+Wojtek zaczyna od początku: Leaflet, tylko linie OSM z punktami (przeciągane) i krawędzie pasów. Nm = główny węzeł rozwidlający (pomarańczowy). Zasada nienaruszalna: na Nm pasy przechodzące z drogi na drogę stykają się sztywno i zachowują szerokość; bez łuków (kanciasto). Na razie tylko autostrady, przypadek 1 na 1.
+Szkielet: podkłady OSM/ortofoto + warstwy (prawy górny), ⧉ kopiuj config z opisem problemu, lewy panel szablonów (kat. „1”: 1-1, 1-1+1 czeka), prawy dolny panel zaznaczonej drogi (pasy ±, szerokość pasa ±). Scena w localStorage. Geometria wstępna: oś na środku, w Nm przekrój po dwusiecznej (miter).
+Dalej: odpowiedzi Wojtka na pytania (20 pytań w wątku) → reguły Nm.

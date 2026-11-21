@@ -9,6 +9,7 @@
 //  leży tam, gdzie środek przydzielonych jej pasów pnia przecina linię odnogi – pasy pnia biegną prosto do tego styku
 //  (Wojtek 2026-11-21 15:18). Gdy przecięcia brak (odnoga prawie równoległa) – styk w węźle, odnoga dostaje
 //  automatyczny offset równy położeniu swoich pasów w pniu i wraca na środek regułą offsetu.
+//  Offset pnia przy rozwidleniu/włączeniu jest automatyczny: pasy do odnogi na wprost mają środek na osi pnia.
 //  Wolny koniec: przekrój prostopadły.
 var G = (function () {
   var R = 6378137, PRZEJ = 20;
@@ -49,9 +50,13 @@ var G = (function () {
     if (Bs.length === 1) return { pt: prosto(Sof(Bs[0])), typ: 'ciag' };
     var typ = tIn ? 'rozwidlenie' : 'wlaczenie';
     var tDir = tIn ? dirIn(T, P) : dirOut(T, P), nT = left(tDir), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
-    var oT = (tIn ? T.o1 : T.o0) || 0, cur = (T.lanes / 2 - oT) * T.w;
     var ord = Bs.map(function (B) { var q = P[tIn ? B.pts[1] : B.pts[B.pts.length - 2]], v = unit(N, q);
-      return { B: B, lat: tDir[0] * v[1] - tDir[1] * v[0] }; }).sort(function (a, b) { return b.lat - a.lat; });
+      return { B: B, lat: tDir[0] * v[1] - tDir[1] * v[0], al: dot(v, tDir) * (tIn ? 1 : -1) }; }).sort(function (a, b) { return b.lat - a.lat; });
+    // offset pnia przy węźle – automatyczny (Wojtek 2026-11-21 16:48, 3-2+1 → +0,5): pasy pnia prowadzące do odnogi
+    // „na wprost” (najmniejszy kąt z pniem) mają środek na osi pnia, czyli prosta jedzie dalej bez przesunięcia.
+    var st = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), a0 = 0;
+    for (var ii = 0; ord[ii] !== st; ii++) a0 += ord[ii].B.lanes;
+    var oT = T.lanes / 2 - a0 - st.B.lanes / 2, cur = (T.lanes / 2 - oT) * T.w;
     var cand = ord.map(function (o) {
       var B = o.B, hi = cur, lo = cur - B.lanes * B.w, c = (hi + lo) / 2; cur = lo;
       var uB = tIn ? dirOut(B, P) : dirIn(B, P), det = tDir[0] * uB[1] - tDir[1] * uB[0];
@@ -73,7 +78,7 @@ var G = (function () {
     });
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w }; }
-    return { typ: typ, pien: true, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
+    return { typ: typ, pien: true, oAuto: oT, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
       cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
         if (v < bv) { bv = v; best = p; } });

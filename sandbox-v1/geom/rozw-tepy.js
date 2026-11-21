@@ -25,9 +25,8 @@
     var Xin = x(add(Cb, lB, si * wh), aBe, K, aS), Xout = x(add(Cb, lB, -si * wh), aBe, add(N, nT, dOut), aT);
     if (!Xin || !Xout || dot([Xin[0] - K[0], Xin[1] - K[1]], aS) < -1e-6 || dot([Xout[0] - N[0], Xout[1] - N[1]], aT) < -1e-6) return null;
     var cBo = dot([Cb[0] - N[0], Cb[1] - N[1]], lB), lin = function (A0, A1, u) { return [A0[0] + (A1[0] - A0[0]) * u, A0[1] + (A1[1] - A0[1]) * u]; };
-    // płynnie od 90° (Wojtek 17:39): kp 0 → 1 między e = 90° a 93°; przy 90° styk = ukos Xin–Xout (jak wzorzec 90°),
-    // od 93° styk K–Xout. J = koniec wewn. krawędzi pasa pnia (Xin → K). Odcinek stały pnia: jak przy węźle, gdy jest zakręt.
-    var kp = Math.max(0, Math.min(1, (e - 90) / 3)), hk = zakret ? 1 : kp, J = lin(Xin, K, kp);
+    // styk K–Xout od 90° (wzorce 18:55: przy ≤ 90° odnoga ma klin K–Xin–Xout tak samo – ciągłość; dawne przejście 90–93° usunięte). J = koniec wewn. krawędzi pasa pnia (Xin → K). Odcinek stały pnia: jak przy węźle, gdy jest zakręt.
+    var kp = 1, hk = zakret ? 1 : kp, J = lin(Xin, K, kp);
     var nOut = [nT[0] * (dOut < dIn ? -1 : 1), nT[1] * (dOut < dIn ? -1 : 1)], E0 = add(N, nT, dOut);
     return { cB: cBo, K: kp > 1e-6 ? J : null, dK: cBo - si * wh,
       pien: function (d) { return lin(J, Xout, (d - dIn) / (dOut - dIn)); },

@@ -88,9 +88,13 @@
       // koniec krawędzi cofnięty (ukos odnogi > 90° przed węzłem): wierzchołki za nim dociągnięte do niego (wzorzec 93°)
       for (var i = m - 2; i > 0 && dot([l[i][0] - l[m - 1][0], l[i][1] - l[m - 1][1]], unit(Q[m - 2], Q[m - 1])) > 1e-6; i--) l[i] = l[m - 1].slice();
       for (i = 1; i < m - 1 && dot([l[i][0] - l[0][0], l[i][1] - l[0][1]], unit(Q[1], Q[0])) > 1e-6; i++) l[i] = l[0].slice();
-      if (E0.extra && Math.abs(rj + dc[0] - E0.extra.d) < 1e-6) l.unshift(E0.extra.K.slice()); // klin odnogi > 90°
-      if (E1.extra && Math.abs(rj + dc[m - 1] - E1.extra.d) < 1e-6) l.push(E1.extra.K.slice());
-      pasy.push(l.filter(function (q, i) { return !i || Math.hypot(q[0] - l[i - 1][0], q[1] - l[i - 1][1]) > 1e-3; })); // bez zdublowanych
+      [].concat(E0.extra || []).forEach(function (x) { if (Math.abs(rj + dc[0] - x.d) < 1e-6) l.unshift(x.K.slice()); }); // klin odnogi
+      [].concat(E1.extra || []).forEach(function (x) { if (Math.abs(rj + dc[m - 1] - x.d) < 1e-6) l.push(x.K.slice()); });
+      l = l.filter(function (q, i) { return !i || Math.hypot(q[0] - l[i - 1][0], q[1] - l[i - 1][1]) > 1e-3; }); // bez zdublowanych
+      // bez wierzchołków na prostej (< 1 cm od odcinka sąsiadów) – Wojtek usuwa je ręcznie we wzorcach (18:55)
+      for (var c2 = 1; c2 < l.length - 1; c2++) { var a = l[c2 - 1], b = l[c2 + 1], q = l[c2], ab = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        if (ab > 1e-6 && Math.abs((b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0])) / ab < 0.01 && dot([q[0] - a[0], q[1] - a[1]], [q[0] - b[0], q[1] - b[1]]) < 0) l.splice(c2--, 1); }
+      pasy.push(l);
     });
     return { lanes: lanes, pasy: pasy, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
   }

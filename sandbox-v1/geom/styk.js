@@ -69,18 +69,39 @@
       else if (k > 0) { var Cm = add(Xm, Sm, cBm), C = [Cp[0] + (Cm[0] - Cp[0]) * k, Cp[1] + (Cm[1] - Cp[1]) * k];
         S = [nT[0] + (Sm[0] - nT[0]) * k, nT[1] + (Sm[1] - nT[1]) * k]; var o2 = onB(C, S); X = o2.X; cB = o2.cB; }
       var ob = o === st ? null : G.u.rozw({ tIn: tIn, tDir: tDir, nT: nT, N: N, P: P, st: st, ord: ord, T: T, dalej: dalej }, o, B, lo, hi, c, uB);
-      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, lo0: lo, hi0: hi, c: c, X: X, cB: cB, ob: ob };
+      // Odnoga ostra (wzorce 18:55, 3-2+1, 45–90°): odnoga na SWOJEJ osi (offset 0), prosto do pnia. Każda krawędź odnogi
+      // (d) kończy się na przecięciu z odpowiadającą jej krawędzią pasów pnia (D = d + c) – narożnik. Narożnik za przekrojem
+      // pnia w węźle: krawędź pnia kończy się na przekroju (N + nT·D), krawędź odnogi biegnie od tego punktu wzdłuż
+      // krawędzi pnia do narożnika (klin należy do odnogi). Narożnik przed przekrojem: obie krawędzie kończą się w nim.
+      // Gdy któryś narożnik nie leży na 1. odcinku odnogi (mały kąt / krótki odcinek) – dotychczasowa reguła.
+      var nw = null;
+      if (o !== st && !ob) (function () {
+        var nB = left(uB), dt = uB[0] * -tDir[1] - uB[1] * -tDir[0]; if (Math.abs(dt) < 1e-6) return;
+        function kor(d) { var D = d + c, rx = nT[0] * D - nB[0] * d, ry = nT[1] * D - nB[1] * d, t = (rx * -tDir[1] - ry * -tDir[0]) / dt;
+          return { t: t, p: add(add(N, nB, d), uB, t), K: add(N, nT, D) }; }
+        var hw = B.lanes * B.w / 2, ok = [hw, -hw].every(function (d) { var t = kor(d).t * sg; return t >= -1e-6 && t <= seg; });
+        if (!ok) return;
+        var wn = function (q) { return sg * dot([q.p[0] - N[0], q.p[1] - N[1]], tDir) > 1e-6; }; // narożnik za przekrojem pnia
+        nw = { odn: function (d) { return kor(d).p; },
+          pien: function (D) { var q = kor(D - c); return wn(q) ? q.K : q.p; },
+          extra: [] };
+        for (var j = 0; j <= B.lanes; j++) { var q = kor((B.lanes / 2 - j) * B.w); if (wn(q)) nw.extra.push({ d: (B.lanes / 2 - j) * B.w, K: q.K }); }
+      })();
+      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, lo0: lo, hi0: hi, c: c, X: X, cB: cB, ob: ob, nw: nw };
     });
     // Krawędź pasa pnia przy odnodze nie wjeżdża na jezdnię sąsiada od strony prostej (wzorzec 18:31: pień wchodzi pod kątem
     // 16,7°, prosta ma ukos, granica pasów 2|3 przedłużona do narożnika odnogi wchodziła na R2). Gdy wewn. narożnik styku
     // odnogi leży na jezdni sąsiada (za jego zewn. krawędzią) – przeniesiony na narożnik sąsiada, zewn. narożnik bez zmian;
     // styk = odcinek między nimi. Płynnie: głębokość 0 → bez zmian, ≥ 0,1 m → cały. Pień w linii z prostą – bez zmian.
-    function ptT(k, d) { return k.f ? k.f(d) : add(k.X, k.S, d - k.c + k.cB); }
+    function ptT(k, d) { return k.nw ? k.nw.pien(d) : k.f ? k.f(d) : add(k.X, k.S, d - k.c + k.cB); }
     var si = ord.indexOf(st), uSt = tIn ? dirOut(st.B, P) : dirIn(st.B, P);
     [1, -1].forEach(function (dir) { for (var i = si + dir; i >= 0 && i < cand.length; i += dir) {
       var k = cand[i], nb = cand[i - dir]; if (k.ob || nb.ob) break;
-      var db = dir > 0 ? k.hi0 : k.lo0, de = dir > 0 ? k.lo0 : k.hi0, A = ptT(nb, db), A0 = ptT(k, db), Cs = ptT(nb, nb.c);
+      var db = dir > 0 ? k.hi0 : k.lo0, de = dir > 0 ? k.lo0 : k.hi0, A = ptT(nb, db), Cs = ptT(nb, nb.c);
       var cr = function (v) { return uSt[0] * v[1] - uSt[1] * v[0]; }, sd = cr([Cs[0] - A[0], Cs[1] - A[1]]) < 0 ? -1 : 1;
+      if (k.nw) { // odnoga ostra: narożnik nie może leżeć na jezdni sąsiada (pień pod kątem, wzorzec 18:31) – wtedy reguła dawna
+        var Q = k.nw.odn(db - k.c); if (sd * cr([Q[0] - A[0], Q[1] - A[1]]) <= 1e-3) continue; k.nw = null; }
+      var A0 = ptT(k, db);
       var g = sd * cr([A0[0] - A[0], A0[1] - A[1]]); if (g <= 1e-9) continue;
       var t = Math.min(1, g / 0.1), Ai = [A0[0] + (A[0] - A0[0]) * t, A0[1] + (A[1] - A0[1]) * t];
       k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, ptT(k, de));
@@ -99,6 +120,7 @@
       var odsun = st.B === r ? null : { ref: [Cs].concat(dalej(st.B, tIn)), D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2, side: [Cm[0] - Cs[0], Cm[1] - Cs[1]] };
       if (me.ob) return { pt: me.ob.odn, typ: typ, oAuto: -me.ob.cB / r.w, tMin: tMin, odsun: odsun, odsun2: me.ob.pienOdsun, zakret: me.ob.zakret,
         extra: me.ob.K ? { d: me.ob.dK, K: me.ob.K } : null };
+      if (me.nw) return { pt: me.nw.odn, typ: typ, oAuto: 0, tMin: tMin, odsun: odsun, extra: me.nw.extra };
       return { pt: me.f ? function (d) { return me.f(d + me.c - me.cB); } : function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h, bezOb) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi

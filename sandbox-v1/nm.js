@@ -41,8 +41,8 @@
     road([at(-120, 0), at(-60, 0), m], La); road([m, at(60, -8), at(120, -20)], Lb, (Lb - La) / 2); }; } // nowy/kończący pas po prawej
   function rozw(La, Lb, Lc) { return function () { var m = at(0, 0, true);
     road([at(-150, 0), at(-75, 0), m], La);
-    road([m, at(75, 0), at(150, 0)], Lb, (Lb - La) / 2);   // na lewych pasach pnia
-    road([m, at(50, -12), at(110, -40)], Lc, (La - Lc) / 2); }; } // na prawych pasach pnia
+    road([m, at(75, 0), at(150, 0)], Lb);   // pasy przydzielane automatycznie od lewej
+    road([m, at(50, -12), at(110, -40)], Lc); }; }
   var TPL = [
     { k: '1', t: 'Prosto', it: [['2-2', prosto(2, 2)], ['3-3', prosto(3, 3)], ['4-4', prosto(4, 4)]] },
     { k: '2', t: 'Zmiana liczby pasów', it: [['2-3', prosto(2, 3)], ['3-2', prosto(3, 2)], ['3-4', prosto(3, 4)], ['4-3', prosto(4, 3)]] },
@@ -242,6 +242,7 @@
       sc.roads.forEach(function (r) { // offset dróg kończących się w tym punkcie
         ['o0', 'o1'].forEach(function (k, e) {
           if (r.pts[e ? r.pts.length - 1 : 0] !== id) return;
+          if (G.endInfo(sc, r, !e, P()).oAuto != null) return; // offset automatyczny (odnoga rozwidlenia)
           num(body, r.id, 'Offset ' + r.id + ' przy tym końcu [pasy, + w prawo]', function () { return r[k] || 0; }, function (v) { r[k] = v; }, 0.5, -8, 8, sgn);
         });
       });

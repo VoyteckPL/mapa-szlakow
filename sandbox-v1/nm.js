@@ -9,15 +9,15 @@
   var orto = L.tileLayer.wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution',
     { layers: 'Raster', format: 'image/jpeg', maxZoom: 22, attribution: 'Ortofoto © GUGiK' }).addTo(map);
   var gLin = L.layerGroup().addTo(map), gPts = L.layerGroup().addTo(map);
-  var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gTmp = L.layerGroup().addTo(map);
+  var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gAng = L.layerGroup().addTo(map), gTmp = L.layerGroup().addTo(map);
   var ic = function (t, s) { return '<span title="' + t + '">' + s + '</span>'; };
   var lay = L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm },
-    { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka', '▦')]: gGrid },
+    { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka', '▦')]: gGrid, [ic('Kąty między drogami', '∠')]: gAng },
     { position: 'topright', collapsed: true }).addTo(map);
   map.createPane('asf').style.zIndex = 350;
 
   // --- scena, historia ---
-  var sc, sel = null, drawing = null, snap = false, hist = [], last = null;
+  var sc, sel = null, drawing = null, snap = false, snapA = false, hist = [], last = null;
   function xy(ll) { return G.toXY(O, ll); }
   function ll(p) { return G.toLL(O, p); }
   function snapLL(p) { if (!snap) return { lat: p.lat, lng: p.lng }; var q = xy(p); return ll([Math.round(q[0] / GRID) * GRID, Math.round(q[1] / GRID) * GRID]); }
@@ -60,8 +60,32 @@
   // pasy = płaska lista 2·L polilinii: pas j → [2j] lewa, [2j+1] prawa (od lewej).
   H.split = function (lanes) { var o = []; for (var j = 0; j + 1 < lanes.length; j++) o.push(lanes[j].map(function (q) { return q.slice(); }), lanes[j + 1].map(function (q) { return q.slice(); })); return o; };
   function lanesOf(r, p) { var g = G.lines(sc, r, p); if (!g.pasy) g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
+  // sąsiedzi węzła wzdłuż dróg (kierunki odcinków wychodzących z węzła)
+  function nbrs(id) { var o = []; sc.roads.forEach(function (r) { r.pts.forEach(function (q, i) { if (q !== id) return;
+    if (i > 0) o.push(r.pts[i - 1]); if (i < r.pts.length - 1) o.push(r.pts[i + 1]); }); }); return o; }
+  function drawAng() { // warstwa ∠: kąty między kolejnymi odcinkami w każdym węźle (2 odcinki – tylko mniejszy kąt, prosto pomijane)
+    gAng.clearLayers(); if (!map.hasLayer(gAng)) return; var p = P();
+    Object.keys(sc.nodes).forEach(function (id) {
+      var a = nbrs(id).map(function (q) { return Math.atan2(p[q][1] - p[id][1], p[q][0] - p[id][0]); }).sort(function (x, y) { return x - y; });
+      if (a.length < 2) return;
+      a.forEach(function (x, i) {
+        var y = i + 1 < a.length ? a[i + 1] : a[0] + 2 * Math.PI, d = (y - x) * 180 / Math.PI;
+        if (d < 0.5 || (a.length === 2 && d > 180.01) || Math.abs(d - 180) < 0.5) return;
+        var m = (x + y) / 2, c = map.latLngToContainerPoint(ll(p[id])), t = map.containerPointToLatLng(c.add(L.point(Math.cos(m), -Math.sin(m)).multiplyBy(22)));
+        L.marker(t, { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-ang">' + Math.round(d * 10) / 10 + '°</div>' }) }).addTo(gAng);
+      });
+    });
+  }
+  // przyciąganie kąta co 5°: kierunek odcinka sąsiad→węzeł względem innego odcinka u sąsiada (albo osi X), długość bez zmian
+  function snapAng(id, p0) {
+    if (!snapA) return p0; var nb = nbrs(id); if (!nb.length) return p0;
+    var P0 = P(), q = nb[0], Q = P0[q], v = xy(p0), len = Math.hypot(v[0] - Q[0], v[1] - Q[1]);
+    var ref = nbrs(q).filter(function (z) { return z !== id; })[0], b = ref ? Math.atan2(P0[ref][1] - Q[1], P0[ref][0] - Q[0]) : 0;
+    var a = Math.atan2(v[1] - Q[1], v[0] - Q[0]) - b, st = Math.PI / 36; a = Math.round(a / st) * st + b;
+    return ll([Q[0] + Math.cos(a) * len, Q[1] + Math.sin(a) * len]);
+  }
   function drawLines() {
-    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers();
+    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers(); drawAng();
     var p = P();
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
@@ -97,8 +121,8 @@
       var m = L.marker(n, { draggable: true, icon: L.divIcon({ className: '', iconSize: [0, 0],
         html: '<div class="sv-pt' + (n.main ? ' sv-main' : '') + (isSel ? ' sv-sel' : '') + '" title="' + id + (n.main ? ' (Nm)' : '') + '"></div>' }) }).addTo(gPts);
       m.on('click', function (e) { L.DomEvent.stopPropagation(e); nodeClick(id); });
-      m.on('drag', function (e) { var p = e.target.getLatLng(); n.lat = p.lat; n.lng = p.lng; live(); });
-      m.on('dragend', function (e) { var p = snapLL(e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; commit(); draw(); });
+      m.on('drag', function (e) { var p = snapAng(id, e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; live(); });
+      m.on('dragend', function (e) { var p = snapA ? snapAng(id, e.target.getLatLng()) : snapLL(e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; commit(); draw(); });
     });
   }
   var raf = 0; function live() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; drawLines(); }); }
@@ -112,6 +136,7 @@
     for (var y = Math.floor(a[1] / GRID) * GRID; y <= c[1]; y += GRID) pl([[a[0], y], [c[0], y]], st, gGrid);
   }
   map.on('moveend overlayadd', drawGrid);
+  map.on('overlayadd overlayremove', drawAng);
   map.on('zoomend', drawLines);
 
   // --- edycja klikiem ---
@@ -219,6 +244,8 @@
   });
   ctl('topright', function (d) {
     var s = btn(d, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
+    var sa = btn(d, '∠5', 'Przyciąganie kąta co 5° (względem drugiej drogi w sąsiednim węźle)', function () { snapA = !snapA; sa.classList.toggle('on', snapA); });
+    sa.classList.add('sv-tpl');
     var gb = btn(d, '▦' + GRID, 'Rozdzielczość siatki [m]', function () { GRID = GRIDS[(GRIDS.indexOf(GRID) + 1) % GRIDS.length]; gb.textContent = '▦' + GRID; drawGrid(); });
     gb.classList.add('sv-tpl');
     btn(d, '↶', 'Cofnij (Ctrl+Z)', undo);

@@ -80,3 +80,9 @@ Wierzchołki bliżej niż 6 px (np. styk dróg w Nm) mają uchwyty rozsunięte w
 
 ## 2026-11-21 16:20 – rozwidlenie: krawędzie pasów pnia kończą się na styku SWOJEJ odnogi
 Wzorzec Wojtka: 3-2+1, odnoga 1-pasowa pod 90° w prawo, pień z offsetem końca +0,5 (2 lewe pasy w osi prostej). Pasy pnia do prostej kończą się w węźle (przekrój prostopadły), pas 3 skręca w odnogę z miterem (skos przez punkt, gdzie środek pasa 3 przecina linię odnogi). Reguła ogólna w `geom.js`: `lines()` zwraca `pasy` (każdy pas: własna lewa i prawa krawędź); na końcu pnia krawędź pasa kończy się na styku odnogi, do której ten pas prowadzi (`endSection.pt(d, h)`, h = środek pasa). Granica między pasami różnych odnóg ma więc dwa końce. Wcześniej wspólna granica brała skos odnogi także dla pasa prostej. Wynik bez ręcznych zmian = wzorzec 1:1.
+
+## 2026-11-21 16:25 – wzorce, kąty, przyciąganie kąta
+- ⧉: 💾 zapisuje wzorzec (config aktualnej sceny + opis z pola, ręczne krawędzie w `pasy_krawedzie` z `recznie`) do localStorage `sv1-wzorce` i czyści ręczne zmiany; 📚 kopiuje wszystkie `{wzorce: [...]}`; 🗑 usuwa. Licznik „n wz.”.
+- Ręczne krawędzie mają podpis geometrii (`sc.editSig` = węzły + drogi). Po ruchu linii OSM / zmianie drogi są ignorowane (krawędzie znów liczone), następna edycja zaczyna od świeżej geometrii; Ctrl+Z przywraca. (Wcześniej ręczne krawędzie „zamrażały” drogę.)
+- Warstwa ∠ (domyślnie wł.): kąty między liniami OSM w każdym węźle (180° pomijane, przy 2 odcinkach tylko mniejszy kąt).
+- ∠5 (obok 🧲): przeciągany węzeł przyciąga kąt odcinka sąsiad→węzeł co 5° względem drugiej drogi w sąsiednim węźle (bez niej – względem osi X); długość odcinka bez zmian.

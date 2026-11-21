@@ -109,3 +109,4 @@ Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wz
 - 17:27 – większy zoom mapy: maxZoom 25 (było 22), krok 0,25/0,5.
 - 17:35 – ✎: przycisk ⇹ „przywróć szerokość pasa” – klik w wierzchołek krawędzi wzorcowej, druga krawędź tego pasa ustawia się równolegle w odległości w (ukosy w wierzchołkach, końce prostopadłe); w logu operacja `szerokosc`.
 - 17:40 – pamięć ustawień po F5 (`sandbox-v1/ustawienia.js`, localStorage sv1-ustaw): podkład, nakładki, przełączniki (🧲, ∠5, ⊙, ⟋, ⟷, ⇹…) i rozdzielczość siatki ▦.
+- 17:50 – odnoga 90°–135° do drogi na wprost (wzorzec 93°): wewn. krawędź odnogi do krawędzi pasów na wprost (Xin), zewn. krawędzie odnogi i pnia – ukos (Xout); styk pas pnia | odnoga = odcinek narożnik pnia w węźle (K) → Xout, klin K–Xin–Xout należy do odnogi. Wierzchołki krawędzi pnia za cofniętym końcem dociągane do niego. Powyżej 135° bez zmian (brak wzorców). `endSection` → `rozw()`, `extra`.

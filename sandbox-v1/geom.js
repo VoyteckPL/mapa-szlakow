@@ -82,8 +82,27 @@ var G = (function () {
       if (k >= 1) { S = Sm; X = Xm; cB = cBm; }
       else if (k > 0) { var Cm = add(Xm, Sm, cBm), C = [Cp[0] + (Cm[0] - Cp[0]) * k, Cp[1] + (Cm[1] - Cp[1]) * k];
         S = [nT[0] + (Sm[0] - nT[0]) * k, nT[1] + (Sm[1] - nT[1]) * k]; var o2 = onB(C, S); X = o2.X; cB = o2.cB; }
-      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB };
+      var ob = o === st ? null : rozw(o, B, lo, hi, c, uB);
+      return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB, ob: ob };
     });
+    // Odnoga pod kątem > 90° do drogi na wprost (wzorzec 93°, Wojtek 17:32): wewnętrzna krawędź odnogi dochodzi do krawędzi
+    // pasów na wprost (Xin), zewnętrzna krawędź odnogi i zewnętrzna krawędź pnia – ukos (Xout). Styk pas pnia | odnoga =
+    // odcinek od narożnika pnia w węźle (K) do Xout; klin K–Xin–Xout należy do odnogi (jej zewnętrzna krawędź zaczyna się w K).
+    function rozw(o, B, lo, hi, c, uB) {
+      var sg = tIn ? 1 : -1, aS = tIn ? dirOut(st.B, P) : dirIn(st.B, P), aB = [sg * uB[0], sg * uB[1]], aT = [-sg * tDir[0], -sg * tDir[1]];
+      aS = [sg * aS[0], sg * aS[1]]; if (dot(aB, aS) >= 0 || dot(aB, aS) < -0.7072) return null; // 90°–135° (dalej: brak wzorców)
+      var inL = ord.indexOf(st) < ord.indexOf(o), dIn = inL ? hi : lo, dOut = inL ? lo : hi;
+      var K = add(N, nT, dIn), Cb = add(N, nT, c), Pn = P[tIn ? B.pts[1] : B.pts[B.pts.length - 2]], aBe = unit(Cb, Pn);
+      var lB = left([sg * aBe[0], sg * aBe[1]]), si = dot(lB, aS) < 0 ? -1 : 1, wh = B.lanes * B.w / 2;
+      function x(p, u, q, v) { var D = u[0] * v[1] - u[1] * v[0]; if (Math.abs(D) < 1e-6) return null;
+        var t = ((q[0] - p[0]) * v[1] - (q[1] - p[1]) * v[0]) / D; return add(p, u, t); }
+      var Xin = x(add(Cb, lB, si * wh), aBe, K, aS), Xout = x(add(Cb, lB, -si * wh), aBe, add(N, nT, dOut), aT);
+      if (!Xin || !Xout || dot([Xin[0] - K[0], Xin[1] - K[1]], aS) < -1e-6 || dot([Xout[0] - N[0], Xout[1] - N[1]], aT) < -1e-6) return null;
+      var cBo = dot([Cb[0] - N[0], Cb[1] - N[1]], lB), lin = function (A0, A1, u) { return [A0[0] + (A1[0] - A0[0]) * u, A0[1] + (A1[1] - A0[1]) * u]; };
+      return { cB: cBo, K: K, dK: cBo - si * wh,
+        pien: function (d) { return lin(K, Xout, (d - dIn) / (dOut - dIn)); },
+        odn: function (d) { return lin(Xout, Xin, (d - cBo + si * wh) / (2 * si * wh)); } };
+    }
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
       // Odnoga nie może wjechać na drogę na wprost (wzorzec 19, Wojtek 17:00): powrót na własną oś trwa co najmniej tyle,
       // aż linie OSM rozejdą się na pół szerokości obu jezdni: tMin = (kB + kS)·w/2 / sin(kąt między nimi).
@@ -94,10 +113,11 @@ var G = (function () {
       var sc0 = cand.filter(function (k) { return k.B === st.B; })[0], Cs = add(sc0.X, sc0.S, sc0.cB), Cm = add(me.X, me.S, me.cB);
       var nS = left(uS), sd = dot([Cm[0] - Cs[0], Cm[1] - Cs[1]], nS) < 0 ? -1 : 1;
       var odsun = st.B === r ? null : { C: Cs, u: tIn ? uS : [-uS[0], -uS[1]], n: [nS[0] * sd, nS[1] * sd], D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2 };
+      if (me.ob) return { pt: me.ob.odn, typ: typ, oAuto: -me.ob.cB / r.w, tMin: tMin, odsun: odsun, extra: { d: me.ob.dK, K: me.ob.K } };
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
-    return { typ: typ, pien: true, oAuto: oT, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
+    return { typ: typ, pien: true, oAuto: oT, pt: function (d, h, bezOb) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
-      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
+      cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? add(N, nT, d) : k.ob.pien(d)) : add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
         if (v < bv) { bv = v; best = p; } });
       return best || add(N, nT, d);
     } };
@@ -117,7 +137,7 @@ var G = (function () {
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
     var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P);
     var o0 = E0.oAuto != null ? E0.oAuto : r.o0 || 0, o1 = E1.oAuto != null ? E1.oAuto : r.o1 || 0;
-    function hold(E, p0, u, o) { var m = 0; for (var j = 0; j <= L; j++) { var q = E.pt((L / 2 - j - o) * w); m = Math.max(m, Math.abs(dot([q[0] - p0[0], q[1] - p0[1]], u))); } return m + 1; }
+    function hold(E, p0, u, o) { var m = 0; for (var j = 0; j <= L; j++) { var q = E.pt((L / 2 - j - o) * w, null, true); m = Math.max(m, Math.abs(dot([q[0] - p0[0], q[1] - p0[1]], u))); } return m + 1; }
     // odnoga przy Nm (automatyczny offset, nie pień): bez odcinka stałego – od styku od razu prosto na środek
     // (wzorce 2026-11-21 16:57: Wojtek usuwał wierzchołek „styk + 1 m”). Pień i ręczne offsety: jak dotąd.
     var br0 = E0.oAuto != null && !E0.pien, br1 = E1.oAuto != null && !E1.pien;
@@ -174,7 +194,13 @@ var G = (function () {
     var pasy = [];
     for (j = 0; j < L; j++) [0, 1].forEach(function (b) {
       var l = lanes[j + b].map(function (q) { return q.slice(); }), h = (L / 2 - j - 0.5) * w, rj = (L / 2 - j - b) * w;
-      l[0] = endPt(0, rj + dc[0], h + dc[0]); l[m - 1] = endPt(m - 1, rj + dc[m - 1], h + dc[m - 1]); pasy.push(l);
+      l[0] = endPt(0, rj + dc[0], h + dc[0]); l[m - 1] = endPt(m - 1, rj + dc[m - 1], h + dc[m - 1]);
+      // koniec krawędzi cofnięty (ukos odnogi > 90° przed węzłem): wierzchołki za nim dociągnięte do niego (wzorzec 93°)
+      for (var i = m - 2; i > 0 && dot([l[i][0] - l[m - 1][0], l[i][1] - l[m - 1][1]], unit(Q[m - 2], Q[m - 1])) > 1e-6; i--) l[i] = l[m - 1].slice();
+      for (i = 1; i < m - 1 && dot([l[i][0] - l[0][0], l[i][1] - l[0][1]], unit(Q[1], Q[0])) > 1e-6; i++) l[i] = l[0].slice();
+      if (E0.extra && Math.abs(rj + dc[0] - E0.extra.d) < 1e-6) l.unshift(E0.extra.K.slice()); // klin odnogi > 90°
+      if (E1.extra && Math.abs(rj + dc[m - 1] - E1.extra.d) < 1e-6) l.push(E1.extra.K.slice());
+      pasy.push(l);
     });
     return { lanes: lanes, pasy: pasy, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
   }

@@ -15,7 +15,7 @@
       delete S.sc.edits; commit(); draw(); upd();
     });
     btn(row2, '📚', 'Kopiuj wszystkie wzorce', function () {
-      var b = this; copy(JSON.stringify({ strona: 'sandbox-v1.html', wzorce: wz() }, null, 1)); b.textContent = '✓'; setTimeout(function () { b.textContent = '📚'; }, 1200);
+      var b = this; copy(JSON.stringify({ v1: wz().map(krotko) })); b.textContent = '✓'; setTimeout(function () { b.textContent = '📚'; }, 1200);
     });
     btn(row2, '🗑', 'Usuń wszystkie zapisane wzorce', function () { if (wz().length && confirm('Usunąć ' + wz().length + ' wzorców?')) { localStorage.removeItem(WK); upd(); } });
     cnt = L.DomUtil.create('span', 'sv-val', row2);
@@ -59,5 +59,18 @@
     function kr(Pz) { return Pz.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(Pz[2 * j + 1]) }; }); }
   }
 
-  S.config = config;
+  // wzorzec w zapisie krótkim (dla Claude, bez spacji i danych wyliczalnych): t szablon, o środek [lat,lng], n węzły {id:[lat,lng,(1=Nm)]},
+  // r drogi [id, "pkt,pkt", pasy, szer, o0, o1, (turn)], e ręczne krawędzie {droga: [L1,P1,L2,P2…]} (m od środka), op dziennik
+  // [op, droga, pas, krawędź, wierzchołek, z, na], d opis
+  function krotko(c) {
+    var sc = c.scena, f = function (v) { return Math.round(v * 1e8) / 1e8; }, o = { t: sc.tpl, o: sc.srodek ? [f(sc.srodek.lat), f(sc.srodek.lng)] : undefined, n: {}, r: [] };
+    Object.keys(sc.nodes).forEach(function (k) { var q = sc.nodes[k]; o.n[k] = q.main ? [f(q.lat), f(q.lng), 1] : [f(q.lat), f(q.lng)]; });
+    sc.roads.forEach(function (r) { var a = [r.id, r.pts.join(','), r.lanes, r.w, r.o0 || 0, r.o1 || 0]; if (r.turn) a.push(r.turn); o.r.push(a); });
+    (c.drogi || []).forEach(function (d) { if (!d.recznie) return; o.e = o.e || {}; o.e[d.id] = [];
+      d.pasy_krawedzie.forEach(function (p) { o.e[d.id].push(p.lewa, p.prawa); }); });
+    if (c.operacje) o.op = c.operacje.map(function (x) { return [x.op, x.droga, x.pas, x.krawedz, x.w, x.z, x.na]; });
+    if (c.opis) o.d = c.opis;
+    return o;
+  }
+  S.config = config; S.krotko = krotko;
 })();

@@ -1,13 +1,13 @@
 // Sandbox v1: węzeł Nm. Leaflet, rysowanie klikiem, przeciągane punkty, krawędzie pasów.
 (function () {
   var KEY = 'sv1-scena', GRID = 1.75, GRIDS = [0.875, 1.75, 3.5, 5, 10], H = window.SVH = {}, O = { lat: 54.5189, lng: 18.5305 };
-  var map = L.map('map', { zoomControl: false, maxZoom: 22, doubleClickZoom: false }).setView([O.lat, O.lng], 18);
+  var map = L.map('map', { zoomControl: false, maxZoom: 25, zoomSnap: 0.25, zoomDelta: 0.5, wheelPxPerZoomLevel: 120, doubleClickZoom: false }).setView([O.lat, O.lng], 18);
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
   // --- podkłady i warstwy ---
-  var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
+  var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 25, attribution: '© OpenStreetMap' });
   var orto = L.tileLayer.wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution',
-    { layers: 'Raster', format: 'image/jpeg', maxZoom: 22, attribution: 'Ortofoto © GUGiK' }).addTo(map);
+    { layers: 'Raster', format: 'image/jpeg', maxZoom: 25, attribution: 'Ortofoto © GUGiK' }).addTo(map);
   var gLin = L.layerGroup().addTo(map), gPts = L.layerGroup().addTo(map);
   var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gAng = L.layerGroup().addTo(map), gTmp = L.layerGroup().addTo(map);
   var ic = function (t, s) { return '<span title="' + t + '">' + s + '</span>'; };

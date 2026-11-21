@@ -1,12 +1,12 @@
 // Sandbox v1 – geometria w lokalnym układzie [m]. Bez łuków: wszystko kanciaste.
 // Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa) – bez poboczy,
 // o0/o1 – offset jezdni względem linii OSM na początku/końcu, w pasach (+ = w prawo), liniowo po długości.
-// Reguła styku w węźle (Nm): przekrój wspólny dla stykających się dróg, więc pasy stykają się sztywno
-// i zachowują szerokość wzdłuż przekroju:
-//  1 wchodzi + 1 wychodzi  -> przekrój po dwusiecznej kąta (miter),
-//  1 wchodzi + kilka wychodzi (rozwidlenie) -> wszystkie na przekroju prostopadłym do drogi wchodzącej,
-//  kilka wchodzi + 1 wychodzi (włączenie)   -> wszystkie na przekroju prostopadłym do drogi wychodzącej,
-//  wolny koniec / inne -> przekrój prostopadły do własnej drogi.
+// Reguła styku w węźle (Nm), wariant 2 (Wojtek 2026-11-21): każda droga zachowuje szerokość pasa W POPRZEK siebie.
+//  Pień = jedyna droga po jednej stronie węzła (1 wchodzi + kilka wychodzi albo kilka wchodzi + 1 wychodzi).
+//  Każda odnoga styka się z pniem po dwusiecznej kąta pień–odnoga (miter), więc jej pasy trafiają sztywno
+//  w pasy pnia o tym samym położeniu poprzecznym (offset). Pas pnia kończy się na przekroju tej odnogi,
+//  która go pokrywa; granica między odnogami sięga dalej z dwóch przekrojów (bez szczelin). Koniec pnia jest
+//  więc „łamany”, kanciasty. Pas pnia bez odnogi: przekrój prostopadły. Wolny koniec: prostopadły.
 var G = (function () {
   var R = 6378137;
   function toXY(o, ll) {
@@ -25,7 +25,8 @@ var G = (function () {
   function dirIn(r, P) { var n = r.pts.length; return unit(P[r.pts[n - 2]], P[r.pts[n - 1]]); }
   function dirOut(r, P) { return unit(P[r.pts[0]], P[r.pts[1]]); }
 
-  // typ węzła i przekrój dla końca drogi r (atStart: początek)
+  function konst(S) { return function () { return S; }; }
+  // przekrój końca drogi r: f(d) -> wektor S (punkt krawędzi = p + S*d), typ węzła
   function endSection(sc, r, atStart, P) {
     var id = atStart ? r.pts[0] : r.pts[r.pts.length - 1];
     var ins = [], outs = [];
@@ -34,11 +35,21 @@ var G = (function () {
       if (x.pts[x.pts.length - 1] === id) ins.push(x);
       if (x.pts[0] === id) outs.push(x);
     });
-    var own = atStart ? dirOut(r, P) : dirIn(r, P);
-    if (ins.length === 1 && outs.length === 1) return { S: miter(dirIn(ins[0], P), dirOut(outs[0], P)), typ: 'ciag' };
-    if (ins.length === 1 && outs.length > 1) return { S: left(dirIn(ins[0], P)), typ: 'rozwidlenie' };
-    if (outs.length === 1 && ins.length > 1) return { S: left(dirOut(outs[0], P)), typ: 'wlaczenie' };
-    return { S: left(own), typ: ins.length + outs.length > 1 ? 'inny' : 'koniec' };
+    var own = atStart ? dirOut(r, P) : dirIn(r, P), T, Bs, tIn;
+    if (ins.length === 1 && outs.length >= 1) { T = ins[0]; Bs = outs; tIn = true; }
+    else if (outs.length === 1 && ins.length > 1) { T = outs[0]; Bs = ins; tIn = false; }
+    else return { f: konst(left(own)), typ: ins.length + outs.length > 1 ? 'inny' : 'koniec' };
+    var typ = Bs.length === 1 ? 'ciag' : tIn ? 'rozwidlenie' : 'wlaczenie';
+    var Sof = function (B) { return tIn ? miter(dirIn(T, P), dirOut(B, P)) : miter(dirIn(B, P), dirOut(T, P)); };
+    if (r !== T) return { f: konst(Sof(r)), typ: typ };
+    var tDir = tIn ? dirIn(T, P) : dirOut(T, P), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
+    var cand = Bs.map(function (B) { var o = tIn ? B.o0 : B.o1; // offset odnogi w węźle
+      return { S: Sof(B), lo: (-B.lanes / 2 - o) * B.w - 1e-6, hi: (B.lanes / 2 - o) * B.w + 1e-6 }; });
+    return { typ: typ, f: function (d) {
+      var best = null, bv = Infinity;
+      cand.forEach(function (c) { if (d < c.lo || d > c.hi) return; var v = (c.S[0] * uIn[0] + c.S[1] * uIn[1]) * d; if (v < bv) { bv = v; best = c.S; } });
+      return best || left(tDir);
+    } };
   }
   function nodeType(sc, id, P) {
     var r = sc.roads.filter(function (x) { return x.pts.length > 1 && (x.pts[0] === id || x.pts[x.pts.length - 1] === id); })[0];
@@ -50,12 +61,12 @@ var G = (function () {
     var pts = r.pts.map(function (id) { return P[id]; }), n = pts.length, S = [], s = [0];
     for (var i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
     for (i = 0; i < n; i++) {
-      if (i === 0) S.push(endSection(sc, r, true, P).S);
-      else if (i === n - 1) S.push(endSection(sc, r, false, P).S);
-      else S.push(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1])));
+      if (i === 0) S.push(endSection(sc, r, true, P).f);
+      else if (i === n - 1) S.push(endSection(sc, r, false, P).f);
+      else S.push(konst(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1]))));
     }
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
-    function line(dFn) { return pts.map(function (p, i) { var d = dFn(r.o0 + (r.o1 - r.o0) * s[i] / Ltot); return [p[0] + S[i][0] * d, p[1] + S[i][1] * d]; }); }
+    function line(dFn) { return pts.map(function (p, i) { var d = dFn(r.o0 + (r.o1 - r.o0) * s[i] / Ltot); var v = S[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
     var lanes = [];
     for (var j = 0; j <= L; j++) (function (j) { lanes.push(line(function (o) { return (L / 2 - j - o) * w; })); })(j);
     return { lanes: lanes,

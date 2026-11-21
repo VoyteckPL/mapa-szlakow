@@ -1,5 +1,5 @@
 // Sandbox v1 – ręczna edycja krawędzi pasów (warstwa ✎, domyślnie wyłączona).
-// Nadpisania: sc.edits[idDrogi] = [krawędź j (od lewej): [[x,y],...]] w metrach od środka sceny.
+// Nadpisania: sc.edits[idDrogi] = [pas 1 lewa, pas 1 prawa, pas 2 lewa, ...]: [[x,y],...] w metrach od środka sceny (każdy pas ma własne krawędzie).
 // Przeciąganie wierzchołka / odcinka; dwuklik w odcinek dodaje wierzchołek, dwuklik w wierzchołek go usuwa.
 // Domyślnie pojedynczy wierzchołek. ⟷ (albo Shift przy przeciąganiu) = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
@@ -12,16 +12,18 @@
 
   H.lanes = function (r, g) {
     var e = S.sc.edits && S.sc.edits[r.id];
-    if (e && e.length === g.lanes.length) { g.lanes = e.map(cp); g.asfalt = [g.lanes[0], g.lanes[g.lanes.length - 1]]; g.edyt = true; }
+    if (e && e.length === g.lanes.length && e.length > 2) e = S.sc.edits[r.id] = H.split(e); // stary format (wspólne krawędzie)
+    if (e && e.length === g.pasy.length) { g.pasy = e.map(cp); g.asfalt = [g.pasy[0], g.pasy[g.pasy.length - 1]]; g.edyt = true; }
     return g;
   };
   function roads() { return S.sc.roads.filter(function (r) { return r.pts.length > 1; }); }
   function ensure(r) { // pierwsza edycja: kopia wyliczonych krawędzi
     if (!S.sc.edits) S.sc.edits = {};
-    if (!S.sc.edits[r.id] || S.sc.edits[r.id].length !== r.lanes + 1) S.sc.edits[r.id] = G.lines(S.sc, r, S.P()).lanes.map(cp);
+    var g = H.lanes(r, (function (g) { g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, S.P())));
+    if (!S.sc.edits[r.id] || S.sc.edits[r.id].length !== 2 * r.lanes) S.sc.edits[r.id] = g.pasy.map(cp);
     return S.sc.edits[r.id];
   }
-  function all() { var p = S.P(); return roads().map(function (r) { return { r: r, L: H.lanes(r, G.lines(S.sc, r, p)).lanes }; }); }
+  function all() { var p = S.P(); return roads().map(function (r) { return { r: r, L: H.lanes(r, (function (g) { g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, p))).pasy }; }); }
   function px(q) { return map.latLngToContainerPoint(S.ll(q)); }
 
   // przyciąganie punktu q (xy); skip(idDrogi, j, i) – wierzchołki, które się teraz ruszają
@@ -51,7 +53,7 @@
           seg.on('mousedown', function (e) { L.DomEvent.stop(e); dragSeg(r, j, i, e.latlng); });
           seg.on('dblclick', function (e) { L.DomEvent.stop(e); insert(r, j, i, S.xy(e.latlng)); });
         })(i);
-        l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length - 1, P: px(v) }); });
+        l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length / 2, P: px(v) }); });
       });
     });
     // wierzchołki w jednym miejscu (< 6 px) = grupa: zwinięta jeden fioletowy uchwyt; klik rozwija wachlarz z etykietami
@@ -76,8 +78,8 @@
   function handle(h) {
     var r = h.r, j = h.j, i = h.i, off = h.off, at = h.P.add(off);
     if (h.lab) L.polyline([S.ll(h.v), map.containerPointToLatLng(at)], { color: '#000', weight: 1, opacity: 0.6, interactive: false }).addTo(gH);
-    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + (h.multi ? ' sv-multi' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + j + '/' + h.n + 'p</div>' : '');
-    var m = L.marker(map.containerPointToLatLng(at), { draggable: true, title: 'Droga ' + r.id + ', krawędź ' + j + ' (od lewej, 0–' + h.n + '), ' + h.n + ' pasy, wierzchołek ' + i,
+    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + (h.multi ? ' sv-multi' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + ((j >> 1) + 1) + '/' + h.n + 'p ' + (j % 2 ? 'P' : 'L') + '</div>' : '');
+    var m = L.marker(map.containerPointToLatLng(at), { draggable: true, title: 'Droga ' + r.id + ', pas ' + ((j >> 1) + 1) + ' z ' + h.n + ' (od lewej), krawędź ' + (j % 2 ? 'prawa' : 'lewa') + ', wierzchołek ' + i,
       icon: L.divIcon({ className: '', iconSize: [0, 0], html: html }) }).addTo(gH);
     var orig;
     m.on('dragstart', function () { orig = ensure(r).map(cp); });

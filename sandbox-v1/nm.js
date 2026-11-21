@@ -56,19 +56,24 @@
   // --- rysowanie ---
   function P() { var o = {}; for (var k in sc.nodes) o[k] = xy(sc.nodes[k]); return o; }
   function pl(line, opt, g) { return L.polyline(line.map(ll), opt).addTo(g); }
-  function lanesOf(r, p) { var g = G.lines(sc, r, p); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
+  // każdy pas ma własne krawędzie (lewa, prawa) – wspólna granica zdublowana, więc pasy edytuje się niezależnie.
+  // pasy = płaska lista 2·L polilinii: pas j → [2j] lewa, [2j+1] prawa (od lewej).
+  H.split = function (lanes) { var o = []; for (var j = 0; j + 1 < lanes.length; j++) o.push(lanes[j].map(function (q) { return q.slice(); }), lanes[j + 1].map(function (q) { return q.slice(); })); return o; };
+  function lanesOf(r, p) { var g = G.lines(sc, r, p); g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
   function drawLines() {
     gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers();
     var p = P();
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
       var g = lanesOf(r, p);
-      for (var k = 0; k + 1 < g.lanes.length; k++) // asfalt osobno dla każdego pasa (między jego krawędziami)
-        L.polygon(g.lanes[k].concat(g.lanes[k + 1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
-      g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
+      var Pz = g.pasy;
+      for (var k = 0; k + 1 < Pz.length; k += 2) { // asfalt osobno dla każdego pasa (między jego własnymi krawędziami)
+        L.polygon(Pz[k].concat(Pz[k + 1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
+        [0, -1].forEach(function (q, e) { if (!g.zamkn[e]) return; // poprzeczne krawędzie końców pasów
+          pl([Pz[k][q < 0 ? Pz[k].length - 1 : 0], Pz[k + 1][q < 0 ? Pz[k + 1].length - 1 : 0]], { color: '#ffeb3b', weight: 2, interactive: false }, gEdge); });
+      }
+      Pz.forEach(function (l, k) { var e = k === 0 || k === Pz.length - 1;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
-      [0, -1].forEach(function (k, e) { if (!g.zamkn[e]) return; // poprzeczne krawędzie końców pasów
-        pl(g.lanes.map(function (l) { return l[k < 0 ? l.length - 1 : 0]; }), { color: '#ffeb3b', weight: 2, interactive: false }, gEdge); });
       var isSel = sel && sel.t === 'road' && sel.id === r.id;
       var osmLine = L.polyline(r.pts.map(function (id) { return sc.nodes[id]; }), { color: isSel ? '#ff1744' : '#2979ff', weight: isSel ? 4 : 2.5, dashArray: '8 6' }).addTo(gLin);
       var hit = L.polyline(osmLine.getLatLngs(), { opacity: 0, weight: 18 }).addTo(gLin); // szeroka strefa klikania
@@ -212,11 +217,11 @@
   function config(opis) {
     var p = P(), r2 = function (v) { return Math.round(v * 100) / 100; }, pts = function (l) { return l.map(function (q) { return q.map(r2); }); };
     return { strona: 'sandbox-v1.html', opis: opis, szablon: sc.tpl,
-      uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; krawedzie od lewej',
+      uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; pasy od lewej, kazdy pas ma wlasna lewa i prawa krawedz',
       wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2) }; }),
       drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = lanesOf(r, p);
         return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0,
-          krawedzie_pasow: g.lanes.map(pts), recznie: g.edyt || undefined }; }),
+          pasy_krawedzie: g.pasy.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(g.pasy[2 * j + 1]) }; }), recznie: g.edyt || undefined }; }),
       scena: sc };
   }
 

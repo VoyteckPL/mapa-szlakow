@@ -12,7 +12,7 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - Wojtek ogląda wynik sam (lokalnie `python -m http.server 8000` → `localhost:8000/sandbox-drog.html`, F5). Zrzuty ekranu rób tylko, gdy to naprawdę potrzebne.
 
 ## Budowa starego sandboksu (tylko podgląd)
-**Aktualny sandbox: `sandbox-v1.html` + `sandbox-v1/` (od 2026-11-21, zob. docs/POSTEP.md).**
+**Aktualny sandbox: `sandbox-v1.html` + `sandbox-v1/` (od 2026-11-21, zob. docs/POSTEP.md):** `geom.js` – geometria (offsety, styk w Nm, krawędzie pasów), `nm.js` – mapa Leaflet, rysowanie, panele, szablony, config (`window.SV` = API), `edycja.js` – ręczna edycja krawędzi (warstwa ✎), `nm.css`. Pliki ładowane z `?v=czas` (bez cache).
 
 `sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):
 - `1-uklad.js` – stałe, geometria, model drogi, `offBase/offAt` (offset osi w pasach), `comp()` (oś, szerokość `w`, offset `d` drogi), `skelFork`, **`layout()`** (węzły, rozjazdy, zszywanie styków, linie, strzałki).

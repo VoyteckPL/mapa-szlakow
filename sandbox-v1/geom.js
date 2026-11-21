@@ -116,7 +116,7 @@ var G = (function () {
         hold: function (d) { return lin(lin(Xin, Xout, (d - dIn) / (dOut - dIn)), add(N, nT, d), hk); },
         odn: function (d) { return lin(Xout, Xin, (d - cBo + si * wh) / (2 * si * wh)); },
         // pień jako przeszkoda: oś odnogi za węzłem ≥ ½ szer. odnogi od zewn. krawędzi pnia
-        pienOdsun: { C: E0, u: aT, n: nOut, D: wh },
+        pienOdsun: { C: E0, u: aT, n: nOut, D: wh, L: tIn ? Math.hypot(P[T.pts[T.pts.length - 2]][0] - N[0], P[T.pts[T.pts.length - 2]][1] - N[1]) : Math.hypot(P[T.pts[1]][0] - N[0], P[T.pts[1]][1] - N[1]) },
         zakret: zakret ? { e: aBe, C: E0, n: nOut, D: wh } : null };
     }
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
@@ -128,7 +128,8 @@ var G = (function () {
       // (kB + kS)·w/2 od osi drogi na wprost – gdy punkt OSM leży bliżej, oś odsuwa się prostopadle do tej drogi.
       var sc0 = cand.filter(function (k) { return k.B === st.B; })[0], Cs = add(sc0.X, sc0.S, sc0.cB), Cm = add(me.X, me.S, me.cB);
       var nS = left(uS), sd = dot([Cm[0] - Cs[0], Cm[1] - Cs[1]], nS) < 0 ? -1 : 1;
-      var odsun = st.B === r ? null : { C: Cs, u: tIn ? uS : [-uS[0], -uS[1]], n: [nS[0] * sd, nS[1] * sd], D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2 };
+      var odsun = st.B === r ? null : { C: Cs, u: tIn ? uS : [-uS[0], -uS[1]], n: [nS[0] * sd, nS[1] * sd], D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2,
+        L: tIn ? Math.hypot(P[st.B.pts[1]][0] - N[0], P[st.B.pts[1]][1] - N[1]) : Math.hypot(P[st.B.pts[st.B.pts.length - 2]][0] - N[0], P[st.B.pts[st.B.pts.length - 2]][1] - N[1]) };
       if (me.ob) return { pt: me.ob.odn, typ: typ, oAuto: -me.ob.cB / r.w, tMin: tMin, odsun: odsun, odsun2: me.ob.pienOdsun, zakret: me.ob.zakret,
         extra: me.ob.K ? { d: me.ob.dK, K: me.ob.K } : null };
       return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
@@ -185,14 +186,14 @@ var G = (function () {
     }
     var m = Q.length, dc = Qs.map(function (x) { return -off(x) * w; }); // przesunięcie osi jezdni [m, + w lewo]
     var A = Q.map(function (p, i) { if (i === 0) return E0.pt(dc[i]); if (i === m - 1) return E1.pt(dc[i]); var v = QS[i](dc[i]); return add(p, v, dc[i]); });
-    // odsunięcie od drogi na wprost (zob. endSection.odsun): punkty osi do pierwszego węzła OSM za Nm
+    // odsunięcie od drogi na wprost (zob. endSection.odsun): WSZYSTKIE punkty osi odnogi leżące wzdłuż pierwszego odcinka tej
+    // drogi (wzorzec 17:57: n6 blisko R2, n7 dalej – pas zostaje równoległy, nie nachodzi na R2)
     // + pień jako przeszkoda dla odnogi > 90° (odsun2)
     [[E0, 0, 'odsun'], [E1, 1, 'odsun'], [E0, 0, 'odsun2'], [E1, 1, 'odsun2']].forEach(function (z) { var o = z[0][z[2]], Eo = z[1] ? E0 : E1; if (!o) return;
       for (var q = 1; q < m; q++) { var ii = z[1] ? m - 1 - q : q;
-        if (z[1] ? Qs[ii] < s[n - 2] - 0.01 : Qs[ii] > s[1] + 0.01) break;
         if ((ii === 0 || ii === m - 1) && Eo.typ !== 'koniec') break; // drugi koniec w węźle – styk ustala węzeł
         var v = [A[ii][0] - o.C[0], A[ii][1] - o.C[1]], g = dot(v, o.n);
-        if (dot(v, o.u) > 0 && g < o.D) A[ii] = add(A[ii], o.n, o.D - g); } });
+        var al = dot(v, o.u); if (al > 0 && al <= o.L + 1e-6 && g < o.D) A[ii] = add(A[ii], o.n, o.D - g); } });
     // zakręt odnogi > 100° (wzorzec 137,7°): od styku w kierunku wyjścia e, aż oś jest ½ szer. odnogi za zewn. krawędzią pnia
     [[E0, 0], [E1, 1]].forEach(function (z) { var Z = z[0].zakret; if (!Z) return;
       var i0 = z[1] ? m - 1 : 0, Cj = A[i0], e = Z.e, de = dot(e, Z.n), sz = (Z.D - dot([Cj[0] - Z.C[0], Cj[1] - Z.C[1]], Z.n)) / (de || 1);

@@ -108,3 +108,4 @@ Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wz
 - 17:30 – odnoga nie wchodzi na sąsiednią jezdnię (4 wzorce, n6 blisko R2): oś odnogi do pierwszego węzła OSM trzyma się ≥ (kB+kS)·w/2 od osi drogi na wprost; bliżej → odsunięcie prostopadle do tej drogi (R3 zostaje w paśmie pasa 3, równolegle). `endSection().odsun` + korekta osi w `lines()`. Wszystkie wzorce zgodne (≤0,06 m), stare bez zmian.
 - 17:27 – większy zoom mapy: maxZoom 25 (było 22), krok 0,25/0,5.
 - 17:35 – ✎: przycisk ⇹ „przywróć szerokość pasa” – klik w wierzchołek krawędzi wzorcowej, druga krawędź tego pasa ustawia się równolegle w odległości w (ukosy w wierzchołkach, końce prostopadłe); w logu operacja `szerokosc`.
+- 17:40 – pamięć ustawień po F5 (`sandbox-v1/ustawienia.js`, localStorage sv1-ustaw): podkład, nakładki, przełączniki (🧲, ∠5, ⊙, ⟋, ⟷, ⇹…) i rozdzielczość siatki ▦.

@@ -89,7 +89,12 @@ var G = (function () {
       // aż linie OSM rozejdą się na pół szerokości obu jezdni: tMin = (kB + kS)·w/2 / sin(kąt między nimi).
       var tMin = 0, uS = tIn ? dirOut(st.B, P) : dirIn(st.B, P), uR = tIn ? dirOut(r, P) : dirIn(r, P), sn = Math.abs(uS[0] * uR[1] - uS[1] * uR[0]);
       if (st.B !== r) tMin = sn > 1e-3 ? (r.lanes * r.w + st.B.lanes * st.B.w) / 2 / sn : Infinity;
-      return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin }; }
+      // Odnoga nie wchodzi na sąsiednią jezdnię (wzorce 17:19, n6 blisko R2): oś odnogi trzyma się co najmniej
+      // (kB + kS)·w/2 od osi drogi na wprost – gdy punkt OSM leży bliżej, oś odsuwa się prostopadle do tej drogi.
+      var sc0 = cand.filter(function (k) { return k.B === st.B; })[0], Cs = add(sc0.X, sc0.S, sc0.cB), Cm = add(me.X, me.S, me.cB);
+      var nS = left(uS), sd = dot([Cm[0] - Cs[0], Cm[1] - Cs[1]], nS) < 0 ? -1 : 1;
+      var odsun = st.B === r ? null : { C: Cs, u: tIn ? uS : [-uS[0], -uS[1]], n: [nS[0] * sd, nS[1] * sd], D: (r.lanes * r.w + st.B.lanes * st.B.w) / 2 };
+      return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
       cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
@@ -143,6 +148,13 @@ var G = (function () {
     }
     var m = Q.length, dc = Qs.map(function (x) { return -off(x) * w; }); // przesunięcie osi jezdni [m, + w lewo]
     var A = Q.map(function (p, i) { if (i === 0) return E0.pt(dc[i]); if (i === m - 1) return E1.pt(dc[i]); var v = QS[i](dc[i]); return add(p, v, dc[i]); });
+    // odsunięcie od drogi na wprost (zob. endSection.odsun): punkty osi do pierwszego węzła OSM za Nm
+    [[E0, 0], [E1, 1]].forEach(function (z) { var o = z[0].odsun, Eo = z[1] ? E0 : E1; if (!o) return;
+      for (var q = 1; q < m; q++) { var ii = z[1] ? m - 1 - q : q;
+        if (z[1] ? Qs[ii] < s[n - 2] - 0.01 : Qs[ii] > s[1] + 0.01) break;
+        if ((ii === 0 || ii === m - 1) && Eo.typ !== 'koniec') break; // drugi koniec w węźle – styk ustala węzeł
+        var v = [A[ii][0] - o.C[0], A[ii][1] - o.C[1]], g = dot(v, o.n);
+        if (dot(v, o.u) > 0 && g < o.D) A[ii] = add(A[ii], o.n, o.D - g); } });
     // wolny koniec: przekrój prostopadły do FAKTYCZNEJ osi jezdni (także gdy oś jest skośna przez offset) – Wojtek 17:04
     function endPt(i, d, h) {
       var E = i ? E1 : E0; if (E.typ !== 'koniec') return E.pt(d, h);

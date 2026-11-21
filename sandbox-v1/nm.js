@@ -64,32 +64,8 @@
   // pasy = płaska lista 2·L polilinii: pas j → [2j] lewa, [2j+1] prawa (od lewej).
   H.split = function (lanes) { var o = []; for (var j = 0; j + 1 < lanes.length; j++) o.push(lanes[j].map(function (q) { return q.slice(); }), lanes[j + 1].map(function (q) { return q.slice(); })); return o; };
   function lanesOf(r, p) { var g = G.lines(sc, r, p); if (!g.pasy) g.pasy = H.split(g.lanes); return H.lanes ? H.lanes(r, g) : g; } // ręczne nadpisania (edycja.js)
-  // sąsiedzi węzła wzdłuż dróg (kierunki odcinków wychodzących z węzła)
-  function nbrs(id) { var o = []; sc.roads.forEach(function (r) { r.pts.forEach(function (q, i) { if (q !== id) return;
-    if (i > 0) o.push(r.pts[i - 1]); if (i < r.pts.length - 1) o.push(r.pts[i + 1]); }); }); return o; }
-  function drawAng() { // warstwa ∠: kąty między kolejnymi odcinkami w każdym węźle (2 odcinki – tylko mniejszy kąt, prosto pomijane)
-    gAng.clearLayers(); if (!map.hasLayer(gAng)) return; var p = P();
-    Object.keys(sc.nodes).forEach(function (id) {
-      var a = nbrs(id).map(function (q) { return Math.atan2(p[q][1] - p[id][1], p[q][0] - p[id][0]); }).sort(function (x, y) { return x - y; });
-      if (a.length < 2) return;
-      a.forEach(function (x, i) {
-        var y = i + 1 < a.length ? a[i + 1] : a[0] + 2 * Math.PI, d = (y - x) * 180 / Math.PI;
-        if (d < 0.5 || (a.length === 2 && d > 180.01) || Math.abs(d - 180) < 0.5) return;
-        var m = (x + y) / 2, c = map.latLngToContainerPoint(ll(p[id])), t = map.containerPointToLatLng(c.add(L.point(Math.cos(m), -Math.sin(m)).multiplyBy(22)));
-        L.marker(t, { interactive: false, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-ang">' + Math.round(d * 10) / 10 + '°</div>' }) }).addTo(gAng);
-      });
-    });
-  }
-  // przyciąganie kąta co 5°: kierunek odcinka sąsiad→węzeł względem innego odcinka u sąsiada (albo osi X), długość bez zmian
-  function snapAng(id, p0) {
-    if (!snapA) return p0; var nb = nbrs(id); if (!nb.length) return p0;
-    var P0 = P(), q = nb[0], Q = P0[q], v = xy(p0), len = Math.hypot(v[0] - Q[0], v[1] - Q[1]);
-    var ref = nbrs(q).filter(function (z) { return z !== id; })[0], b = ref ? Math.atan2(P0[ref][1] - Q[1], P0[ref][0] - Q[0]) : 0;
-    var a = Math.atan2(v[1] - Q[1], v[0] - Q[0]) - b, st = Math.PI / 36; a = Math.round(a / st) * st + b;
-    return ll([Q[0] + Math.cos(a) * len, Q[1] + Math.sin(a) * len]);
-  }
   function drawLines() {
-    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers(); drawAng();
+    gLin.clearLayers(); gEdge.clearLayers(); gAsf.clearLayers(); if (H.drawAng) H.drawAng();
     var p = P();
     sc.roads.forEach(function (r) {
       if (r.pts.length < 2) return;
@@ -125,12 +101,12 @@
       var m = L.marker(n, { draggable: true, icon: L.divIcon({ className: '', iconSize: [0, 0],
         html: '<div class="sv-pt' + (n.main ? ' sv-main' : '') + (isSel ? ' sv-sel' : '') + '" title="' + id + (n.main ? ' (Nm)' : '') + '"></div>' }) }).addTo(gPts);
       m.on('click', function (e) { L.DomEvent.stopPropagation(e); nodeClick(id); });
-      m.on('drag', function (e) { var p = snapAng(id, e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; live(); });
-      m.on('dragend', function (e) { var p = snapA ? snapAng(id, e.target.getLatLng()) : snapLL(e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; commit(); draw(); });
+      m.on('drag', function (e) { var p = H.snapAng(id, e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; live(); });
+      m.on('dragend', function (e) { var p = snapA ? H.snapAng(id, e.target.getLatLng()) : snapLL(e.target.getLatLng()); n.lat = p.lat; n.lng = p.lng; commit(); draw(); });
     });
   }
   var raf = 0; function live() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; drawLines(); }); }
-  function draw() { drawLines(); drawPts(); panel(); drawGrid(); gTmp.clearLayers(); if (H.afterDraw) H.afterDraw(); }
+  function draw() { drawLines(); drawPts(); if (H.panel) H.panel(); drawGrid(); gTmp.clearLayers(); if (H.afterDraw) H.afterDraw(); }
   function drawGrid() {
     gGrid.clearLayers(); if (!map.hasLayer(gGrid) || map.getZoom() < 16) return;
     var b = map.getBounds(), a = xy(b.getSouthWest()), c = xy(b.getNorthEast());
@@ -140,8 +116,7 @@
     for (var y = Math.floor(a[1] / GRID) * GRID; y <= c[1]; y += GRID) pl([[a[0], y], [c[0], y]], st, gGrid);
   }
   map.on('moveend overlayadd', drawGrid);
-  map.on('overlayadd overlayremove', drawAng);
-  map.on('zoomend', drawLines);
+    map.on('zoomend', drawLines);
 
   // --- edycja klikiem ---
   // Klik w pusty obszar: dodaje punkt (zaczyna nową linię; od zaznaczonego węzła, jeśli jest).
@@ -217,107 +192,12 @@
     });
   });
 
-  // menu warstw Leaflet (zawsze otwarte, ikona zwija/rozwija listę): wzorce, przyciąganie/siatka, cofnij/ponów (Wojtek 18:08)
-  (function () {
-    var C = lay.getContainer(), list = C.querySelector('.leaflet-control-layers-list'), tg = C.querySelector('.leaflet-control-layers-toggle');
-    tg.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); list.classList.toggle('sv-hide'); });
-    var box = L.DomUtil.create('div', 'sv-lmenu', list);
-    // wzorce: zrzuty kolejnych ustawień (kąt, offsety, ręczne krawędzie) zbierane lokalnie, na koniec kopiowane razem
-    var WK = 'sv1-wzorce', wz = function () { try { return JSON.parse(localStorage.getItem(WK)) || []; } catch (e) { return []; } };
-    var row2 = L.DomUtil.create('div', 'sv-row', box), cnt;
-    btn(row2, '💾', 'Zapisz wzorzec (aktualna scena); potem ręczne zmiany są czyszczone', function () {
-      var c = config(''); delete c.scena.edits; delete c.scena.editSig; delete c.scena.log; delete sc.log; c.nr = wz().length + 1;
-      var a = wz(); a.push(c); try { localStorage.setItem(WK, JSON.stringify(a)); } catch (e) {}
-      delete sc.edits; commit(); draw(); upd();
-    });
-    btn(row2, '📚', 'Kopiuj wszystkie wzorce', function () {
-      var b = this; copy(JSON.stringify({ strona: 'sandbox-v1.html', wzorce: wz() }, null, 1)); b.textContent = '✓'; setTimeout(function () { b.textContent = '📚'; }, 1200);
-    });
-    btn(row2, '🗑', 'Usuń wszystkie zapisane wzorce', function () { if (wz().length && confirm('Usunąć ' + wz().length + ' wzorców?')) { localStorage.removeItem(WK); upd(); } });
-    cnt = L.DomUtil.create('span', 'sv-val', row2);
-    function upd() { cnt.textContent = wz().length + ' wz.'; } upd();
-    var row3 = L.DomUtil.create('div', 'sv-row', box);
-    var s = btn(row3, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
-    var gb = btn(row3, '▦' + GRID, 'Rozdzielczość siatki [m]', function () { GRID = GRIDS[(GRIDS.indexOf(GRID) + 1) % GRIDS.length]; gb.textContent = '▦' + GRID; drawGrid(); });
-    gb.classList.add('sv-tpl');
-    var sa = btn(row3, '∠5', 'Przyciąganie kąta co 5° (względem drugiej drogi w sąsiednim węźle)', function () { snapA = !snapA; sa.classList.toggle('on', snapA); });
-    sa.classList.add('sv-tpl');
-    var row4 = L.DomUtil.create('div', 'sv-row', box);
-    btn(row4, '↶', 'Cofnij (Ctrl+Z)', undo); btn(row4, '↷', 'Ponów (Ctrl+Y / Ctrl+Shift+Z)', redo);
-  })();
-  function copy(txt) {
-    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).catch(function () {
-      var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
-    });
-  }
-  function auto(r, p) { var g = G.lines(sc, r, p); return g.pasy || H.split(g.lanes); } // geometria z reguł (bez ręcznych zmian)
-  function katy(id, p) { // kąty między kolejnymi liniami OSM w węźle [°], z nazwami dróg
-    var a = []; sc.roads.forEach(function (r) { r.pts.forEach(function (q, i) { if (q !== id) return;
-      if (i > 0) a.push({ d: r.id, q: r.pts[i - 1] }); if (i < r.pts.length - 1) a.push({ d: r.id, q: r.pts[i + 1] }); }); });
-    if (a.length < 2) return undefined;
-    a.forEach(function (o) { o.t = Math.atan2(p[o.q][1] - p[id][1], p[o.q][0] - p[id][0]); }); a.sort(function (x, y) { return x.t - y.t; });
-    return a.map(function (o, i) { var b = a[(i + 1) % a.length], d = (b.t - o.t) * 180 / Math.PI; if (d <= 0) d += 360;
-      return { miedzy: [o.d, b.d], kat: Math.round(d * 10) / 10 }; }).filter(function (o) { return a.length > 2 || o.kat <= 180; });
-  }
-  function config(opis) {
-    var p = P(), r2 = function (v) { return Math.round(v * 100) / 100; }, pts = function (l) { return l.map(function (q) { return q.map(r2); }); };
-    var c0 = { strona: 'sandbox-v1.html', opis: opis, szablon: sc.tpl,
-      uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; pasy od lewej, kazdy pas ma wlasna lewa i prawa krawedz',
-      wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2), katy: katy(k, p) }; }),
-      drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = lanesOf(r, p);
-        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0,
-          offset_auto: [G.endInfo(sc, r, true, p).oAuto, G.endInfo(sc, r, false, p).oAuto].map(function (v) { return v == null ? null : r2(v); }),
-          pasy_krawedzie: kr(g.pasy), recznie: g.edyt || undefined,
-          pasy_krawedzie_auto: g.edyt ? kr(auto(r, p)) : undefined }; }),
-      scena: sc };
-    if (c0.drogi.some(function (d) { return d.recznie; }) && sc.log) c0.operacje = sc.log; // dziennik ręcznych zmian
-    return c0;
-    function kr(Pz) { return Pz.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(Pz[2 * j + 1]) }; }); }
-  }
-
-  // prawy dolny: zaznaczona droga lub punkt
-  var rp; ctl('bottomright', function (d) { rp = d; });
-  function num(body, icon, title, get, setv, step, min, max, fmt) {
-    var rw = L.DomUtil.create('div', 'sv-row', body), s = L.DomUtil.create('span', 'sv-val', rw); s.textContent = icon; s.title = title;
-    function ch(dv) { var v = Math.round((get() + dv) * 100) / 100; if (v < min || v > max) return; setv(v); commit(); draw(); }
-    btn(rw, '−', title + ' −', function () { ch(-step); });
-    var v = L.DomUtil.create('span', 'sv-val', rw); v.textContent = fmt ? fmt(get()) : get();
-    btn(rw, '+', title + ' +', function () { ch(step); });
-  }
-  var sgn = function (v) { return (v > 0 ? '+' : '') + v; };
-  function panel() {
-    rp.innerHTML = ''; rp.classList.toggle('sv-hide', !sel); if (!sel) return;
-    var body = L.DomUtil.create('div', 'sv-body', rp);
-    if (sel.t === 'road') {
-      var r = sc.roads.filter(function (x) { return x.id === sel.id; })[0]; if (!r) { sel = null; return panel(); }
-      num(body, '≡', 'Liczba pasów', function () { return r.lanes; }, function (v) { r.lanes = v; }, 1, 1, 8);
-      num(body, '↔', 'Szerokość pasa [m]', function () { return r.w; }, function (v) { r.w = v; }, 0.25, 2.5, 5);
-      var rw = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', rw).textContent = r.id;
-      btn(rw, '⇄', 'Odwróć kierunek', function () { r.pts.reverse(); var a = r.o0 || 0; r.o0 = -(r.o1 || 0); r.o1 = -a; commit(); draw(); });
-      btn(rw, '🗑', 'Usuń drogę (Del)', function () { sc.roads.splice(sc.roads.indexOf(r), 1); cleanup(); sel = null; commit(); draw(); });
-    } else {
-      var id = sel.id, n = sc.nodes[id]; if (!n) { sel = null; return panel(); }
-      var top = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', top).textContent = id;
-      var nb = btn(top, '◉', 'Nm (węzeł główny)', function () { n.main = !n.main; commit(); draw(); }); nb.classList.toggle('on', !!n.main);
-      btn(top, '🗑', 'Usuń punkt (Del)', function () { delNode(id); sel = null; commit(); draw(); });
-      sc.roads.forEach(function (r) { // offset dróg kończących się w tym punkcie
-        ['o0', 'o1'].forEach(function (k, e) {
-          if (r.pts[e ? r.pts.length - 1 : 0] !== id) return;
-          if (G.endInfo(sc, r, !e, P()).oAuto != null) return; // offset automatyczny (odnoga rozwidlenia)
-          num(body, r.id, 'Offset ' + r.id + ' przy tym końcu [pasy, + w prawo]', function () { return r[k] || 0; }, function (v) { r[k] = v; }, 0.5, -8, 8, sgn);
-        });
-      });
-    }
-  }
-
   // API dla edycja.js
   window.SV = { map: map, layers: lay, get sc() { return sc; }, xy: xy, ll: ll, P: P, commit: commit, draw: draw, drawLines: drawLines,
-    grid: function () { return GRID; }, snapOn: function () { return snap; }, ctl: ctl, btn: btn };
-  // --- start ---
-  var saved = null; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-  // widok mapy (środek, zoom) pamiętany po F5
-  var V = null; try { V = JSON.parse(localStorage.getItem('sv1-widok')); } catch (e) {}
-  map.on('moveend', function () { try { var c = map.getCenter(); localStorage.setItem('sv1-widok', JSON.stringify({ lat: c.lat, lng: c.lng, z: map.getZoom() })); } catch (e) {} });
-  if (saved && saved.roads) { setScene(saved); last = JSON.stringify(sc); if (V) map.setView([V.lat, V.lng], V.z); else map.setView([O.lat, O.lng], 18); draw(); }
-  else loadTpl('2-2', TPL[0].it[0][1]);
+    grid: function () { return GRID; }, snapOn: function () { return snap; }, ctl: ctl, btn: btn,
+    // dla modułów nm-*.js (katy, menu, panel, start)
+    get sel() { return sel; }, set sel(v) { sel = v; }, get snap() { return snap; }, set snap(v) { snap = v; },
+    get snapA() { return snapA; }, set snapA(v) { snapA = v; }, get GRID() { return GRID; }, set GRID(v) { GRID = v; }, GRIDS: GRIDS,
+    get O() { return O; }, set O(v) { O = v; }, gAng: gAng, drawGrid: drawGrid, undo: undo, redo: redo, lanesOf: lanesOf, cleanup: cleanup, delNode: delNode,
+    setScene: setScene, loadTpl: loadTpl, TPL: TPL, get last() { return last; }, set last(v) { last = v; }, KEY: KEY };
 })();

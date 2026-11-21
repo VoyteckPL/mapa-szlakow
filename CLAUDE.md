@@ -12,7 +12,10 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - Wojtek ogląda wynik sam (lokalnie `python -m http.server 8000` → `localhost:8000/sandbox-drog.html`, F5). Zrzuty ekranu rób tylko, gdy to naprawdę potrzebne.
 
 ## Budowa starego sandboksu (tylko podgląd)
-**Aktualny sandbox: `sandbox-v1.html` + `sandbox-v1/` (od 2026-11-21, zob. docs/POSTEP.md):** `geom.js` – geometria (offsety, styk w Nm, krawędzie pasów), `nm.js` – mapa Leaflet, rysowanie, panele, szablony, config (`window.SV` = API), `edycja.js` – ręczna edycja krawędzi (warstwa ✎), `ustawienia.js` – pamięć warstw i przełączników po F5, `nm.css`. Pliki ładowane z `?v=czas` (bez cache).
+**Aktualny sandbox: `sandbox-v1.html` + `sandbox-v1/` (od 2026-11-21, zob. docs/POSTEP.md).** Pliki ładowane po kolei z `?v=czas` (lista w `sandbox-v1.html`, `GEOM` = geometria):
+- `geom/baza.js` (G, układ m, wektory, miter), `geom/odsun.js` (drogi nie nachodzą: `clearP`, `odsunPtE`), `geom/rozw-tepy.js` (odnoga > 90°), `geom/styk.js` (styk w Nm: `endSection`, `nodeType`), `geom/pasy.js` (`lines` – krawędzie pasów). Wspólne pomocnicze w `G.u`.
+- `nm.js` (mapa Leaflet, scena, cofnij, rysowanie, edycja klikiem, szablony, API `window.SV`), `nm-katy.js` (warstwa ∠, przyciąganie 5°), `nm-menu.js` (menu warstw: wzorce 💾📚🗑, siatka, cofnij; `config` = JSON dla Claude), `nm-panel.js` (panel zaznaczenia), `nm-start.js` (start/F5), `edycja.js` (✎ ręczna edycja krawędzi), `ustawienia.js` (pamięć po F5), `nm.css`.
+- **Testy regresji (po każdym refaktorze):** `node tools/test-v1.js` (geometria, 1229 scen: szablony, przegląd kątów, wzorce Wojtka z `tools/v1-wzorce.json`) i `node tools/test-v1-ui.js` (Playwright, wymaga `python3 -m http.server 8765`; bez unpkg: `LEAFLET_DIR=…/leaflet/dist`). Celowa zmiana reguły → `--zapisz` nowe odciski.
 
 `sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):
 - `1-uklad.js` – stałe, geometria, model drogi, `offBase/offAt` (offset osi w pasach), `comp()` (oś, szerokość `w`, offset `d` drogi), `skelFork`, **`layout()`** (węzły, rozjazdy, zszywanie styków, linie, strzałki).

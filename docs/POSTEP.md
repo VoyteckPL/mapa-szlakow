@@ -71,3 +71,6 @@ Zapis: `sc.edits[idDrogi]` = krawędzie (xy m) – nadpisują wyliczone; w confi
 
 ## 2026-11-21 15:50 – ✎: pojedynczy wierzchołek domyślnie
 Wojtek: na drodze z kilkoma pasami nie dało się ruszyć jednego wierzchołka (⟷ „cały przekrój” był domyślnie włączony). Teraz ⟷ domyślnie wył.; Shift przy przeciąganiu odwraca tryb (przekrój ↔ jeden wierzchołek).
+
+## 2026-11-21 16:00 – ✎: rozsuwanie wierzchołków w jednym miejscu
+Wierzchołki bliżej niż 6 px (np. styk dróg w Nm) mają uchwyty rozsunięte wachlarzem (cienka linia do prawdziwego punktu) i etykietę `droga:krawędź/pasy`, np. `R2:3/3p` = krawędź 3 (od lewej, 0 = lewa krawędź) drogi R2 o 3 pasach. Przeciąganie uchwytu przesuwa prawdziwy punkt (z poprawką o rozsunięcie).

@@ -42,7 +42,7 @@
   }
 
   function draw() {
-    gH.clearLayers(); if (!map.hasLayer(gH)) return;
+    gH.clearLayers(); if (!map.hasLayer(gH)) return; var V = [];
     all().forEach(function (o) {
       var r = o.r, ed = !!(S.sc.edits && S.sc.edits[r.id]);
       o.L.forEach(function (l, j) {
@@ -51,22 +51,39 @@
           seg.on('mousedown', function (e) { L.DomEvent.stop(e); dragSeg(r, j, i, e.latlng); });
           seg.on('dblclick', function (e) { L.DomEvent.stop(e); insert(r, j, i, S.xy(e.latlng)); });
         })(i);
-        l.forEach(function (v, i) { // wierzchołki
-          var m = L.marker(S.ll(v), { draggable: true, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-h' + (ed ? ' sv-ed' : '') + '"></div>' }) }).addTo(gH);
-          var orig;
-          m.on('dragstart', function () { orig = ensure(r).map(cp); });
-          m.on('drag', function (e) {
-            var E = S.sc.edits[r.id], ks = group(E, j, i);
-            var tq = snapTo(S.xy(e.target.getLatLng()), function (id, jj, ii) { return id === r.id && ii === i && ks.indexOf(jj) >= 0; });
-            var dx = tq[0] - orig[j][i][0], dy = tq[1] - orig[j][i][1];
-            ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });
-            S.drawLines();
-          });
-          m.on('dragend', function () { S.commit(); S.draw(); });
-          m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
-        });
+        l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length - 1, P: px(v) }); });
       });
     });
+    // wierzchołki w jednym miejscu (< 6 px): uchwyty rozsunięte wachlarzem, z etykietą „droga:krawędź/pasy”
+    var used = [];
+    V.forEach(function (h, a) {
+      if (used[a]) return; var C = [h]; used[a] = 1;
+      V.forEach(function (g, b) { if (!used[b] && h.P.distanceTo(g.P) < 6) { C.push(g); used[b] = 1; } });
+      C.forEach(function (g, k) {
+        g.off = C.length < 2 ? L.point(0, 0) : L.point(Math.cos(2 * Math.PI * k / C.length - Math.PI / 2), Math.sin(2 * Math.PI * k / C.length - Math.PI / 2)).multiplyBy(22 + 2 * C.length);
+        g.lab = C.length > 1;
+      });
+    });
+    V.forEach(handle);
+  }
+  function handle(h) {
+    var r = h.r, j = h.j, i = h.i, off = h.off, at = h.P.add(off);
+    if (h.lab) L.polyline([S.ll(h.v), map.containerPointToLatLng(at)], { color: '#000', weight: 1, opacity: 0.6, interactive: false }).addTo(gH);
+    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + j + '/' + h.n + 'p</div>' : '');
+    var m = L.marker(map.containerPointToLatLng(at), { draggable: true, title: 'Droga ' + r.id + ', krawędź ' + j + ' (od lewej, 0–' + h.n + '), ' + h.n + ' pasy, wierzchołek ' + i,
+      icon: L.divIcon({ className: '', iconSize: [0, 0], html: html }) }).addTo(gH);
+    var orig;
+    m.on('dragstart', function () { orig = ensure(r).map(cp); });
+    m.on('drag', function (e) {
+      var E = S.sc.edits[r.id], ks = group(E, j, i);
+      var q0 = S.xy(map.containerPointToLatLng(map.latLngToContainerPoint(e.target.getLatLng()).subtract(off)));
+      var tq = snapTo(q0, function (id, jj, ii) { return id === r.id && ii === i && ks.indexOf(jj) >= 0; });
+      var dx = tq[0] - orig[j][i][0], dy = tq[1] - orig[j][i][1];
+      ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });
+      S.drawLines();
+    });
+    m.on('dragend', function () { S.commit(); S.draw(); });
+    m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
   }
   function dragSeg(r, j, i, start) {
     var E = ensure(r), orig = E.map(cp), ks = group(E, j, i).filter(function (k) { return i + 1 < E[k].length; }), s0 = S.xy(start);

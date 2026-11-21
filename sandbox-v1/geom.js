@@ -112,6 +112,8 @@ var G = (function () {
     var H0 = o0 && !br0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : 0, H1 = o1 && !br1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : 0;
     var nk = (o0 ? 1 : 0) + (o1 ? 1 : 0), T = nk ? Math.max(0, Math.min(PRZEJ, (Ltot - H0 - H1) / nk)) : 0;
     if (nk) T = Math.max(T, Math.min((Ltot - H0 - H1) / nk, Math.max(E0.tMin || 0, E1.tMin || 0))); // odnoga: nie wjeżdża na prostą
+    // odnoga przy Nm: przejście na oś przez CAŁY pierwszy odcinek OSM – jeden prosty pas bez wierzchołków po drodze (Wojtek 17:04)
+    if (nk === 1 && br0) T = Math.max(T, s[1]); if (nk === 1 && br1) T = Math.max(T, Ltot - s[n - 2]);
     if (nk && (Ltot - H0 - H1) / nk - T < 5) T = (Ltot - H0 - H1) / nk; // reszta < 5 m: przejście do końca (bez krótkiego załamania)
     function off(x) {
       var v = 0;
@@ -134,11 +136,16 @@ var G = (function () {
     }
     var m = Q.length, dc = Qs.map(function (x) { return -off(x) * w; }); // przesunięcie osi jezdni [m, + w lewo]
     var A = Q.map(function (p, i) { if (i === 0) return E0.pt(dc[i]); if (i === m - 1) return E1.pt(dc[i]); var v = QS[i](dc[i]); return add(p, v, dc[i]); });
+    // wolny koniec: przekrój prostopadły do FAKTYCZNEJ osi jezdni (także gdy oś jest skośna przez offset) – Wojtek 17:04
+    function endPt(i, d, h) {
+      var E = i ? E1 : E0; if (E.typ !== 'koniec') return E.pt(d, h);
+      var u = i ? unit(A[m - 2], A[m - 1]) : unit(A[0], A[1]); return add(A[i], left(u), d - dc[i]);
+    }
     var lanes = [];
     for (var j = 0; j <= L; j++) {
       var rj = (L / 2 - j) * w;
       lanes.push(Q.map(function (p, i) {
-        if (i === 0 || i === m - 1) return (i ? E1 : E0).pt(rj + dc[i]); // styk/koniec
+        if (i === 0 || i === m - 1) return endPt(i, rj + dc[i]); // styk/koniec
         var M = miter(unit(A[i - 1], A[i]), unit(A[i], A[i + 1]));
         return [A[i][0] + M[0] * rj, A[i][1] + M[1] * rj];
       }));
@@ -148,7 +155,7 @@ var G = (function () {
     var pasy = [];
     for (j = 0; j < L; j++) [0, 1].forEach(function (b) {
       var l = lanes[j + b].map(function (q) { return q.slice(); }), h = (L / 2 - j - 0.5) * w, rj = (L / 2 - j - b) * w;
-      l[0] = E0.pt(rj + dc[0], h + dc[0]); l[m - 1] = E1.pt(rj + dc[m - 1], h + dc[m - 1]); pasy.push(l);
+      l[0] = endPt(0, rj + dc[0], h + dc[0]); l[m - 1] = endPt(m - 1, rj + dc[m - 1], h + dc[m - 1]); pasy.push(l);
     });
     return { lanes: lanes, pasy: pasy, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
   }

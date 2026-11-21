@@ -1,0 +1,17 @@
+html,body,#map{margin:0;height:100%}
+.sv-box{background:#fff;border-radius:4px;box-shadow:0 1px 5px rgba(0,0,0,.4);font:13px/1 system-ui,sans-serif;display:flex;flex-direction:column;align-items:flex-end}
+.sv-btn{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;border:0;background:#fff;cursor:pointer;font-size:15px;border-radius:4px;padding:0 3px}
+.sv-btn:hover{background:#eee}
+.sv-btn.on{background:#ffd7b0}
+.sv-body{padding:4px;display:flex;flex-direction:column;gap:3px;align-items:stretch}
+.sv-row{display:flex;gap:3px;align-items:center}
+.sv-hide{display:none!important}
+.sv-cat{font-weight:700}
+.sv-tpl{font:600 11px monospace}
+.sv-val{min-width:30px;text-align:center;font:600 12px monospace}
+.sv-copy textarea{width:220px;height:70px;font:12px system-ui}
+.sv-pt{width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid #2979ff;box-sizing:border-box}
+.sv-pt.sv-main{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;background:#ff6d00;border-color:#fff}
+.sv-pt.sv-sel{box-shadow:0 0 0 3px #ff1744}
+.sv-arr{width:14px;height:14px;margin:-7px 0 0 -7px;color:#2979ff;font-size:14px;line-height:14px;text-align:center;text-shadow:0 0 2px #fff}
+.leaflet-control-layers label{font-size:16px}

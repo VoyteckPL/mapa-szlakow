@@ -51,3 +51,10 @@ Na prośbę Wojtka usunięte: `sandbox2.html` + `sandbox2/`, `skrzyzowanie.html`
 Wojtek zaczyna od początku: Leaflet, tylko linie OSM z punktami (przeciągane) i krawędzie pasów. Nm = główny węzeł rozwidlający (pomarańczowy). Zasada nienaruszalna: na Nm pasy przechodzące z drogi na drogę stykają się sztywno i zachowują szerokość; bez łuków (kanciasto). Na razie tylko autostrady, przypadek 1 na 1.
 Szkielet: podkłady OSM/ortofoto + warstwy (prawy górny), ⧉ kopiuj config z opisem problemu, lewy panel szablonów (kat. „1”: 1-1, 1-1+1 czeka), prawy dolny panel zaznaczonej drogi (pasy ±, szerokość pasa ±). Scena w localStorage. Geometria wstępna: oś na środku, w Nm przekrój po dwusiecznej (miter).
 Dalej: odpowiedzi Wojtka na pytania (20 pytań w wątku) → reguły Nm.
+
+## 2026-11-21 – Sandbox v1 (`sandbox-v1.html` + `sandbox-v1/`, dawniej nm.html)
+Ustalenia Wojtka: pas 3,5 m + pobocza (prawe 2,5, lewe 0,5); panel drogi: pasy 1–8, szer. pasa, pobocze prawe, ⇄ kierunek (strzałka na linii OSM), usuń. Jezdnia jak w OSM (jednokierunkowa). Oś domyślnie na środku; offset (w pasach, + w prawo) na każdym końcu drogi: klik w punkt → ± dla każdej drogi kończącej się w nim (także Nm); liniowo po długości; jest w configu. Różna liczba pasów na Nm = regulowana offsetem (szablony: dodatkowy pas po prawej, odnogi rozwidlenia na lewych/prawych pasach pnia).
+Reguła styku (geom.js): 1 wchodzi + 1 wychodzi → przekrój po dwusiecznej; rozwidlenie → wszystkie na przekroju prostopadłym do pnia; włączenie → do drogi wychodzącej. Bez łuków.
+Rysowanie: klik w pusty obszar = punkt (nowa linia, od zaznaczonego punktu jeśli jest), klik w węzeł podczas rysowania = połączenie i koniec, Esc/Enter koniec, Del usuwa, Ctrl+Z / ↶ cofa. 🧲 przyciąganie do siatki 5 m; siatka i asfalt to warstwy (domyślnie wył.). Podkład domyślny ortofoto. Linia OSM przerywana. ⧉: opis + 📋 kopiuj config (z polem `scena`), ⤓ wczytaj config.
+Szablony: 1 prosto (2-2, 3-3, 4-4), 2 zmiana pasów (2-3, 3-2, 3-4, 4-3), 3 rozwidlenia (2-1+1, 3-2+1, 3-1+2, 4-2+2, 4-3+1).
+Dalej: uwagi Wojtka do styku w Nm (np. pobocza na rozwidleniu nachodzą na odnogę).

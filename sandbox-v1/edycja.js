@@ -155,10 +155,17 @@
     });
     m.on('dragend', function () { A.forEach(function (x) { log('dodaj', x.r, x.j, x.i, null, S.sc.edits[x.r.id][x.j][x.i]); }); S.commit(); S.draw(); });
   }
+  // zaznaczenie wielu wierzchołków (Wojtek 19:05): Ctrl/⌘+klik przełącza; przeciągnięcie zaznaczonego przesuwa wszystkie
+  // zaznaczone o to samo (przyciąganie liczone dla chwytanego). Klik w mapę / Esc czyści.
+  var SEL = {}, kk = function (id, j, i) { return id + ':' + j + ':' + i; };
+  function nSel() { return Object.keys(SEL).length; }
+  function tog(C) { var on = C.every(function (h) { return SEL[kk(h.r.id, h.j, h.i)]; });
+    C.forEach(function (h) { var k = kk(h.r.id, h.j, h.i); if (on) delete SEL[k]; else SEL[k] = { r: h.r, j: h.j, i: h.i }; }); draw(); }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && nSel()) { SEL = {}; draw(); } });
   function collapsed(C, key) {
     var m = L.marker(S.ll(C[0].v), { title: C.length + ' wierzchołki w jednym miejscu – kliknij, żeby rozwinąć',
-      icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-h sv-multi"></div>' }) }).addTo(gH);
-    m.on('click', function (e) { L.DomEvent.stop(e); openKey = key; draw(); });
+      icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-h sv-multi' + (C.some(function (h) { return SEL[kk(h.r.id, h.j, h.i)]; }) ? ' sv-selv' : '') + '"></div>' }) }).addTo(gH);
+    m.on('click', function (e) { L.DomEvent.stop(e); if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) return tog(C); openKey = key; draw(); });
     m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); removeAll(C); });
   }
   // usuwanie: tylko wierzchołki środkowe (końce krawędzi zostają); od końca listy, żeby indeksy się nie przesunęły
@@ -169,27 +176,31 @@
   function handle(h) {
     var r = h.r, j = h.j, i = h.i, off = h.off, at = h.P.add(off);
     if (h.lab) L.polyline([S.ll(h.v), map.containerPointToLatLng(at)], { color: '#000', weight: 1, opacity: 0.6, interactive: false }).addTo(gH);
-    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + (h.multi ? ' sv-multi' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + ((j >> 1) + 1) + '/' + h.n + 'p ' + (j % 2 ? 'P' : 'L') + '</div>' : '');
+    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + (h.multi ? ' sv-multi' : '') + (SEL[kk(r.id, j, i)] ? ' sv-selv' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + ((j >> 1) + 1) + '/' + h.n + 'p ' + (j % 2 ? 'P' : 'L') + '</div>' : '');
     var m = L.marker(map.containerPointToLatLng(at), { draggable: true, title: 'Droga ' + r.id + ', pas ' + ((j >> 1) + 1) + ' z ' + h.n + ' (od lewej), krawędź ' + (j % 2 ? 'prawa' : 'lewa') + ', wierzchołek ' + i,
       icon: L.divIcon({ className: '', iconSize: [0, 0], html: html }) }).addTo(gH);
-    var orig;
-    m.on('dragstart', function () { orig = ensure(r).map(cp); });
+    var orig, inne = [];
+    m.on('dragstart', function () { orig = ensure(r).map(cp);
+      inne = !SEL[kk(r.id, j, i)] ? [] : Object.keys(SEL).filter(function (k) { return k !== kk(r.id, j, i); }).map(function (k) { var o = SEL[k], rr = roads().filter(function (x) { return x.id === o.r.id; })[0]; if (!rr) return null; o = { r: rr, j: o.j, i: o.i }; var E = ensure(rr);
+        return E[o.j] && E[o.j][o.i] ? { r: o.r, j: o.j, i: o.i, z: E[o.j][o.i].slice() } : null; }).filter(Boolean); });
     m.on('drag', function (e) {
       var E = S.sc.edits[r.id], ks = group(E, j, i);
       var q0 = S.xy(map.containerPointToLatLng(map.latLngToContainerPoint(e.target.getLatLng()).subtract(off)));
-      var sk = function (id, jj, ii) { return id === r.id && ii === i && ks.indexOf(jj) >= 0; }, tq = null;
+      var sk = function (id, jj, ii) { return (id === r.id && ii === i && ks.indexOf(jj) >= 0) || inne.some(function (o) { return o.r.id === id && o.j === jj && o.i === ii; }); }, tq = null;
       if (opt.pom && !(opt.v && snapV(q0, sk))) tq = onGuide(q0, guides(orig[j], i), sk); else gG.clearLayers();
       if (!tq) tq = snapTo(q0, sk);
       var dx = tq[0] - orig[j][i][0], dy = tq[1] - orig[j][i][1];
       ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });
+      inne.forEach(function (o) { S.sc.edits[o.r.id][o.j][o.i] = [o.z[0] + dx, o.z[1] + dy]; });
       S.drawLines();
     });
     m.on('dragend', function () { gG.clearLayers(); var E = S.sc.edits[r.id]; group(E, j, i).forEach(function (k) {
       if (E[k][i] && (E[k][i][0] !== orig[k][i][0] || E[k][i][1] !== orig[k][i][1])) log('przesun', r, k, i, orig[k][i], E[k][i]); });
+      inne.forEach(function (o) { var q = S.sc.edits[o.r.id][o.j][o.i]; if (q[0] !== o.z[0] || q[1] !== o.z[1]) log('przesun', o.r, o.j, o.i, o.z, q); }); inne = [];
       S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
     m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); remove(r, j, i); });
-    m.on('click', function (e) { L.DomEvent.stop(e); if (opt.szer && !h.multi) { szerokosc(r, j); return; } if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
+    m.on('click', function (e) { L.DomEvent.stop(e); if (e.originalEvent.ctrlKey || e.originalEvent.metaKey) return tog([h]); if (opt.szer && !h.multi) { szerokosc(r, j); return; } if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
   }
   function dragSeg(r, j, i, start) {
     var E = ensure(r), orig = E.map(cp), ks = group(E, j, i).filter(function (k) { return i + 1 < E[k].length; }), s0 = S.xy(start);
@@ -236,7 +247,7 @@
   S.layers.addOverlay(gH, '<span title="Edycja krawędzi pasów">✎</span>');
   map.on('overlayadd overlayremove', function () { H.editing = map.hasLayer(gH); box.classList.toggle('sv-hide', !H.editing); draw(); });
   map.on('zoomend', draw);
-  map.on('click', function () { if (openKey) { openKey = null; draw(); } });
+  map.on('click', function () { if (openKey || nSel()) { openKey = null; SEL = {}; draw(); } });
   H.afterDraw = draw;
   S.draw();
 })();

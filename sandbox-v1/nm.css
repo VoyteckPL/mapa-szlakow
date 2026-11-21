@@ -30,3 +30,4 @@ html,body,#map{margin:0;height:100%}
 .sv-turnin{width:150px;font:12px monospace}
 .sv-turnin.sv-bad{background:#ffcdd2}
 .sv-lane{font-size:13px;min-width:26px;border:1px solid #ccc}
+.sv-h.sv-selv{box-shadow:0 0 0 3px #00e5ff}

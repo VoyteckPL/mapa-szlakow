@@ -231,7 +231,7 @@
     var WK = 'sv1-wzorce', wz = function () { try { return JSON.parse(localStorage.getItem(WK)) || []; } catch (e) { return []; } };
     var row2 = L.DomUtil.create('div', 'sv-row', body), cnt;
     btn(row2, '💾', 'Zapisz wzorzec (aktualna scena + opis z pola); potem ręczne zmiany są czyszczone', function () {
-      var c = config(ta.value); delete c.scena.edits; delete c.scena.editSig; c.nr = wz().length + 1;
+      var c = config(ta.value); delete c.scena.edits; delete c.scena.editSig; delete c.scena.log; delete sc.log; c.nr = wz().length + 1;
       var a = wz(); a.push(c); try { localStorage.setItem(WK, JSON.stringify(a)); } catch (e) {}
       delete sc.edits; ta.value = ''; commit(); draw(); upd();
     });
@@ -255,15 +255,29 @@
       var t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
     });
   }
+  function auto(r, p) { var g = G.lines(sc, r, p); return g.pasy || H.split(g.lanes); } // geometria z reguł (bez ręcznych zmian)
+  function katy(id, p) { // kąty między kolejnymi liniami OSM w węźle [°], z nazwami dróg
+    var a = []; sc.roads.forEach(function (r) { r.pts.forEach(function (q, i) { if (q !== id) return;
+      if (i > 0) a.push({ d: r.id, q: r.pts[i - 1] }); if (i < r.pts.length - 1) a.push({ d: r.id, q: r.pts[i + 1] }); }); });
+    if (a.length < 2) return undefined;
+    a.forEach(function (o) { o.t = Math.atan2(p[o.q][1] - p[id][1], p[o.q][0] - p[id][0]); }); a.sort(function (x, y) { return x.t - y.t; });
+    return a.map(function (o, i) { var b = a[(i + 1) % a.length], d = (b.t - o.t) * 180 / Math.PI; if (d <= 0) d += 360;
+      return { miedzy: [o.d, b.d], kat: Math.round(d * 10) / 10 }; }).filter(function (o) { return a.length > 2 || o.kat <= 180; });
+  }
   function config(opis) {
     var p = P(), r2 = function (v) { return Math.round(v * 100) / 100; }, pts = function (l) { return l.map(function (q) { return q.map(r2); }); };
-    return { strona: 'sandbox-v1.html', opis: opis, szablon: sc.tpl,
+    var c0 = { strona: 'sandbox-v1.html', opis: opis, szablon: sc.tpl,
       uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; pasy od lewej, kazdy pas ma wlasna lewa i prawa krawedz',
-      wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2) }; }),
+      wezly: Object.keys(sc.nodes).map(function (k) { return { id: k, nm: sc.nodes[k].main || undefined, typ: G.nodeType(sc, k, p), xy: p[k].map(r2), katy: katy(k, p) }; }),
       drogi: sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = lanesOf(r, p);
         return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0,
-          pasy_krawedzie: g.pasy.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(g.pasy[2 * j + 1]) }; }), recznie: g.edyt || undefined }; }),
+          offset_auto: [G.endInfo(sc, r, true, p).oAuto, G.endInfo(sc, r, false, p).oAuto].map(function (v) { return v == null ? null : r2(v); }),
+          pasy_krawedzie: kr(g.pasy), recznie: g.edyt || undefined,
+          pasy_krawedzie_auto: g.edyt ? kr(auto(r, p)) : undefined }; }),
       scena: sc };
+    if (c0.drogi.some(function (d) { return d.recznie; }) && sc.log) c0.operacje = sc.log; // dziennik ręcznych zmian
+    return c0;
+    function kr(Pz) { return Pz.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(Pz[2 * j + 1]) }; }); }
   }
 
   // prawy dolny: zaznaczona droga lub punkt

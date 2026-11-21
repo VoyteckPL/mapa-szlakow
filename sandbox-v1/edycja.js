@@ -21,9 +21,15 @@
     if (e && e.length === g.pasy.length) { g.pasy = e.map(cp); g.asfalt = [g.pasy[0], g.pasy[g.pasy.length - 1]]; g.edyt = true; }
     return g;
   };
+  // dziennik ręcznych operacji (do eksportu): przesuń / dodaj / usuń wierzchołek
+  var r2 = function (v) { return Math.round(v * 100) / 100; };
+  function log(op, r, j, i, z, na) {
+    var sc = S.sc; if (!sc.log) sc.log = [];
+    sc.log.push({ op: op, droga: r.id, pas: (j >> 1) + 1, krawedz: j % 2 ? 'P' : 'L', w: i, z: z && z.map(r2), na: na && na.map(r2) });
+  }
   function roads() { return S.sc.roads.filter(function (r) { return r.pts.length > 1; }); }
   function ensure(r) { // pierwsza edycja: kopia wyliczonych krawędzi
-    if (stale()) delete S.sc.edits;
+    if (stale()) { delete S.sc.edits; delete S.sc.log; }
     if (!S.sc.edits) S.sc.edits = {};
     S.sc.editSig = sig();
     var g = H.lanes(r, (function (g) { if (!g.pasy) g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, S.P())));
@@ -58,7 +64,7 @@
         for (var i = 0; i < l.length - 1; i++) (function (i) { // odcinki: przeciąganie i dwuklik = nowy wierzchołek
           var seg = L.polyline([S.ll(l[i]), S.ll(l[i + 1])], { weight: 12, opacity: 0, bubblingMouseEvents: false }).addTo(gH);
           seg.on('mousedown', function (e) { L.DomEvent.stop(e); dragSeg(r, j, i, e.latlng); });
-          seg.on('dblclick', function (e) { L.DomEvent.stop(e); var q = S.xy(e.latlng); insertAt(hits(q), q); S.commit(); S.draw(); });
+          seg.on('dblclick', function (e) { L.DomEvent.stop(e); var q = S.xy(e.latlng); insertAt(hits(q), q).forEach(function (x) { log('dodaj', x.r, x.j, x.i, null, S.sc.edits[x.r.id][x.j][x.i]); }); S.commit(); S.draw(); });
           M.push({ q: [(l[i][0] + l[i + 1][0]) / 2, (l[i][1] + l[i + 1][1]) / 2], len: px(l[i]).distanceTo(px(l[i + 1])) });
         })(i);
         l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length / 2, P: px(v) }); });
@@ -112,7 +118,7 @@
       A.forEach(function (x, k) { S.sc.edits[x.r.id][x.j][x.i] = [orig[k][0] + dx, orig[k][1] + dy]; });
       S.drawLines();
     });
-    m.on('dragend', function () { S.commit(); S.draw(); });
+    m.on('dragend', function () { A.forEach(function (x) { log('dodaj', x.r, x.j, x.i, null, S.sc.edits[x.r.id][x.j][x.i]); }); S.commit(); S.draw(); });
   }
   function collapsed(C, key) {
     var m = L.marker(S.ll(C[0].v), { title: C.length + ' wierzchołki w jednym miejscu – kliknij, żeby rozwinąć',
@@ -122,7 +128,7 @@
   }
   // usuwanie: tylko wierzchołki środkowe (końce krawędzi zostają); od końca listy, żeby indeksy się nie przesunęły
   function removeAll(C) {
-    C.slice().sort(function (a, b) { return b.i - a.i; }).forEach(function (h) { var l = ensure(h.r)[h.j]; if (h.i > 0 && h.i < l.length - 1) l.splice(h.i, 1); });
+    C.slice().sort(function (a, b) { return b.i - a.i; }).forEach(function (h) { var l = ensure(h.r)[h.j]; if (h.i > 0 && h.i < l.length - 1) log('usun', h.r, h.j, h.i, l.splice(h.i, 1)[0]); });
     S.commit(); S.draw();
   }
   function handle(h) {
@@ -141,7 +147,9 @@
       ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });
       S.drawLines();
     });
-    m.on('dragend', function () { S.commit(); S.draw(); });
+    m.on('dragend', function () { var E = S.sc.edits[r.id]; group(E, j, i).forEach(function (k) {
+      if (E[k][i] && (E[k][i][0] !== orig[k][i][0] || E[k][i][1] !== orig[k][i][1])) log('przesun', r, k, i, orig[k][i], E[k][i]); });
+      S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
     m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); remove(r, j, i); });
     m.on('click', function (e) { L.DomEvent.stop(e); if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
@@ -161,7 +169,7 @@
   }
   function remove(r, j, i) { // pojedynczy (⟷: cały przekrój); końce krawędzi zostają
     var E = ensure(r);
-    group(E, j, i).forEach(function (k) { if (i > 0 && i < E[k].length - 1) E[k].splice(i, 1); });
+    group(E, j, i).forEach(function (k) { if (i > 0 && i < E[k].length - 1) log('usun', r, k, i, E[k].splice(i, 1)[0]); });
     S.commit(); S.draw();
   }
 
@@ -172,7 +180,7 @@
     [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie']].forEach(function (o) {
       var b = S.btn(d, o[1], o[2], function () { opt[o[0]] = !opt[o[0]]; b.classList.toggle('on', opt[o[0]]); }); b.classList.toggle('on', opt[o[0]]);
     });
-    S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; S.commit(); S.draw(); });
+    S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; delete S.sc.log; S.commit(); S.draw(); });
   });
   S.layers.addOverlay(gH, '<span title="Edycja krawędzi pasów">✎</span>');
   map.on('overlayadd overlayremove', function () { H.editing = map.hasLayer(gH); box.classList.toggle('sv-hide', !H.editing); draw(); });

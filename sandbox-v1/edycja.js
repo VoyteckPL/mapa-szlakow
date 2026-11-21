@@ -3,10 +3,11 @@
 // Przeciąganie wierzchołka / odcinka. Wstawianie: przeciągnij kółko w połowie odcinka (albo dwuklik w krawędź) – na wszystkich
 // krawędziach, które tam przechodzą. Usuwanie: prawy klik (albo dwuklik) w wierzchołek; prawy klik w fioletową grupę usuwa całą grupę.
 // Domyślnie pojedynczy wierzchołek. ⟷ (albo Shift przy przeciąganiu) = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
+// ⇹ = tryb przywracania szerokości pasa (klik w wierzchołek krawędzi wzorcowej).
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
-  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, sek: false }, shift = false;
+  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, sek: false, szer: false }, shift = false;
   document.addEventListener('keydown', function (e) { if (e.key === 'Shift') shift = true; });
   document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
@@ -152,7 +153,7 @@
       S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
     m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); remove(r, j, i); });
-    m.on('click', function (e) { L.DomEvent.stop(e); if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
+    m.on('click', function (e) { L.DomEvent.stop(e); if (opt.szer && !h.multi) { szerokosc(r, j); return; } if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
   }
   function dragSeg(r, j, i, start) {
     var E = ensure(r), orig = E.map(cp), ks = group(E, j, i).filter(function (k) { return i + 1 < E[k].length; }), s0 = S.xy(start);
@@ -167,6 +168,20 @@
     function up() { map.off('mousemove', mv); map.off('mouseup', up); document.removeEventListener('mouseup', up); map.dragging.enable(); S.commit(); S.draw(); }
     map.on('mousemove', mv); map.on('mouseup', up); document.addEventListener('mouseup', up);
   }
+  // ⇹ przywróć szerokość pasa: kliknięta krawędź zostaje, druga krawędź tego pasa = jej równoległa w odległości r.w
+  // (ukosy w wierzchołkach, końce prostopadłe do krawędzi)
+  function szerokosc(r, j) {
+    var E = ensure(r), R = E[j], o = j ^ 1, sgn = j % 2 ? 1 : -1, w = r.w, n = R.length; if (n < 2) return;
+    var nr = function (a, b) { var dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [-dy / l, dx / l]; };
+    E[o] = R.map(function (q, i) {
+      var v;
+      if (i === 0) v = nr(R[0], R[1]); else if (i === n - 1) v = nr(R[n - 2], R[n - 1]);
+      else { var a = nr(R[i - 1], R[i]), b = nr(R[i], R[i + 1]), m = [a[0] + b[0], a[1] + b[1]], l = Math.hypot(m[0], m[1]);
+        v = l < 1e-6 ? a : (function () { var c = (m[0] * a[0] + m[1] * a[1]) / l; return [m[0] / l / c, m[1] / l / c]; })(); }
+      return [q[0] + v[0] * w * sgn, q[1] + v[1] * w * sgn];
+    });
+    log('szerokosc', r, o, null, null, null); S.commit(); S.draw();
+  }
   function remove(r, j, i) { // pojedynczy (⟷: cały przekrój); końce krawędzi zostają
     var E = ensure(r);
     group(E, j, i).forEach(function (k) { if (i > 0 && i < E[k].length - 1) log('usun', r, k, i, E[k].splice(i, 1)[0]); });
@@ -177,7 +192,7 @@
   var box;
   S.ctl('topright', function (d) {
     box = d; d.classList.add('sv-hide');
-    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie']].forEach(function (o) {
+    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie'], ['szer', '⇹', 'Przywróć szerokość pasa: kliknij wierzchołek krawędzi, która ma zostać – druga krawędź tego pasa ustawi się równolegle w odległości szerokości pasa']].forEach(function (o) {
       var b = S.btn(d, o[1], o[2], function () { opt[o[0]] = !opt[o[0]]; b.classList.toggle('on', opt[o[0]]); }); b.classList.toggle('on', opt[o[0]]);
     });
     S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; delete S.sc.log; S.commit(); S.draw(); });

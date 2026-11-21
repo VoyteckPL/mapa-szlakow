@@ -78,7 +78,11 @@ var G = (function () {
       return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB };
     });
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];
-      return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w }; }
+      // Odnoga nie może wjechać na drogę na wprost (wzorzec 19, Wojtek 17:00): powrót na własną oś trwa co najmniej tyle,
+      // aż linie OSM rozejdą się na pół szerokości obu jezdni: tMin = (kB + kS)·w/2 / sin(kąt między nimi).
+      var tMin = 0, uS = tIn ? dirOut(st.B, P) : dirIn(st.B, P), uR = tIn ? dirOut(r, P) : dirIn(r, P), sn = Math.abs(uS[0] * uR[1] - uS[1] * uR[0]);
+      if (st.B !== r) tMin = sn > 1e-3 ? (r.lanes * r.w + st.B.lanes * st.B.w) / 2 / sn : Infinity;
+      return { pt: function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
       cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = add(k.X, k.S, d - k.c + k.cB), v = dot([p[0] - N[0], p[1] - N[1]], uIn);
@@ -107,6 +111,7 @@ var G = (function () {
     var br0 = E0.oAuto != null && !E0.pien, br1 = E1.oAuto != null && !E1.pien;
     var H0 = o0 && !br0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : 0, H1 = o1 && !br1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : 0;
     var nk = (o0 ? 1 : 0) + (o1 ? 1 : 0), T = nk ? Math.max(0, Math.min(PRZEJ, (Ltot - H0 - H1) / nk)) : 0;
+    if (nk) T = Math.max(T, Math.min((Ltot - H0 - H1) / nk, Math.max(E0.tMin || 0, E1.tMin || 0))); // odnoga: nie wjeżdża na prostą
     if (nk && (Ltot - H0 - H1) / nk - T < 5) T = (Ltot - H0 - H1) / nk; // reszta < 5 m: przejście do końca (bez krótkiego załamania)
     function off(x) {
       var v = 0;

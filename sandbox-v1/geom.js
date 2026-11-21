@@ -61,21 +61,27 @@ var G = (function () {
       var B = o.B, hi = cur, lo = cur - B.lanes * B.w, c = (hi + lo) / 2; cur = lo;
       var uB = tIn ? dirOut(B, P) : dirIn(B, P), det = tDir[0] * uB[1] - tDir[1] * uB[0];
       var seg = tIn ? Math.hypot(P[B.pts[1]][0] - N[0], P[B.pts[1]][1] - N[1]) : Math.hypot(P[B.pts[B.pts.length - 2]][0] - N[0], P[B.pts[B.pts.length - 2]][1] - N[1]);
-      var X = N, cB = c, hit = false;
-      if (Math.abs(det) > 0.26) { var sB = c / det, t = c * dot(uB, tDir) / det;
+      // Dwa warianty styku: (m) ukos – środek pasów pnia przecina linię odnogi w X, dwusieczna pień–odnoga, narożnik
+      // wewnętrzny nie wychodzi za przekrój pnia w węźle (16:31, wzorce 15–90°); (p) przekrój prostopadły do pnia w węźle
+      // (odnoga < 15° albo za krótka, żeby przecięcie się zmieściło – wzorce 12°, 30°/11 m, 72°/5 m).
+      // Przejście PŁYNNE (Wojtek 17:13, skok między 27° a 26°): k = zapas od przecięcia do końca odcinka odnogi,
+      // 1 m → 0 (p), 5 m → 1 (m); pomiędzy liniowo środek i kierunek styku.
+      var sg = tIn ? 1 : -1, k = 0, Xm, Sm, cBm = 0;
+      if (Math.abs(det) > 0.05) { var sB = c / det, t = c * dot(uB, tDir) / det;
         var ok = tIn ? (sB >= 0 && t >= -1e-6) : (sB <= 0 && t <= 1e-6);
-        if (ok && Math.abs(sB) < seg - 1) { X = add(N, uB, sB); cB = 0; hit = true; } }
-      // Narożnik wewnętrzny styku nie wychodzi za przekrój pnia w węźle (Wojtek 2026-11-21 16:31, wzorce 3-2+1, 15–90°):
-      // gdy oba narożniki skośnego styku leżą za węzłem, cały styk cofa się wzdłuż pnia, aż bliższy (wewnętrzny) trafi na przekrój w węźle.
-      // Odnoga zaczyna się wtedy obok swojej linii OSM (automatyczny offset) i wraca na nią regułą offsetu.
-      // Brak przecięcia (odnoga < 15° albo krótka – n6 blisko n1): styk = przekrój prostopadły do pnia w węźle
-      // (wzorce 12° 16:57 i 30°/11 m 17:09).
-      var S = hit ? Sof(B) : nT, sg = tIn ? 1 : -1, e = Infinity;
-      [lo, hi].forEach(function (d) { var q = add(X, S, d - c + cB); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
-      if (e > 1e-6) { // nowy środek styku Cn = stary − sg·tDir·e, zapisany jako X' (na linii odnogi) + S·cB'
-        var Cn = add(add(X, S, cB), tDir, -sg * e), D = uB[0] * S[1] - uB[1] * S[0], rx = Cn[0] - N[0], ry = Cn[1] - N[1];
-        var sX = (rx * S[1] - ry * S[0]) / D; cB = (uB[0] * ry - uB[1] * rx) / D; X = add(N, uB, sX);
+        if (ok) k = Math.max(0, Math.min(1, (seg - Math.abs(sB) - 1) / 4)); }
+      function onB(C, S) { // punkt C zapisany jako X (na linii odnogi) + S·cB
+        var D = uB[0] * S[1] - uB[1] * S[0], rx = C[0] - N[0], ry = C[1] - N[1];
+        if (Math.abs(D) < 1e-6) return { X: N, cB: dot([rx, ry], S) / dot(S, S) };
+        return { X: add(N, uB, (rx * S[1] - ry * S[0]) / D), cB: (uB[0] * ry - uB[1] * rx) / D };
       }
+      if (k > 0) { Xm = add(N, uB, sB); Sm = Sof(B); var e = Infinity;
+        [lo, hi].forEach(function (d) { var q = add(Xm, Sm, d - c); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
+        if (e > 1e-6) { var o = onB(add(Xm, tDir, -sg * e), Sm); Xm = o.X; cBm = o.cB; } }
+      var Cp = add(N, nT, c), S = nT, X = N, cB = c;
+      if (k >= 1) { S = Sm; X = Xm; cB = cBm; }
+      else if (k > 0) { var Cm = add(Xm, Sm, cBm), C = [Cp[0] + (Cm[0] - Cp[0]) * k, Cp[1] + (Cm[1] - Cp[1]) * k];
+        S = [nT[0] + (Sm[0] - nT[0]) * k, nT[1] + (Sm[1] - nT[1]) * k]; var o2 = onB(C, S); X = o2.X; cB = o2.cB; }
       return { B: B, S: S, lo: lo - 1e-6, hi: hi + 1e-6, c: c, X: X, cB: cB };
     });
     if (r !== T) { var me = cand.filter(function (k) { return k.B === r; })[0];

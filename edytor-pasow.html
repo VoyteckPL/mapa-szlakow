@@ -126,7 +126,7 @@
     <details open><summary>Dane</summary>
       <div class="row"><button id="bExp">Eksport JSON</button><button id="bImpJ">Wczytaj JSON</button><button id="bPng">Zapisz PNG</button><button id="bClr" class="warn">Wyczyść</button></div>
       <textarea id="io"></textarea>
-      <div class="small">Zapisuje się też automatycznie w przeglądarce. Starsza wersja edytora: <a href="edytor-pasow-v2.html">v2</a>.</div>
+      <div class="small">Zapisuje się też automatycznie w przeglądarce.</div>
     </details>
     </div>
   </div>
@@ -1403,7 +1403,7 @@ function forkJson(ri, vi) { // 3 drogi schodzace sie w wezle -> JSON w formacie 
   const ll = unproj(node); const tkn = String(Rx.tl || '').split('|').filter(Boolean), nt = (!X.st && tkn.length === X.l) ? tkn.filter(v => v.split(';').some(x => x === 'through')).length : 0; /* ile pasow wjazdu jedzie prosto */
   return JSON.stringify({ nt, xN, nX: X.l, lA: A.l, geo: { lat: +ll.lat.toFixed(7), lon: +ll.lon.toFixed(7) }, P: { x: X.P, a: A.P, b: B.P } });
 }
-// ---------- presety geometrii zjazdow (opis i progi: presety-zjazdow.html) ----------
+// ---------- presety geometrii zjazdow ----------
 // Kierunek galezi wg silnikow nawigacji: G = GraphHopper (1. odcinek), V = Valhalla (punkt 24/21/15 m), O = OSRM (uproszczony model).
 const PZ_R = Math.PI / 180, pzN = a => ((a + 540) % 360) - 180, pzB = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]) / PZ_R;
 function pzAt(P, d) { const c = cumOf(P); return atS(P, c, Math.min(d, c[c.length - 1])); }

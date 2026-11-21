@@ -545,7 +545,7 @@ function forkJson(ri, vi) {
     P: { x: X.P, a: A.P, b: B.P },
   });
 }
-// ---------- presety geometrii zjazdow (opis i progi: presety-zjazdow.html) ----------
+// ---------- presety geometrii zjazdow ----------
 // Kierunek galezi wg silnikow nawigacji: G = GraphHopper (1. odcinek), V = Valhalla (punkt 24/21/15 m), O = OSRM (uproszczony model).
 const PZ_R = Math.PI / 180,
   pzN = (a) => ((a + 540) % 360) - 180,

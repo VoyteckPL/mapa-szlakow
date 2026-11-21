@@ -7,7 +7,7 @@
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
-  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, sek: false, szer: false }, shift = false;
+  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, pom: true, sek: false, szer: false }, gG = L.layerGroup().addTo(map), shift = false;
   document.addEventListener('keydown', function (e) { if (e.key === 'Shift') shift = true; });
   document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
@@ -41,6 +41,7 @@
   function px(q) { return map.latLngToContainerPoint(S.ll(q)); }
 
   // przyciąganie punktu q (xy); skip(idDrogi, j, i) – wierzchołki, które się teraz ruszają
+  function snapV(q, skip) { var P0 = px(q), hit = false; all().forEach(function (o) { o.L.forEach(function (l, j) { l.forEach(function (v, i) { if (!skip(o.r.id, j, i) && P0.distanceTo(px(v)) < TOL) hit = true; }); }); }); return hit; }
   function snapTo(q, skip) {
     var P0 = px(q), best = null, bd = TOL, A = all();
     if (opt.v) A.forEach(function (o) { o.L.forEach(function (l, j) { l.forEach(function (v, i) {
@@ -51,6 +52,34 @@
       t = Math.max(0, Math.min(1, t)); var c = [a[0] + dx * t, a[1] + dy * t], d = P0.distanceTo(px(c)); if (d < bd) { bd = d; best = c; } } }); }); }
     if (!best && S.snapOn()) { var G0 = S.grid(); best = [Math.round(q[0] / G0) * G0, Math.round(q[1] / G0) * G0]; }
     return best || q;
+  }
+  // linie pomocnicze (📐, Wojtek 18:40): przez wyjściowe położenie wierzchołka – przedłużenia sąsiednich odcinków jego
+  // krawędzi i prostopadłe do nich. Kursor blisko linii → punkt jedzie po niej; blisko przecięcia linii z krawędzią
+  // pasa (albo z drugą linią pomocniczą) → przyciąga do przecięcia. Wierzchołek (⊙) ma pierwszeństwo.
+  function guides(l, i) {
+    var o = [], v = l[i];
+    [[l[i - 1], v], [v, l[i + 1]]].forEach(function (s) { if (!s[0] || !s[1]) return;
+      var dx = s[1][0] - s[0][0], dy = s[1][1] - s[0][1], n = Math.hypot(dx, dy); if (n < 1e-6) return;
+      [[dx / n, dy / n], [-dy / n, dx / n]].forEach(function (u) { if (!o.some(function (g) { return Math.abs(g.u[0] * u[1] - g.u[1] * u[0]) < 1e-3; })) o.push({ p: v.slice(), u: u }); }); });
+    return o;
+  }
+  function onGuide(q, Gs, skip) {
+    var P0 = px(q), best = null, bd = TOL;
+    Gs.forEach(function (g) { var t = (q[0] - g.p[0]) * g.u[0] + (q[1] - g.p[1]) * g.u[1], c = [g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t], d = P0.distanceTo(px(c));
+      if (d < bd) { bd = d; best = { g: g, c: c }; } });
+    gG.clearLayers(); if (!best) return null;
+    var g = best.g, X = [];
+    all().forEach(function (o) { o.L.forEach(function (l, j) { for (var i = 0; i < l.length - 1; i++) { if (skip(o.r.id, j, i) || skip(o.r.id, j, i + 1)) continue;
+      var a = l[i], b = l[i + 1], ex = b[0] - a[0], ey = b[1] - a[1], D = g.u[0] * ey - g.u[1] * ex; if (Math.abs(D) < 1e-9) continue;
+      var rx = a[0] - g.p[0], ry = a[1] - g.p[1], t = (rx * ey - ry * ex) / D, s2 = (rx * g.u[1] - ry * g.u[0]) / D;
+      if (s2 >= -1e-6 && s2 <= 1 + 1e-6) X.push([g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t]); } }); });
+    Gs.forEach(function (h) { if (h === g) return; var D = g.u[0] * h.u[1] - g.u[1] * h.u[0]; if (Math.abs(D) < 1e-9) return;
+      var rx = h.p[0] - g.p[0], ry = h.p[1] - g.p[1], t = (rx * h.u[1] - ry * h.u[0]) / D; X.push([g.p[0] + g.u[0] * t, g.p[1] + g.u[1] * t]); });
+    var res = best.c, bx = TOL; X.forEach(function (x) { var d = px(x).distanceTo(px(best.c)); if (d < bx) { bx = d; res = x; } });
+    var far = 400 / Math.max(1e-9, px([0, 0]).distanceTo(px([1, 0]))); // ~400 px w metrach
+    L.polyline([S.ll([g.p[0] - g.u[0] * far, g.p[1] - g.u[1] * far]), S.ll([g.p[0] + g.u[0] * far, g.p[1] + g.u[1] * far])], { color: '#00e5ff', weight: 1, dashArray: '4 4', interactive: false }).addTo(gG);
+    if (res !== best.c) L.circleMarker(S.ll(res), { radius: 5, color: '#00e5ff', weight: 2, fill: false, interactive: false }).addTo(gG);
+    return res;
   }
   function group(E, j, i) { // które krawędzie ruszamy razem
     if (opt.sek === shift) return [j]; // ⟷ wył.: jeden wierzchołek; Shift odwraca
@@ -143,12 +172,14 @@
     m.on('drag', function (e) {
       var E = S.sc.edits[r.id], ks = group(E, j, i);
       var q0 = S.xy(map.containerPointToLatLng(map.latLngToContainerPoint(e.target.getLatLng()).subtract(off)));
-      var tq = snapTo(q0, function (id, jj, ii) { return id === r.id && ii === i && ks.indexOf(jj) >= 0; });
+      var sk = function (id, jj, ii) { return id === r.id && ii === i && ks.indexOf(jj) >= 0; }, tq = null;
+      if (opt.pom && !(opt.v && snapV(q0, sk))) tq = onGuide(q0, guides(orig[j], i), sk); else gG.clearLayers();
+      if (!tq) tq = snapTo(q0, sk);
       var dx = tq[0] - orig[j][i][0], dy = tq[1] - orig[j][i][1];
       ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });
       S.drawLines();
     });
-    m.on('dragend', function () { var E = S.sc.edits[r.id]; group(E, j, i).forEach(function (k) {
+    m.on('dragend', function () { gG.clearLayers(); var E = S.sc.edits[r.id]; group(E, j, i).forEach(function (k) {
       if (E[k][i] && (E[k][i][0] !== orig[k][i][0] || E[k][i][1] !== orig[k][i][1])) log('przesun', r, k, i, orig[k][i], E[k][i]); });
       S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
@@ -192,7 +223,7 @@
   var box;
   S.ctl('topright', function (d) {
     box = d; d.classList.add('sv-hide');
-    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie'], ['szer', '⇹', 'Przywróć szerokość pasa: kliknij wierzchołek krawędzi, która ma zostać – druga krawędź tego pasa ustawi się równolegle w odległości szerokości pasa']].forEach(function (o) {
+    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['pom', '📐', 'Linie pomocnicze: wierzchołek jedzie po przedłużeniu sąsiedniego odcinka (lub prostopadle do niego) i przyciąga do przecięcia z krawędzią pasa'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie'], ['szer', '⇹', 'Przywróć szerokość pasa: kliknij wierzchołek krawędzi, która ma zostać – druga krawędź tego pasa ustawi się równolegle w odległości szerokości pasa']].forEach(function (o) {
       var b = S.btn(d, o[1], o[2], function () { opt[o[0]] = !opt[o[0]]; b.classList.toggle('on', opt[o[0]]); }); b.classList.toggle('on', opt[o[0]]);
     });
     S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; delete S.sc.log; S.commit(); S.draw(); });

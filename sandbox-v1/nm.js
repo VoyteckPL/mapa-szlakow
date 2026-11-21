@@ -8,11 +8,11 @@
   var osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap' });
   var orto = L.tileLayer.wms('https://mapy.geoportal.gov.pl/wss/service/PZGIK/ORTO/WMS/StandardResolution',
     { layers: 'Raster', format: 'image/jpeg', maxZoom: 22, attribution: 'Ortofoto © GUGiK' }).addTo(map);
-  var gLin = L.layerGroup(), gPts = L.layerGroup(), gOsm = L.layerGroup([gLin, gPts]).addTo(map);
+  var gLin = L.layerGroup().addTo(map), gPts = L.layerGroup().addTo(map);
   var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gTmp = L.layerGroup().addTo(map);
   var ic = function (t, s) { return '<span title="' + t + '">' + s + '</span>'; };
   L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm },
-    { [ic('Linie OSM i punkty', '〰️')]: gOsm, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka ' + GRID + ' m', '▦')]: gGrid },
+    { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka ' + GRID + ' m', '▦')]: gGrid },
     { position: 'topright', collapsed: true }).addTo(map);
   map.createPane('asf').style.zIndex = 350;
 

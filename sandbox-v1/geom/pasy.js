@@ -8,10 +8,13 @@
   // więc pas ma stałą szerokość także w przesunięciu.
   function lines(sc, r, P) {
     P = clearP(sc, P);
-    var pts = r.pts.map(function (id) { return P[id]; }), n = pts.length, s = [0];
+    var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P);
+    // model 2 (przekroj.js): odnoga zaczyna się na przekroju pnia – oś od środka jej pasów, odcinek prosty, potem dalej
+    var pts = r.pts.map(function (id) { return P[id]; });
+    if (E0.pre) pts = E0.pre.concat(pts.slice(1 + Math.min(E0.skip || 0, pts.length - 2))); if (E1.pre) pts = pts.slice(0, pts.length - 1 - Math.min(E1.skip || 0, pts.length - 2)).concat(E1.pre);
+    var n = pts.length, s = [0];
     for (var i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
-    var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P);
     var o0 = E0.oAuto != null ? E0.oAuto : r.o0 || 0, o1 = E1.oAuto != null ? E1.oAuto : r.o1 || 0;
     // jezdnia 3-pasowa na sztywno na całej długości (Wojtek 19:55/19:57): oś OSM między lewym a środkowym pasem (+0,5) na obu
     // końcach (wolny koniec, ciąg, pień); wyjątek – koniec będący odnogą rozwidlenia (offset z przydziału pasów pnia)
@@ -63,7 +66,7 @@
     // drogi – CAŁA łamana tej drogi (wzorzec 17:57 i 17:59: odnoga nigdzie nie nachodzi na R2 ani na pień)
     // + pień jako przeszkoda dla odnogi > 90° (odsun2)
     [[E0, 0, 'odsun'], [E1, 1, 'odsun'], [E0, 0, 'odsun2'], [E1, 1, 'odsun2']].forEach(function (z) { var o = z[0][z[2]], Eo = z[1] ? E0 : E1; if (!o || o.ref.length < 2) return;
-      for (var q = 1; q < m; q++) { var ii = z[1] ? m - 1 - q : q;
+      for (var q = z[0].pre ? z[0].pre.length : 1; q < m; q++) { var ii = z[1] ? m - 1 - q : q; // punkty styku (pre) – bez odsuwania
         if ((ii === 0 || ii === m - 1) && Eo.typ !== 'koniec') break; // drugi koniec w węźle – styk ustala węzeł
         A[ii] = odsunPtE(o, A[ii]); } });
     // zakręt odnogi > 100° (wzorzec 137,7°): od styku w kierunku wyjścia e, aż oś jest ½ szer. odnogi za zewn. krawędzią pnia

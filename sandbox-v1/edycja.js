@@ -7,7 +7,7 @@
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
-  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, pom: true, sek: false, szer: false }, gG = L.layerGroup().addTo(map), shift = false;
+  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, pom: true, sek: false, szer: false, sr: true }, gG = L.layerGroup().addTo(map), shift = false;
   document.addEventListener('keydown', function (e) { if (e.key === 'Shift') shift = true; });
   document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
@@ -110,6 +110,11 @@
 
   function draw() {
     gH.clearLayers(); if (!map.hasLayer(gH)) return; var V = [], M = [];
+    // linia środkowa każdego pasu (Wojtek 20:24 – trzyma szerokość pasa przy rysowaniu wzorców): średnia lewej i prawej krawędzi
+    if (opt.sr) all().forEach(function (o) { var g = G.lines(S.sc, o.r, S.P());
+      for (var j = 0; j < o.r.lanes; j++) { var a = o.L[2 * j], b = o.L[2 * j + 1];
+        if (!a || !b || a.length !== b.length) { a = g.lanes[j]; b = g.lanes[j + 1]; }
+        L.polyline(a.map(function (q, i) { return S.ll([(q[0] + b[i][0]) / 2, (q[1] + b[i][1]) / 2]); }), { color: '#e040fb', weight: 1.5, dashArray: '6 4', interactive: false }).addTo(gH); } });
     all().forEach(function (o) {
       var r = o.r, ed = !stale() && !!(S.sc.edits && S.sc.edits[r.id]);
       o.L.forEach(function (l, j) {
@@ -259,6 +264,7 @@
     [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['pom', '📐', 'Linie pomocnicze: wierzchołek jedzie po przedłużeniu sąsiedniego odcinka (lub prostopadle do niego) i przyciąga do przecięcia z krawędzią pasa'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie'], ['szer', '⇹', 'Przywróć szerokość pasa: kliknij wierzchołek krawędzi, która ma zostać – druga krawędź tego pasa ustawi się równolegle w odległości szerokości pasa']].forEach(function (o) {
       var b = S.btn(d, o[1], o[2], function () { opt[o[0]] = !opt[o[0]]; b.classList.toggle('on', opt[o[0]]); }); b.classList.toggle('on', opt[o[0]]);
     });
+    var bs = S.btn(d, '┆', 'Linie środkowe pasów', function () { opt.sr = !opt.sr; bs.classList.toggle('on', opt.sr); draw(); }); bs.classList.toggle('on', opt.sr);
     S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; delete S.sc.log; S.commit(); S.draw(); });
   });
   S.layers.addOverlay(gH, '<span title="Edycja krawędzi pasów">✎</span>');

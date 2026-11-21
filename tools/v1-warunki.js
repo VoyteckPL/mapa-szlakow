@@ -8,7 +8,7 @@ vm.createContext(ctx);
 const html = fs.readFileSync(path.join(root, 'sandbox-v1.html'), 'utf8');
 JSON.parse(html.match(/GEOM = (\[[^\]]*\])/)[1].replace(/'/g, '"')).forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
 const G = vm.runInContext('G', ctx);
-const arg = process.argv.slice(2), PELNY = arg.includes('--pelny'), LISTA = +(arg[arg.indexOf('--lista') + 1]) || 15;
+const arg = process.argv.slice(2); if (arg.includes('--dbg')) G.u.DBG = 1; const PELNY = arg.includes('--pelny'), LISTA = +(arg[arg.indexOf('--lista') + 1]) || 15;
 
 const O = { lat: 54.5189, lng: 18.5305 };
 function scena(name, build) {
@@ -106,7 +106,11 @@ if (arg.includes('--siatka')) { // mapa błędów: wiersze t1 (odnoga lewa), kol
   }).join('')));
 }
 if (arg.includes('--pokaz')) { const nm = arg[arg.indexOf('--pokaz') + 1], s = S.find((x) => x.n === nm); const P = {}; for (const k in s.sc.nodes) P[k] = G.toXY(s.sc.srodek || O, s.sc.nodes[k]);
-  console.log(sprawdz(s).join('\n')); s.sc.roads.forEach((r) => console.log(r.id, r.lanes, JSON.stringify(G.lines(s.sc, r, P).pasy.map((l) => l.map((q) => q.map((v) => +v.toFixed(2))))))); }
+  console.log(sprawdz(s).join('\n')); s.sc.roads.forEach((r) => console.log(r.id, r.lanes, JSON.stringify(G.lines(s.sc, r, P).pasy.map((l) => l.map((q) => q.map((v) => +v.toFixed(2)))))));
+  const f2 = (v) => v && v.map((x) => +x.toFixed(2));
+  if (arg.includes('--dbg')) { const r = s.sc.roads.find((x) => x.id === arg[arg.indexOf('--dbg') + 1]), Pc = G.u.clearP(s.sc, P), E0 = G.u.endSection(s.sc, r, true, Pc), E1 = G.u.endSection(s.sc, r, false, Pc);
+    ['odsun', 'odsun2'].forEach((k) => E0[k] && console.log(k, JSON.stringify(E0[k].ref.slice(0, 4).map(f2)), JSON.stringify(f2(E0[k].side)), E0[k].D, JSON.stringify((E0.pre || []).map((q) => f2(G.u.odsunPtE(E0[k], q)))))); console.log('pre0', JSON.stringify((E0.pre || []).map(f2)), 'pre1', JSON.stringify((E1.pre || []).map(f2)), 'oA', E0.oAuto, E1.oAuto, 'lanes', JSON.stringify(G.lines(s.sc, r, P).lanes.map((l) => l.map(f2)))); } for (const id in P) { const W = G.u.wezel2 && G.u.wezel2(s.sc, id, G.u.clearP(s.sc, P)); if (W) W.ord.forEach((o) => console.log(id, o.B.id,
+    JSON.stringify({ f1: +(o.f1 * 57.3).toFixed(1), f2: +(o.f2 * 57.3).toFixed(1), Ls: +o.Ls.toFixed(2), l2: +o.l2.toFixed(2), P0: f2(o.P0), S: f2(o.S), S2: f2(o.S2), q: f2(o.q) }))); } }
 if (arg.includes('--zakres')) { // statystyka wg zakresu kątów odnóg względem kierunku pnia
   const z = {}; S.forEach((s) => { const m = /^(rozw|włącz) (\S+) (-?\d+)\/(-?\d+) (D\d+)$/.exec(s.n); if (!m) return;
     const a = Math.max(Math.abs(+m[3]), Math.abs(+m[4])), k = m[1] + ' ' + m[5] + (a <= 60 ? ' ≤60°' : a <= 90 ? ' ≤90°' : ' >90°');

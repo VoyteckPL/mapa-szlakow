@@ -5,7 +5,6 @@
 // Domyślnie pojedynczy wierzchołek. ⟷ (albo Shift przy przeciąganiu) = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
 // ⇹ = tryb przywracania szerokości pasa (klik w wierzchołek krawędzi wzorcowej).
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
-// ◇ (turkusowy romb) na węźle łączącym drogi: przeciągnięcie = położenie węzła względem pasów (offset co ½ pasa; pień → r.oN0/oN1, ręczny zamiast automatu), w dzienniku op "offset".
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
   var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, pom: true, sek: false, szer: false }, gG = L.layerGroup().addTo(map), shift = false;
@@ -140,25 +139,6 @@
     // które tu przechodzą (wspólna granica pasów zostaje wspólna; rozdzielić można potem w grupie)
     var MP = [];
     M.forEach(function (o) { if (o.len < 40) return; var P0 = px(o.q); if (MP.some(function (z) { return z.distanceTo(P0) < 6; })) return; MP.push(P0); mid(o.q); });
-    wezly();
-  }
-  // węzły (◇): przeciągnięcie = położenie węzła (osi OSM) względem pasów, czyli offset dróg w tym węźle, co ½ pasa.
-  // Pień rozwidlenia/włączenia → offset ręczny r.oN0/oN1 (zamiast automatycznego), drogi bez automatu → r.o0/o1; odnogi bez zmian.
-  function wezly() {
-    var p = S.P(), cnt = {};
-    roads().forEach(function (r) { [r.pts[0], r.pts[r.pts.length - 1]].forEach(function (id) { cnt[id] = (cnt[id] || 0) + 1; }); });
-    Object.keys(cnt).forEach(function (id) { if (cnt[id] < 2 || !p[id]) return;
-      var m = L.marker(S.ll(p[id]), { draggable: true, zIndexOffset: 500, icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-hn" title="' + id + ': przeciągnij – położenie węzła względem pasów (offset co ½ pasa)"></div>' }) }).addTo(gH);
-      m.on('dragend', function () { var q = S.xy(m.getLatLng()), v = [q[0] - p[id][0], q[1] - p[id][1]];
-        roads().forEach(function (r) { [0, 1].forEach(function (e) { var ix = e ? r.pts.length - 1 : 0; if (r.pts[ix] !== id) return;
-          var I = G.endInfo(S.sc, r, !e, p), k = I.oAuto == null ? (e ? 'o1' : 'o0') : I.pien ? (e ? 'oN1' : 'oN0') : null; if (!k) return;
-          var a = p[r.pts[e ? ix - 1 : 0]], b = p[r.pts[e ? ix : 1]], n = Math.hypot(b[0] - a[0], b[1] - a[1]); if (!n) return;
-          var z = I.oAuto != null ? I.oAuto : r[k] || 0, na = Math.round(2 * (z - (v[0] * (b[1] - a[1]) / n - v[1] * (b[0] - a[0]) / n) / r.w)) / 2; // prawa normalna: (uy, −ux)
-          na = Math.max(-r.lanes / 2, Math.min(r.lanes / 2, na)); if (na === z) return; r[k] = na; // węzeł w obrębie jezdni
-          var sc = S.sc; if (!sc.log) sc.log = [];
-          sc.log.push({ op: 'offset', wezel: id, droga: r.id, koniec: e ? 'kon' : 'pocz', z: r2(z), na: na }); }); });
-        S.commit(); S.draw(); });
-    });
   }
   // wszystkie odcinki krawędzi (dowolnej drogi) przechodzące przez punkt q (≤ 3 px): {r, j, i, t}
   function hits(q) {

@@ -14,7 +14,7 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 ## Budowa starego sandboksu (tylko podgląd)
 **Aktualny sandbox: `sandbox-v1.html` + `sandbox-v1/` (od 2026-11-21, zob. docs/POSTEP.md).** Pliki ładowane po kolei z `?v=czas` (lista w `sandbox-v1.html`, `GEOM` = geometria):
 - `geom/baza.js` (G, układ m, wektory, miter), `geom/odsun.js` (drogi nie nachodzą: `clearP`, `odsunPtE`), `geom/rozw-tepy.js` (odnoga > 90°), `geom/styk.js` (styk w Nm: `endSection`, `nodeType`), `geom/pasy.js` (`lines` – krawędzie pasów). Wspólne pomocnicze w `G.u`.
-- `nm.js` (mapa Leaflet, scena, cofnij, rysowanie, edycja klikiem, szablony, API `window.SV`), `nm-katy.js` (warstwa ∠, przyciąganie 5°), `nm-menu.js` (menu warstw: wzorce 💾📚🗑, siatka, cofnij; `config` = JSON dla Claude), `nm-panel.js` (panel zaznaczenia), `nm-start.js` (start/F5), `edycja.js` (✎ ręczna edycja krawędzi), `geom/turn.js` + `nm-turn.js` (turn:lanes: przydział pasów, strzałki ↱, panel), `ustawienia.js` (pamięć po F5), `nm.css`.
+- `nm.js` (mapa Leaflet, scena, cofnij, rysowanie, edycja klikiem, szablony, API `window.SV`), `nm-katy.js` (warstwa ∠, przyciąganie 5°), `nm-menu.js` (menu warstw: wzorce 💾📚🗑, siatka, cofnij; `config` = JSON dla Claude), `nm-panel.js` (panel zaznaczenia), `nm-start.js` (start/F5), `edycja.js` (✎ ręczna edycja krawędzi), `geom/turn.js` + `nm-turn.js` (turn:lanes: tylko strzałki ↱ i panel; reguła geometrii usunięta), `ustawienia.js` (pamięć po F5), `nm.css`.
 - **Testy regresji (po każdym refaktorze):** `node tools/test-v1.js` (geometria, 1229 scen: szablony, przegląd kątów, wzorce Wojtka z `tools/v1-wzorce.json`) i `node tools/test-v1-ui.js` (Playwright, wymaga `python3 -m http.server 8765`; bez unpkg: `LEAFLET_DIR=…/leaflet/dist`). Celowa zmiana reguły → `--zapisz` nowe odciski.
 
 `sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):
@@ -28,7 +28,8 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 - `baza.css`, `sandbox.css` – style.
 
 ## Ustalone reguły geometrii
-- Nieparzysta jezdnia jednokierunkowa (3, 5 pasów) na styku z jezdnią o 1 pas węższą/szerszą: oś na granicy pasów (offset ½ pasa), stały do końca drogi; pas dodatkowy / kończący się po prawej (po lewej, gdy turn:lanes wyróżnia pierwszy pas).
+- Nieparzysta jezdnia jednokierunkowa (3, 5 pasów) na styku z jezdnią o 1 pas węższą/szerszą: oś na granicy pasów (offset ½ pasa), stały do końca drogi; pas dodatkowy / kończący się po prawej.
+- Pień 3-pasowy w rozwidleniu/włączeniu: na sztywno oś (węzeł OSM) między lewym a środkowym pasem wg kierunku linii OSM (offset +0,5).
 - Zmiana liczby pasów: węższa jezdnia pełna do węzła, szersza zaczyna się jej przekrojem i rozszerza klinem za węzłem; zwęża się tylko pas w klinie (obrysy i linie pasów ciągłe).
 - Wolny koniec drogi (nic się nie łączy): oś OSM na środku jezdni.
 - Wojtek wkleja JSON z przycisku „Kopiuj do Claude (config)” – to opis sceny (drogi, punkty, offsety, raport).

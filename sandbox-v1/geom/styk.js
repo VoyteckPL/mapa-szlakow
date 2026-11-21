@@ -44,15 +44,13 @@
     var st0 = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), aSt = Math.abs(st0.ang);
     var st = ord.reduce(function (b, o) { return Math.abs(o.ang) - aSt < 20 * Math.PI / 180 && (o.B.lanes > b.B.lanes || (o.B.lanes === b.B.lanes && o.al > b.al)) ? o : b; }, st0), a0 = 0;
     for (var ii = 0; ord[ii] !== st; ii++) a0 += ord[ii].B.lanes;
-    var oT = T.lanes / 2 - a0 - st.B.lanes / 2, cur = (T.lanes / 2 - oT) * T.w;
-    // turn:lanes pnia (geom/turn.js): zakresy pasów pnia dla odnóg z tagu; prosta – środek swoich pasów na osi pnia
-    var tr = tIn ? G.u.turnRegions(T, ord, st) : null;
-    if (tr) { var rs = tr[ord.indexOf(st)]; oT = T.lanes / 2 - rs.a - rs.k / 2; }
-    // offset ręczny pnia w tym węźle (✎: przeciągnięcie węzła, T.oN0 / T.oN1) – wzorzec Wojtka zamiast reguły
-    var oRe = tIn ? T.oN1 : T.oN0; if (oRe != null) { oT = oRe; cur = (T.lanes / 2 - oT) * T.w; }
+    var oT = T.lanes / 2 - a0 - st.B.lanes / 2;
+    // Pień 3-pasowy – na sztywno (Wojtek 2026-11-21 19:55): oś (węzeł OSM) między lewym a środkowym pasem wg kierunku
+    // linii OSM, offset +0,5, niezależnie od kątów i liczby pasów odnóg; pasy przydzielane odnogom od lewej.
+    if (T.lanes === 3) oT = 0.5;
+    var cur = (T.lanes / 2 - oT) * T.w;
     var cand = ord.map(function (o, oi) {
       var B = o.B, hi = cur, lo = cur - B.lanes * B.w, c = (hi + lo) / 2; cur = lo;
-      if (tr) { c = (T.lanes / 2 - oT - tr[oi].a - tr[oi].k / 2) * T.w; hi = c + B.lanes * B.w / 2; lo = c - B.lanes * B.w / 2; }
       var uB = tIn ? dirOut(B, P) : dirIn(B, P), det = tDir[0] * uB[1] - tDir[1] * uB[0];
       var seg = tIn ? Math.hypot(P[B.pts[1]][0] - N[0], P[B.pts[1]][1] - N[1]) : Math.hypot(P[B.pts[B.pts.length - 2]][0] - N[0], P[B.pts[B.pts.length - 2]][1] - N[1]);
       // Dwa warianty styku: (m) ukos – środek pasów pnia przecina linię odnogi w X, dwusieczna pień–odnoga, narożnik

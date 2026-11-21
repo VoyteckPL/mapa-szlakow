@@ -12,7 +12,6 @@
     btn(row2, '💾', 'Zapisz wzorzec (aktualna scena); potem ręczne zmiany są czyszczone', function () {
       var c = config(''); delete c.scena.edits; delete c.scena.editSig; delete c.scena.log; delete S.sc.log; c.nr = wz().length + 1;
       var a = wz(); a.push(c); try { localStorage.setItem(WK, JSON.stringify(a)); } catch (e) {}
-      S.sc.roads.forEach(function (r) { delete r.oN0; delete r.oN1; }); // offset ręczny węzła też czyszczony
       delete S.sc.edits; commit(); draw(); upd();
     });
     btn(row2, '📚', 'Kopiuj wszystkie wzorce', function () {
@@ -50,12 +49,12 @@
       uwaga: 'xy w metrach od srodka; offset w pasach, + = w prawo wzgledem kierunku OSM; pasy od lewej, kazdy pas ma wlasna lewa i prawa krawedz',
       wezly: Object.keys(S.sc.nodes).map(function (k) { return { id: k, nm: S.sc.nodes[k].main || undefined, typ: G.nodeType(S.sc, k, p), xy: p[k].map(r2), katy: katy(k, p) }; }),
       drogi: S.sc.roads.filter(function (r) { return r.pts.length > 1; }).map(function (r) { var g = lanesOf(r, p);
-        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, turn_lanes: r.turn || undefined, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0, offset_reczny: r.oN0 != null || r.oN1 != null ? [r.oN0 == null ? null : r.oN0, r.oN1 == null ? null : r.oN1] : undefined,
+        return { id: r.id, pts: r.pts, pasy: r.lanes, szer_pasa: r.w, turn_lanes: r.turn || undefined, offset_pocz: r.o0 || 0, offset_kon: r.o1 || 0,
           offset_auto: [G.endInfo(S.sc, r, true, p).oAuto, G.endInfo(S.sc, r, false, p).oAuto].map(function (v) { return v == null ? null : r2(v); }),
           pasy_krawedzie: kr(g.pasy), recznie: g.edyt || undefined,
           pasy_krawedzie_auto: g.edyt ? kr(auto(r, p)) : undefined }; }),
       scena: S.sc };
-    if (c0.drogi.some(function (d) { return d.recznie || d.offset_reczny; }) && S.sc.log) c0.operacje = S.sc.log; // dziennik ręcznych zmian
+    if (c0.drogi.some(function (d) { return d.recznie; }) && S.sc.log) c0.operacje = S.sc.log; // dziennik ręcznych zmian
     return c0;
     function kr(Pz) { return Pz.filter(function (l, k) { return k % 2 === 0; }).map(function (l, j) { return { lewa: pts(l), prawa: pts(Pz[2 * j + 1]) }; }); }
   }

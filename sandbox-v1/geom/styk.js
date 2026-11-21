@@ -76,9 +76,14 @@
       // Gdy któryś narożnik nie leży na 1. odcinku odnogi (mały kąt / krótki odcinek) – dotychczasowa reguła.
       var nw = null;
       if (o !== st && !ob) (function () {
-        var nB = left(uB), dt = uB[0] * -tDir[1] - uB[1] * -tDir[0]; if (Math.abs(dt) < 1e-6) return;
-        function kor(d) { var D = d + c, rx = nT[0] * D - nB[0] * d, ry = nT[1] * D - nB[1] * d, t = (rx * -tDir[1] - ry * -tDir[0]) / dt;
-          return { t: t, p: add(add(N, nB, d), uB, t), K: add(N, nT, D) }; }
+        // odnoga przyklejona do prostej (wzorce 19:17): 1. węzeł odnogi bliżej osi prostej niż (kB+kS)·w/2 → odnoga
+        // (po odsunięciu) biegnie równolegle do prostej, oś w tej odległości – krawędzie liczone od tej osi
+        var uS0 = tIn ? dirOut(st.B, P) : dirIn(st.B, P), nS0 = left(uS0), Pn = P[tIn ? B.pts[1] : B.pts[B.pts.length - 2]],
+          Dg = (B.lanes * B.w + st.B.lanes * st.B.w) / 2, ps = dot(nS0, [Pn[0] - N[0], Pn[1] - N[1]]), O0 = N, uE = uB;
+        if (Math.abs(ps) < Dg + 1e-3) { O0 = add(N, nS0, ps < 0 ? -Dg : Dg); uE = uS0; }
+        var nB = left(uE), dt = uE[0] * -tDir[1] - uE[1] * -tDir[0]; if (Math.abs(dt) < 1e-6) return;
+        function kor(d) { var D = d + c, Q0 = add(O0, nB, d), Q1 = add(N, nT, D), rx = Q1[0] - Q0[0], ry = Q1[1] - Q0[1], t = (rx * -tDir[1] - ry * -tDir[0]) / dt;
+          return { t: t, p: add(Q0, uE, t), K: Q1 }; }
         var hw = B.lanes * B.w / 2, ok = [hw, -hw].every(function (d) { var t = kor(d).t * sg; return t >= -1e-6 && t <= seg; });
         if (!ok) return;
         var wn = function (q) { return sg * dot([q.p[0] - N[0], q.p[1] - N[1]], tDir) > 1e-6; }; // narożnik za przekrojem pnia
@@ -102,9 +107,19 @@
       if (k.nw) { // odnoga ostra: narożnik nie może leżeć na jezdni sąsiada (pień pod kątem, wzorzec 18:31) – wtedy reguła dawna
         var Q = k.nw.odn(db - k.c); if (sd * cr([Q[0] - A[0], Q[1] - A[1]]) <= 1e-3) continue; k.nw = null; }
       var A0 = ptT(k, db);
-      var g = sd * cr([A0[0] - A[0], A0[1] - A[1]]); if (g <= 1e-9) continue;
-      var t = Math.min(1, g / 0.1), Ai = [A0[0] + (A[0] - A0[0]) * t, A0[1] + (A[1] - A0[1]) * t];
-      k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, ptT(k, de));
+      var g = sd * cr([A0[0] - A[0], A0[1] - A[1]]), zm = false;
+      var t = Math.max(0, Math.min(1, g / 0.1)), Ai = [A0[0] + (A[0] - A0[0]) * t, A0[1] + (A[1] - A0[1]) * t];
+      // zewn. narożnik (wzorce 19:17): gdy 1. węzeł odnogi leży bliżej prostej niż (kB+kS)·w/2 (odnoga odsunięta, biegnie
+      // równolegle do prostej), narożnik = przecięcie zewn. krawędzi pasów pnia z linią równoległą do zewn. krawędzi
+      // prostej w odległości szer. odnogi; inaczej bez zmian (wzorzec turn 2).
+      var Bo = ptT(k, de), Bk = k.B, Pn = P[tIn ? Bk.pts[1] : Bk.pts[Bk.pts.length - 2]], nS = left(uSt);
+      if (dot(nS, [Cs[0] - A[0], Cs[1] - A[1]]) > 0) nS = [-nS[0], -nS[1]];
+      if (Math.abs(dot(nS, [Pn[0] - N[0], Pn[1] - N[1]])) < (Bk.lanes * Bk.w + st.B.lanes * st.B.w) / 2 + 1e-3) {
+        var E0p = add(N, nT, de), Lp = add(A, nS, Bk.lanes * Bk.w), D2 = tDir[0] * uSt[1] - tDir[1] * uSt[0];
+        if (Math.abs(D2) > 1e-6) { var s2 = ((Lp[0] - E0p[0]) * uSt[1] - (Lp[1] - E0p[1]) * uSt[0]) / D2, Bg = add(E0p, tDir, s2);
+          zm = Math.hypot(Bg[0] - Bo[0], Bg[1] - Bo[1]) > 1e-6; Bo = Bg; } }
+      if (!zm && t <= 0) continue;
+      k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, Bo);
     } });
     // punkty OSM drogi X za węzłem N (w kierunku od węzła); odp = X zaczyna się w N
     function dalej(X, odp) { var q = X.pts.map(function (id) { return P[id]; }); if (!odp) q.reverse(); return q.slice(1); }

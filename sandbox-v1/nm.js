@@ -65,7 +65,9 @@
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
       var isSel = sel && sel.t === 'road' && sel.id === r.id;
       var osmLine = L.polyline(r.pts.map(function (id) { return sc.nodes[id]; }), { color: isSel ? '#ff1744' : '#2979ff', weight: isSel ? 4 : 2.5, dashArray: '8 6' }).addTo(gLin);
-      osmLine.on('click', function (e) { L.DomEvent.stopPropagation(e); if (drawing) return; sel = { t: 'road', id: r.id }; draw(); });
+      var hit = L.polyline(osmLine.getLatLngs(), { opacity: 0, weight: 18 }).addTo(gLin); // szeroka strefa klikania
+      hit.on('click', function (e) { L.DomEvent.stopPropagation(e); if (drawing) return; sel = { t: 'road', id: r.id }; draw(); });
+      hit.on('dblclick', function (e) { L.DomEvent.stopPropagation(e); });
       arrow(r);
     });
   }
@@ -102,12 +104,19 @@
   // --- edycja klikiem ---
   // Klik w pusty obszar: dodaje punkt (zaczyna nową linię; od zaznaczonego węzła, jeśli jest).
   // Klik w węzeł podczas rysowania: łączy linię z węzłem i kończy. Klik w ostatni punkt / Esc / Enter: koniec.
+  // Klik w pusty obszar: odznacza. Dwuklik: dodaje punkt (zaczyna nową linię; od zaznaczonego punktu, jeśli był).
+  var prevNode = null, prevT = 0;
   map.on('click', function (e) {
+    if (!e.originalEvent.target.isConnected || !sel) return;
+    if (sel.t === 'node') { prevNode = sel.id; prevT = Date.now(); }
+    sel = null; draw();
+  });
+  map.on('dblclick', function (e) {
     if (!e.originalEvent.target.isConnected) return;
-    if (sel && sel.t === 'road') { sel = null; draw(); return; }
+    var from = prevNode && Date.now() - prevT < 600 && sc.nodes[prevNode] ? prevNode : null; prevNode = null;
     var p = snapLL(e.latlng), id = addNode(p.lat, p.lng);
     if (drawing) drawing.pts.push(id);
-    else drawing = road(sel && sel.t === 'node' ? [sel.id, id] : [id]);
+    else drawing = road(from ? [from, id] : [id]);
     sel = null; commit(); draw(); rubber(e.latlng);
   });
   function nodeClick(id) {

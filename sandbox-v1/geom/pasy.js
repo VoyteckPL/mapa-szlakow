@@ -26,14 +26,18 @@
     function wolny(E, q) { return E.odsun && E.odsun.ref.length > 1 && odsunPtE(E.odsun, q) === q; }
     if (nk === 1 && br0 && n > 2 && wolny(E0, pts[1])) T = s[1]; if (nk === 1 && br1 && n > 2 && wolny(E1, pts[n - 2])) T = Ltot - s[n - 2];
     if (nk && (Ltot - H0 - H1) / nk - T < 5) T = (Ltot - H0 - H1) / nk; // reszta < 5 m: przejście do końca (bez krótkiego załamania)
+    // oba końce z tym samym offsetem (np. 3 pasy między 2-pasówką a rozwidleniem 3-2+1, oba +0,5 – wzorzec 18:23):
+    // oś stała na całej drodze, bez powrotu na środek po drodze
+    var stale = o0 && o1 && Math.abs(o0 - o1) < 1e-6;
     function off(x) {
+      if (stale) return o0;
       var v = 0;
       if (o0) v += x <= H0 ? o0 : x >= H0 + T ? 0 : o0 * (1 - (x - H0) / T);
       if (o1) { var y = Ltot - x; v += y <= H1 ? o1 : y >= H1 + T ? 0 : o1 * (1 - (y - H1) / T); }
       return v;
     }
     var ks = [];
-    if (o0) ks.push(H0, H0 + T); if (o1) ks.push(Ltot - H1 - T, Ltot - H1);
+    if (o0 && !stale) ks.push(H0, H0 + T); if (o1 && !stale) ks.push(Ltot - H1 - T, Ltot - H1);
     ks = ks.filter(function (c) { return c > 0.01 && c < Ltot - 0.01 && s.every(function (v) { return Math.abs(v - c) > 0.01; }); })
       .sort(function (x, y) { return x - y; }).filter(function (c, i, a) { return !i || c - a[i - 1] > 0.01; });
     // punkty OSM + punkty załamania offsetu; QS = przekrój w danym punkcie

@@ -30,6 +30,9 @@
       S.sc.roads.forEach(function (r) { // offset dróg kończących się w tym punkcie
         ['o0', 'o1'].forEach(function (k, e) {
           if (r.pts[e ? r.pts.length - 1 : 0] !== id) return;
+          var kN = e ? 'oN1' : 'oN0'; if (r[kN] != null) { // offset ręczny pnia (✎: przeciągnięty węzeł)
+            var rw = L.DomUtil.create('div', 'sv-row', body); L.DomUtil.create('span', 'sv-val', rw).textContent = r.id + ' offset ręczny ' + r[kN];
+            btn(rw, '✕', 'Przywróć offset automatyczny', function () { delete r[kN]; commit(); draw(); }); return; }
           if (G.endInfo(S.sc, r, !e, P()).oAuto != null) return; // offset automatyczny (odnoga rozwidlenia)
           num(body, r.id, 'Offset ' + r.id + ' przy tym końcu [pasy, + w prawo]', function () { return r[k] || 0; }, function (v) { r[k] = v; }, 0.5, -8, 8, sgn);
         });

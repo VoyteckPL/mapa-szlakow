@@ -115,3 +115,4 @@ Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wz
 - 18:00 – poprawka: warstwa ✎ nie jest już pamiętana po F5 (przy włączonej ✎ dwuklik nie rysuje nowych linii OSM).
 - 18:05 – odsunięcie odnogi od drogi na wprost (i od pnia) działa na WSZYSTKICH punktach osi odnogi wzdłuż pierwszego odcinka tej drogi, nie tylko do 1. węzła odnogi (wzorzec n1–n6–n7: n6 blisko R2, pas zostaje równoległy). Zgodność z wzorcem ≤0,45 m (różnice tylko w położeniu wierzchołków wzdłuż krawędzi).
 - 18:12 – odnoga nie nachodzi na drogę na wprost ani na pień na CAŁEJ długości: każdy punkt osi odnogi trzyma odstęp od całej łamanej tej drogi (najbliższy odcinek, odsunięcie prostopadłe do niego); pień – od jego zewn. krawędzi. `odsunPt`, `dalej()`.
+- 18:15 – podkład „Tło kremowe” 🟨 (jednolity kolor #f3ecd9, bez kafelków), pamiętany po F5.

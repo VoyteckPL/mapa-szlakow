@@ -11,7 +11,9 @@
   var gLin = L.layerGroup().addTo(map), gPts = L.layerGroup().addTo(map);
   var gEdge = L.layerGroup().addTo(map), gAsf = L.layerGroup(), gGrid = L.layerGroup(), gAng = L.layerGroup().addTo(map), gTmp = L.layerGroup().addTo(map);
   var ic = function (t, s) { return '<span title="' + t + '">' + s + '</span>'; };
-  var lay = L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm },
+  // tło jednolite (kremowe) – podkład bez kafelków
+  var tlo = L.layerGroup(); tlo.on('add', function () { map.getContainer().style.background = '#f3ecd9'; }); tlo.on('remove', function () { map.getContainer().style.background = ''; });
+  var lay = L.control.layers({ [ic('Ortofoto (Geoportal)', '🛰️')]: orto, [ic('OSM', '🗺️')]: osm, [ic('Tło kremowe', '🟨')]: tlo },
     { [ic('Linie OSM', '〰️')]: gLin, [ic('Punkty', '⚬')]: gPts, [ic('Krawędzie pasów', '🛣️')]: gEdge, [ic('Asfalt', '⬛')]: gAsf, [ic('Siatka', '▦')]: gGrid, [ic('Kąty między drogami', '∠')]: gAng },
     { position: 'topright', collapsed: true }).addTo(map);
   map.createPane('asf').style.zIndex = 350;

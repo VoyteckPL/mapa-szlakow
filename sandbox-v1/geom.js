@@ -61,15 +61,16 @@ var G = (function () {
       var B = o.B, hi = cur, lo = cur - B.lanes * B.w, c = (hi + lo) / 2; cur = lo;
       var uB = tIn ? dirOut(B, P) : dirIn(B, P), det = tDir[0] * uB[1] - tDir[1] * uB[0];
       var seg = tIn ? Math.hypot(P[B.pts[1]][0] - N[0], P[B.pts[1]][1] - N[1]) : Math.hypot(P[B.pts[B.pts.length - 2]][0] - N[0], P[B.pts[B.pts.length - 2]][1] - N[1]);
-      var X = N, cB = c;
+      var X = N, cB = c, hit = false;
       if (Math.abs(det) > 0.26) { var sB = c / det, t = c * dot(uB, tDir) / det;
         var ok = tIn ? (sB >= 0 && t >= -1e-6) : (sB <= 0 && t <= 1e-6);
-        if (ok && Math.abs(sB) < seg - 1) { X = add(N, uB, sB); cB = 0; } }
+        if (ok && Math.abs(sB) < seg - 1) { X = add(N, uB, sB); cB = 0; hit = true; } }
       // Narożnik wewnętrzny styku nie wychodzi za przekrój pnia w węźle (Wojtek 2026-11-21 16:31, wzorce 3-2+1, 15–90°):
       // gdy oba narożniki skośnego styku leżą za węzłem, cały styk cofa się wzdłuż pnia, aż bliższy (wewnętrzny) trafi na przekrój w węźle.
       // Odnoga zaczyna się wtedy obok swojej linii OSM (automatyczny offset) i wraca na nią regułą offsetu.
-      // Odnoga prawie równoległa (< 15°, brak przecięcia): styk = przekrój prostopadły do pnia w węźle (wzorzec 12°, 2026-11-21 16:57).
-      var S = Math.abs(det) > 0.26 ? Sof(B) : nT, sg = tIn ? 1 : -1, e = Infinity;
+      // Brak przecięcia (odnoga < 15° albo krótka – n6 blisko n1): styk = przekrój prostopadły do pnia w węźle
+      // (wzorce 12° 16:57 i 30°/11 m 17:09).
+      var S = hit ? Sof(B) : nT, sg = tIn ? 1 : -1, e = Infinity;
       [lo, hi].forEach(function (d) { var q = add(X, S, d - c + cB); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
       if (e > 1e-6) { // nowy środek styku Cn = stary − sg·tDir·e, zapisany jako X' (na linii odnogi) + S·cB'
         var Cn = add(add(X, S, cB), tDir, -sg * e), D = uB[0] * S[1] - uB[1] * S[0], rx = Cn[0] - N[0], ry = Cn[1] - N[1];

@@ -1,7 +1,6 @@
 // Sandbox v1 – geometria w lokalnym układzie [m]. Bez łuków: wszystko kanciaste.
 // Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa) – bez poboczy,
-// o0/o1 – offset jezdni względem linii OSM na początku/końcu, w pasach (+ = w prawo). Wariant B (Wojtek 2026-11-21):
-// przy każdym końcu offset stały, zmiana liniowo tylko na odcinku PRZEJ (30 m) w środku drogi; krótsza droga – na całej długości.
+// o0/o1 – offset jezdni względem linii OSM na początku/końcu, w pasach (+ = w prawo), liniowo po długości.
 // Reguła styku w węźle (Nm), wariant 2 (Wojtek 2026-11-21): każda droga zachowuje szerokość pasa W POPRZEK siebie.
 //  Pień = jedyna droga po jednej stronie węzła (1 wchodzi + kilka wychodzi albo kilka wchodzi + 1 wychodzi).
 //  Każda odnoga styka się z pniem po dwusiecznej kąta pień–odnoga (miter), więc jej pasy trafiają sztywno
@@ -9,7 +8,7 @@
 //  która go pokrywa; granica między odnogami sięga dalej z dwóch przekrojów (bez szczelin). Koniec pnia jest
 //  więc „łamany”, kanciasty. Pas pnia bez odnogi: przekrój prostopadły. Wolny koniec: prostopadły.
 var G = (function () {
-  var R = 6378137, PRZEJ = 30;
+  var R = 6378137;
   function toXY(o, ll) {
     return [(ll.lng - o.lng) * Math.PI / 180 * R * Math.cos(o.lat * Math.PI / 180), (ll.lat - o.lat) * Math.PI / 180 * R];
   }
@@ -41,9 +40,7 @@ var G = (function () {
     else if (outs.length === 1 && ins.length > 1) { T = outs[0]; Bs = ins; tIn = false; }
     else return { f: konst(left(own)), typ: ins.length + outs.length > 1 ? 'inny' : 'koniec' };
     var typ = Bs.length === 1 ? 'ciag' : tIn ? 'rozwidlenie' : 'wlaczenie';
-    var Sof = function (B) { // odnoga zawracająca (> 90° od pnia): przekrój prostopadły do pnia
-      var a = tIn ? dirIn(T, P) : dirIn(B, P), b = tIn ? dirOut(B, P) : dirOut(T, P);
-      return a[0] * b[0] + a[1] * b[1] < 0 ? left(tIn ? a : b) : miter(a, b); };
+    var Sof = function (B) { return tIn ? miter(dirIn(T, P), dirOut(B, P)) : miter(dirIn(B, P), dirOut(T, P)); };
     if (r !== T) return { f: konst(Sof(r)), typ: typ };
     var tDir = tIn ? dirIn(T, P) : dirOut(T, P), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
     var cand = Bs.map(function (B) { var o = tIn ? B.o0 : B.o1; // offset odnogi w węźle
@@ -69,16 +66,7 @@ var G = (function () {
       else S.push(konst(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1]))));
     }
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
-    // punkty wstawione na granicach strefy zmiany offsetu (przekrój prostopadły do odcinka)
-    var a = Ltot > PRZEJ ? (Ltot - PRZEJ) / 2 : 0, b = Ltot > PRZEJ ? a + PRZEJ : Ltot, Q = [], QS = [], Qs = [];
-    for (i = 0; i < n; i++) {
-      if (i > 0) [a, b].forEach(function (c) { if (c > s[i - 1] + 1e-6 && c < s[i] - 1e-6) {
-        var t = (c - s[i - 1]) / (s[i] - s[i - 1]), p0 = pts[i - 1], p1 = pts[i];
-        Q.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]); QS.push(konst(left(unit(p0, p1)))); Qs.push(c); } });
-      Q.push(pts[i]); QS.push(S[i]); Qs.push(s[i]);
-    }
-    function off(x) { var t = b > a ? Math.min(1, Math.max(0, (x - a) / (b - a))) : 0; return r.o0 + (r.o1 - r.o0) * t; }
-    function line(dFn) { return Q.map(function (p, i) { var d = dFn(off(Qs[i])); var v = QS[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
+    function line(dFn) { return pts.map(function (p, i) { var d = dFn(r.o0 + (r.o1 - r.o0) * s[i] / Ltot); var v = S[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
     var lanes = [];
     for (var j = 0; j <= L; j++) (function (j) { lanes.push(line(function (o) { return (L / 2 - j - o) * w; })); })(j);
     return { lanes: lanes,

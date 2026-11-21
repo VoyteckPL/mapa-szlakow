@@ -92,3 +92,11 @@ Wzorzec Wojtka: 3-2+1, odnoga 1-pasowa pod 90° w prawo, pień z offsetem końca
 - 16:50 ✎ wstawianie/usuwanie: kółka w połowie odcinków (≥ 40 px) – przeciągnięcie wstawia wierzchołek na WSZYSTKICH krawędziach, które tam przechodzą (wspólna granica pasów zostaje wspólna; ⟷ = cały przekrój); dwuklik w krawędź też. Usuwanie: prawy klik (lub dwuklik) w wierzchołek; prawy klik w fioletową grupę usuwa całą grupę. Końców krawędzi nie da się usunąć.
 - 16:55 (Wojtek: „zapamiętaj offset +0,5 dla tej kombinacji”) – reguła ogólna: offset pnia przy rozwidleniu/włączeniu jest AUTOMATYCZNY: o = L/2 − a − k/2, gdzie odnoga „na wprost” (najmniejszy kąt z pniem) dostaje pasy pnia [a, a+k) (podział od lewej). 3-2+1 → +0,5; 3-1+2 (prosta po prawej) → −0,5; 4-2+2 z prostą po lewej → +1. Ręczny offset pnia w tym węźle jest ignorowany (jak offset odnóg).
 - 17:00 Eksport (📋 i 💾) zbiera więcej danych: `operacje` = dziennik ręcznych zmian (przesun/dodaj/usun: droga, pas, krawędź L/P, nr wierzchołka `w`, `z` → `na`), `pasy_krawedzie_auto` (geometria z reguł obok ręcznej, dla dróg z `recznie`), `offset_auto` [początek, koniec] (null = brak automatu), `wezly[].katy` = kąty między liniami OSM w węźle z nazwami dróg. Dziennik czyszczony razem z ręcznymi zmianami (💾, ↺, zmiana geometrii).
+
+## 2026-11-21 17:05 – 19 wzorców 3-2+1 (0–90°), wnioski
+Analiza skryptem (geom.js w node vs `pasy_krawedzie` + `operacje`):
+- Styk w n1 zgadzał się już z regułą 16:31 dla wszystkich kątów 15,9–90° (bez zmian).
+- Wojtek w każdym wzorcu usuwał wierzchołek „styk + 1 m” odnogi → odnoga przy Nm (automatyczny offset, nie pień) NIE ma odcinka stałego: od styku od razu prosto na swoją oś (pień i ręczne offsety – bez zmian).
+- Gdy po przejściu (20 m) zostaje < 5 m drogi, przejście idzie do samego końca (bez krótkiego załamania). Koniec odnogi zostaje prostopadły, na środku linii.
+- < 15° (wzorzec 12°): styk = przekrój prostopadły do pnia w węźle (pas pnia ucięty równo w n1, odnoga zaczyna się tym samym przekrojem i idzie prosto na swoją oś).
+Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wzorce 18, 19: punkt powrotu na oś ~3 m dalej) i hold pnia przy 12° (0,7 m, nieedytowany).

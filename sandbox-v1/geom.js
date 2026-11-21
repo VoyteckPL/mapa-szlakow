@@ -68,7 +68,8 @@ var G = (function () {
       // Narożnik wewnętrzny styku nie wychodzi za przekrój pnia w węźle (Wojtek 2026-11-21 16:31, wzorce 3-2+1, 15–90°):
       // gdy oba narożniki skośnego styku leżą za węzłem, cały styk cofa się wzdłuż pnia, aż bliższy (wewnętrzny) trafi na przekrój w węźle.
       // Odnoga zaczyna się wtedy obok swojej linii OSM (automatyczny offset) i wraca na nią regułą offsetu.
-      var S = Sof(B), sg = tIn ? 1 : -1, e = Infinity;
+      // Odnoga prawie równoległa (< 15°, brak przecięcia): styk = przekrój prostopadły do pnia w węźle (wzorzec 12°, 2026-11-21 16:57).
+      var S = Math.abs(det) > 0.26 ? Sof(B) : nT, sg = tIn ? 1 : -1, e = Infinity;
       [lo, hi].forEach(function (d) { var q = add(X, S, d - c + cB); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
       if (e > 1e-6) { // nowy środek styku Cn = stary − sg·tDir·e, zapisany jako X' (na linii odnogi) + S·cB'
         var Cn = add(add(X, S, cB), tDir, -sg * e), D = uB[0] * S[1] - uB[1] * S[0], rx = Cn[0] - N[0], ry = Cn[1] - N[1];
@@ -101,8 +102,12 @@ var G = (function () {
     var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P);
     var o0 = E0.oAuto != null ? E0.oAuto : r.o0 || 0, o1 = E1.oAuto != null ? E1.oAuto : r.o1 || 0;
     function hold(E, p0, u, o) { var m = 0; for (var j = 0; j <= L; j++) { var q = E.pt((L / 2 - j - o) * w); m = Math.max(m, Math.abs(dot([q[0] - p0[0], q[1] - p0[1]], u))); } return m + 1; }
-    var H0 = o0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : 0, H1 = o1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : 0;
+    // odnoga przy Nm (automatyczny offset, nie pień): bez odcinka stałego – od styku od razu prosto na środek
+    // (wzorce 2026-11-21 16:57: Wojtek usuwał wierzchołek „styk + 1 m”). Pień i ręczne offsety: jak dotąd.
+    var br0 = E0.oAuto != null && !E0.pien, br1 = E1.oAuto != null && !E1.pien;
+    var H0 = o0 && !br0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : 0, H1 = o1 && !br1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : 0;
     var nk = (o0 ? 1 : 0) + (o1 ? 1 : 0), T = nk ? Math.max(0, Math.min(PRZEJ, (Ltot - H0 - H1) / nk)) : 0;
+    if (nk && (Ltot - H0 - H1) / nk - T < 5) T = (Ltot - H0 - H1) / nk; // reszta < 5 m: przejście do końca (bez krótkiego załamania)
     function off(x) {
       var v = 0;
       if (o0) v += x <= H0 ? o0 : x >= H0 + T ? 0 : o0 * (1 - (x - H0) / T);

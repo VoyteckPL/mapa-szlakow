@@ -121,6 +121,15 @@
         var E0p = add(N, nT, de), Lp = add(A, nS, Bk.lanes * Bk.w), D2 = tDir[0] * uSt[1] - tDir[1] * uSt[0];
         if (Math.abs(D2) > 1e-6) { var s2 = ((Lp[0] - E0p[0]) * uSt[1] - (Lp[1] - E0p[1]) * uSt[0]) / D2, Bg = add(E0p, tDir, s2);
           zm = Math.hypot(Bg[0] - Bo[0], Bg[1] - Bo[1]) > 1e-6; Bo = Bg; } }
+      else if (t > 0) { // wewn. narożnik przeniesiony: zewn. tak, żeby pas odnogi miał pełną szerokość (wzorzec 19:29) – krawędź
+        // wewn. od Ai do punktu wewn. krawędzi przy 1. węźle odnogi, zewn. równolegle w odległości szer. odnogi. Tylko gdy dawny
+        // narożnik zwęża pas: szer. < 0,6·W → cały, > 0,8·W → bez zmian (wzorzec turn 2: 0,85·W), płynnie (wzorce 19:29, 19:30)
+        var uBk = tIn ? dirOut(Bk, P) : dirIn(Bk, P), nIn = left(uBk); if (dot(nIn, [Cs[0] - A[0], Cs[1] - A[1]]) < 0) nIn = [-nIn[0], -nIn[1]];
+        var Fin = add(Pn, nIn, Bk.lanes * Bk.w / 2), uI = unit(Ai, Fin), nO = left(uI); if (dot(nO, [Cs[0] - A[0], Cs[1] - A[1]]) > 0) nO = [-nO[0], -nO[1]];
+        var Wb = Bk.lanes * Bk.w, wO = dot(nO, [Bo[0] - Ai[0], Bo[1] - Ai[1]]), tw = t * Math.max(0, Math.min(1, (0.8 * Wb - wO) / (0.2 * Wb)));
+        var E1p = add(N, nT, de), Lq = add(Ai, nO, Bk.lanes * Bk.w), D3 = tDir[0] * uI[1] - tDir[1] * uI[0];
+        if (tw > 0 && Math.abs(D3) > 1e-6) { var s3 = ((Lq[0] - E1p[0]) * uI[1] - (Lq[1] - E1p[1]) * uI[0]) / D3, Bw = add(E1p, tDir, s3);
+          Bo = [Bo[0] + (Bw[0] - Bo[0]) * tw, Bo[1] + (Bw[1] - Bo[1]) * tw]; } }
       if (!zm && t <= 0) continue;
       k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, Bo);
     } });

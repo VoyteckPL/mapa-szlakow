@@ -5,7 +5,7 @@
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
-  var gH = L.layerGroup(), opt = { v: true, e: true, sek: false }, shift = false;
+  var gH = L.layerGroup(), openKey = null, opt = { v: true, e: true, sek: false }, shift = false;
   document.addEventListener('keydown', function (e) { if (e.key === 'Shift') shift = true; });
   document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
@@ -54,22 +54,29 @@
         l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length - 1, P: px(v) }); });
       });
     });
-    // wierzchołki w jednym miejscu (< 6 px): uchwyty rozsunięte wachlarzem, z etykietą „droga:krawędź/pasy”
+    // wierzchołki w jednym miejscu (< 6 px) = grupa: zwinięta jeden fioletowy uchwyt; klik rozwija wachlarz z etykietami
+    // „droga:krawędź/pasy” (tylko jedna grupa naraz). Klik w pojedynczy wierzchołek pokazuje jego etykietę.
     var used = [];
     V.forEach(function (h, a) {
       if (used[a]) return; var C = [h]; used[a] = 1;
       V.forEach(function (g, b) { if (!used[b] && h.P.distanceTo(g.P) < 6) { C.push(g); used[b] = 1; } });
+      var key = h.r.id + ':' + h.j + ':' + h.i, op = openKey === key;
+      if (C.length > 1 && !op) return collapsed(C, key);
       C.forEach(function (g, k) {
         g.off = C.length < 2 ? L.point(0, 0) : L.point(Math.cos(2 * Math.PI * k / C.length - Math.PI / 2), Math.sin(2 * Math.PI * k / C.length - Math.PI / 2)).multiplyBy(22 + 2 * C.length);
-        g.lab = C.length > 1;
+        g.lab = op; g.multi = C.length > 1; g.key = key; handle(g);
       });
     });
-    V.forEach(handle);
+  }
+  function collapsed(C, key) {
+    var m = L.marker(S.ll(C[0].v), { title: C.length + ' wierzchołki w jednym miejscu – kliknij, żeby rozwinąć',
+      icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-h sv-multi"></div>' }) }).addTo(gH);
+    m.on('click', function (e) { L.DomEvent.stop(e); openKey = key; draw(); });
   }
   function handle(h) {
     var r = h.r, j = h.j, i = h.i, off = h.off, at = h.P.add(off);
     if (h.lab) L.polyline([S.ll(h.v), map.containerPointToLatLng(at)], { color: '#000', weight: 1, opacity: 0.6, interactive: false }).addTo(gH);
-    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + j + '/' + h.n + 'p</div>' : '');
+    var html = '<div class="sv-h' + (h.ed ? ' sv-ed' : '') + (h.multi ? ' sv-multi' : '') + '"></div>' + (h.lab ? '<div class="sv-hl">' + r.id + ':' + j + '/' + h.n + 'p</div>' : '');
     var m = L.marker(map.containerPointToLatLng(at), { draggable: true, title: 'Droga ' + r.id + ', krawędź ' + j + ' (od lewej, 0–' + h.n + '), ' + h.n + ' pasy, wierzchołek ' + i,
       icon: L.divIcon({ className: '', iconSize: [0, 0], html: html }) }).addTo(gH);
     var orig;
@@ -84,6 +91,7 @@
     });
     m.on('dragend', function () { S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
+    m.on('click', function (e) { L.DomEvent.stop(e); if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
   }
   function dragSeg(r, j, i, start) {
     var E = ensure(r), orig = E.map(cp), ks = group(E, j, i).filter(function (k) { return i + 1 < E[k].length; }), s0 = S.xy(start);
@@ -123,6 +131,7 @@
   S.layers.addOverlay(gH, '<span title="Edycja krawędzi pasów">✎</span>');
   map.on('overlayadd overlayremove', function () { H.editing = map.hasLayer(gH); box.classList.toggle('sv-hide', !H.editing); draw(); });
   map.on('zoomend', draw);
+  map.on('click', function () { if (openKey) { openKey = null; draw(); } });
   H.afterDraw = draw;
   S.draw();
 })();

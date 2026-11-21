@@ -696,7 +696,7 @@ function layout() {
     for (let it = 0; it < 3; it++) { const Q = P.map(p => p); for (let j = 1; j < P.length - 1; j++) { if (dist(P[j - 1], P[j]) > 0.8 || dist(P[j], P[j + 1]) > 0.8) continue; Q[j] = [P[j][0] * 0.5 + (P[j - 1][0] + P[j + 1][0]) * 0.25, P[j][1] * 0.5 + (P[j - 1][1] + P[j + 1][1]) * 0.25]; } P = Q; }
     l.P = P; if (l.arc) polys.push({ P: [P[0], P[0], P[0]], L: P, R: [], kerb: true, ly: l.ly, br: false }); }
   S.nodeViz = []; const miniSet = new Set();
-  if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
+  if (window.__nodeGeom) for (const [k, G] of ends) { /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku */
     if (forkDone.has(k)) continue;
     if (G.length === 2 && G[0].i !== G[1].i && (nodeRoads.get(k) || []).length === 2) { /* mini-wezel: dwie drogi zlaczone pod katem (zakret > ~12 st.) */
       const dd = e => { const Q = orient(C[e.i], e.st).Q; let j = 1; while (j < Q.length - 1 && dist(Q[0], Q[j]) < 3) j++; return unit([Q[j][0] - Q[0][0], Q[j][1] - Q[0][1]]) || [1, 0]; }, u1 = dd(G[0]), u2 = dd(G[1]);

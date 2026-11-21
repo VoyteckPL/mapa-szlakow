@@ -45,3 +45,4 @@ Dalej: Wojtek dobiera „złoty środek” suwakami i wkleja ustawienia; potem r
 
 ## 2026-11-21 – porządki
 Na prośbę Wojtka usunięte: `sandbox2.html` + `sandbox2/`, `skrzyzowanie.html` + `skrz/`, `tools/testy-sandbox2.js` (wcześniej też edytor-pasow-v2, presety-zjazdow, rozjazdy, rozjazdy-dziwne, rozpoznawanie-pasow). Kod jest w historii git, gdyby był potrzebny. Następny krok do ustalenia z Wojtkiem.
+- Usunięte też mapa-drog, mapa-osm, skrzyzowania, wezel-demo, wezel-piaskownica. Zostają: index, edytor-pasow, autostrady, rozjazd-szkielet, sandbox-drog.

@@ -3511,7 +3511,7 @@ function layout() {
   const miniSet = new Set();
   if (window.__nodeGeom)
     for (const [k, G] of ends) {
-      /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku (jak w wezel-demo.html) */
+      /* nowa geometria wezlow: wielokat z krawedzi dojazdow z lukami stycznymi w narozniku */
       if (forkDone.has(k)) continue;
       if (G.length === 2 && G[0].i !== G[1].i && (nodeRoads.get(k) || []).length === 2) {
         /* mini-wezel: dwie drogi zlaczone pod katem (zakret > ~12 st.) */

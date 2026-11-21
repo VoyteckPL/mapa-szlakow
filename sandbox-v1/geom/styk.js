@@ -111,7 +111,7 @@
       var db = dir > 0 ? k.hi0 : k.lo0, de = dir > 0 ? k.lo0 : k.hi0, A = ptT(nb, db), Cs = ptT(nb, nb.c);
       var cr = function (v) { return uSt[0] * v[1] - uSt[1] * v[0]; }, sd = cr([Cs[0] - A[0], Cs[1] - A[1]]) < 0 ? -1 : 1;
       if (k.nw) { // odnoga ostra: narożnik nie może leżeć na jezdni sąsiada (pień pod kątem, wzorzec 18:31) – wtedy reguła dawna
-        var Q = k.nw.odn(db - k.c); if (sd * cr([Q[0] - A[0], Q[1] - A[1]]) <= 1e-3) continue; k.nw = null; }
+        var Q = k.nw.odn(db - k.c); if (sd * cr([Q[0] - A[0], Q[1] - A[1]]) <= 1e-3) continue; var Bnw = k.nw.odn(de - k.c); k.nw = null; } else Bnw = null;
       var A0 = ptT(k, db);
       var g = sd * cr([A0[0] - A[0], A0[1] - A[1]]), zm = false;
       var t = Math.max(0, Math.min(1, g / 0.1)), Ai = [A0[0] + (A[0] - A0[0]) * t, A0[1] + (A[1] - A0[1]) * t];
@@ -133,6 +133,10 @@
         var E1p = add(N, nT, de), Lq = add(Ai, nO, Bk.lanes * Bk.w), D3 = tDir[0] * uI[1] - tDir[1] * uI[0];
         if (tw > 0 && Math.abs(D3) > 1e-6) { var s3 = ((Lq[0] - E1p[0]) * uI[1] - (Lq[1] - E1p[1]) * uI[0]) / D3, Bw = add(E1p, tDir, s3);
           Bo = [Bo[0] + (Bw[0] - Bo[0]) * tw, Bo[1] + (Bw[1] - Bo[1]) * tw]; } }
+      // odnoga wracająca do tyłu (wzorzec 20:06, 123° od kierunku pnia): dawny ukos dawał zewn. narożnik po złej stronie
+      // wewn. (krawędzie zamienione) – gdy tak, zewn. narożnik = przecięcie zewn. krawędzi odnogi z zewn. krawędzią pnia (reguła nw)
+      if (Bnw) { var uK = tIn ? dirOut(Bk, P) : dirIn(Bk, P), xk = function (v) { return uK[0] * v[1] - uK[1] * v[0]; }, sK = xk(uSt) > 0 ? 1 : -1;
+        if (sK * xk([Bo[0] - Ai[0], Bo[1] - Ai[1]]) > 0 && sK * xk([Bnw[0] - Ai[0], Bnw[1] - Ai[1]]) < 0) { Bo = Bnw; zm = true; } }
       if (!zm && t <= 0) continue;
       k.f = (function (d0, d1, A, B) { return function (d) { var t = (d - d0) / (d1 - d0); return [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]; }; })(db, de, Ai, Bo);
     } });

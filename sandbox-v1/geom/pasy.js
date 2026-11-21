@@ -13,6 +13,14 @@
     var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w;
     var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P);
     var o0 = E0.oAuto != null ? E0.oAuto : r.o0 || 0, o1 = E1.oAuto != null ? E1.oAuto : r.o1 || 0;
+    // jezdnia 3-pasowa na sztywno na całej długości (Wojtek 19:55/19:57): oś OSM między lewym a środkowym pasem (+0,5) na obu
+    // końcach (wolny koniec, ciąg, pień); wyjątek – koniec będący odnogą rozwidlenia (offset z przydziału pasów pnia)
+    if (L === 3) { if (!(E0.oAuto != null && !E0.pien)) o0 = 0.5; if (!(E1.oAuto != null && !E1.pien)) o1 = 0.5; }
+    // ciąg z jezdnią 3-pasową: lewe krawędzie w linii (pasy dodatkowe / kończące się po prawej) → offset (L − 2) / 2
+    else { var o3 = function (E, id) { if (E.typ !== 'ciag') return null;
+        var x = sc.roads.filter(function (q) { return q !== r && q.pts.length > 1 && (q.pts[0] === id || q.pts[q.pts.length - 1] === id); })[0];
+        return x && x.lanes === 3 ? (L - 2) / 2 : null; };
+      var a3 = o3(E0, r.pts[0]), b3 = o3(E1, r.pts[r.pts.length - 1]); if (a3 != null) o0 = a3; if (b3 != null) o1 = b3; }
     function hold(E, p0, u, o) { var m = 0; for (var j = 0; j <= L; j++) { var q = E.pt((L / 2 - j - o) * w, null, true); m = Math.max(m, Math.abs(dot([q[0] - p0[0], q[1] - p0[1]], u))); } return m + 1; }
     // odnoga przy Nm (automatyczny offset, nie pień): bez odcinka stałego – od styku od razu prosto na środek
     // (wzorce 2026-11-21 16:57: Wojtek usuwał wierzchołek „styk + 1 m”). Pień i ręczne offsety: jak dotąd.

@@ -29,7 +29,7 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 
 ## Ustalone reguły geometrii
 - Nieparzysta jezdnia jednokierunkowa (3, 5 pasów) na styku z jezdnią o 1 pas węższą/szerszą: oś na granicy pasów (offset ½ pasa), stały do końca drogi; pas dodatkowy / kończący się po prawej.
-- Pień 3-pasowy w rozwidleniu/włączeniu: na sztywno oś (węzeł OSM) między lewym a środkowym pasem wg kierunku linii OSM (offset +0,5).
+- Jezdnia 3-pasowa: na sztywno na CAŁEJ długości (oba końce: wolny, ciąg, pień) oś OSM między lewym a środkowym pasem wg kierunku OSM (offset +0,5); wyjątek – koniec będący odnogą rozwidlenia. Droga w ciągu z 3-pasową: lewe krawędzie w linii, offset (L−2)/2.
 - Zmiana liczby pasów: węższa jezdnia pełna do węzła, szersza zaczyna się jej przekrojem i rozszerza klinem za węzłem; zwęża się tylko pas w klinie (obrysy i linie pasów ciągłe).
 - Wolny koniec drogi (nic się nie łączy): oś OSM na środku jezdni.
 - Wojtek wkleja JSON z przycisku „Kopiuj do Claude (config)” – to opis sceny (drogi, punkty, offsety, raport).

@@ -1,0 +1,15 @@
+html,body,#map{margin:0;height:100%}
+.nm-box{background:#fff;border-radius:4px;box-shadow:0 1px 5px rgba(0,0,0,.4);font:13px/1 system-ui,sans-serif}
+.nm-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:#fff;cursor:pointer;font-size:16px;border-radius:4px;padding:0}
+.nm-btn:hover{background:#eee}
+.nm-btn.on{background:#dbe8ff}
+.nm-body{padding:4px;display:flex;flex-direction:column;gap:4px}
+.nm-row{display:flex;gap:4px;align-items:center}
+.nm-hide{display:none!important}
+.nm-cat{font-weight:700;width:30px}
+.nm-tpl{font:600 11px monospace;width:auto;min-width:30px;padding:0 4px}
+.nm-val{min-width:28px;text-align:center;font:600 12px monospace}
+.nm-copy textarea{width:220px;height:70px;font:12px system-ui}
+.nm-pt{width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#fff;border:2px solid #1565c0;box-sizing:border-box}
+.nm-pt.nm-main{width:16px;height:16px;margin:-8px 0 0 -8px;background:#ff6d00;border-color:#fff}
+.leaflet-control-layers-base label,.leaflet-control-layers-overlays label{font-size:16px}

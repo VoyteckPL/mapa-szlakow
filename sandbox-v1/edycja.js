@@ -1,11 +1,13 @@
 // Sandbox v1 – ręczna edycja krawędzi pasów (warstwa ✎, domyślnie wyłączona).
 // Nadpisania: sc.edits[idDrogi] = [krawędź j (od lewej): [[x,y],...]] w metrach od środka sceny.
 // Przeciąganie wierzchołka / odcinka; dwuklik w odcinek dodaje wierzchołek, dwuklik w wierzchołek go usuwa.
-// ⟷ = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
+// Domyślnie pojedynczy wierzchołek. ⟷ (albo Shift przy przeciąganiu) = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
   var S = window.SV, H = window.SVH, map = S.map, TOL = 12; // px
-  var gH = L.layerGroup(), opt = { v: true, e: true, sek: true };
+  var gH = L.layerGroup(), opt = { v: true, e: true, sek: false }, shift = false;
+  document.addEventListener('keydown', function (e) { if (e.key === 'Shift') shift = true; });
+  document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
 
   H.lanes = function (r, g) {
@@ -35,7 +37,7 @@
     return best || q;
   }
   function group(E, j, i) { // które krawędzie ruszamy razem
-    if (!opt.sek) return [j];
+    if (opt.sek === shift) return [j]; // ⟷ wył.: jeden wierzchołek; Shift odwraca
     return E.map(function (l, k) { return k; }).filter(function (k) { return i < E[k].length; });
   }
 
@@ -83,7 +85,7 @@
     var E = ensure(r), a = E[j][i], b = E[j][i + 1], dx = b[0] - a[0], dy = b[1] - a[1];
     var t = Math.max(0.05, Math.min(0.95, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
     group(E, j, i).forEach(function (k) { if (i + 1 >= E[k].length) return; var p0 = E[k][i], p1 = E[k][i + 1];
-      E[k].splice(i + 1, 0, k === j && !opt.sek ? q : [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]); });
+      E[k].splice(i + 1, 0, k === j && opt.sek === shift ? q : [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]); });
     S.commit(); S.draw();
   }
   function remove(r, j, i) {
@@ -96,7 +98,7 @@
   var box;
   S.ctl('topright', function (d) {
     box = d; d.classList.add('sv-hide');
-    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana)']].forEach(function (o) {
+    [['v', '⊙', 'Przyciągaj do wierzchołków'], ['e', '⟋', 'Przyciągaj do krawędzi pasów'], ['sek', '⟷', 'Cały przekrój naraz (szerokość pasów zachowana); Shift = odwrotnie']].forEach(function (o) {
       var b = S.btn(d, o[1], o[2], function () { opt[o[0]] = !opt[o[0]]; b.classList.toggle('on', opt[o[0]]); }); b.classList.toggle('on', opt[o[0]]);
     });
     S.btn(d, '↺', 'Usuń ręczne zmiany (wszystkie drogi)', function () { delete S.sc.edits; S.commit(); S.draw(); });

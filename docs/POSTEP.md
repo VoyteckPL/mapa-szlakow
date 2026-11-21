@@ -68,3 +68,6 @@ Znane: szablon 3-2+1 (odnoga 13,5°) – odnogi wracają na środek na 20 m i le
 ## 2026-11-21 15:39 – ręczna edycja krawędzi pasów (`sandbox-v1/edycja.js`)
 Warstwa ✎ (w panelu warstw, domyślnie wył.): każdy wierzchołek i odcinek krawędzi pasa przeciągany; dwuklik w odcinek dodaje wierzchołek, w wierzchołek usuwa. Opcje (panel pod 🧲, widoczny przy ✎): ⊙ przyciąganie do wierzchołków, ⟋ do krawędzi pasów, ⟷ cały przekrój naraz (szerokość zachowana), ↺ usuń ręczne zmiany. Siatka: rozdzielczość ▦ (0,875 / 1,75 / 3,5 / 5 / 10 m, domyślnie 1,75 = pół pasa), 🧲 przyciąga też uchwyty.
 Zapis: `sc.edits[idDrogi]` = krawędzie (xy m) – nadpisują wyliczone; w configu `krawedzie_pasow` po edycji + `recznie: true`. Cel: Wojtek ręcznie ustawia dobry kształt i wysyła config → z tego wyprowadzamy regułę.
+
+## 2026-11-21 15:50 – ✎: pojedynczy wierzchołek domyślnie
+Wojtek: na drodze z kilkoma pasami nie dało się ruszyć jednego wierzchołka (⟷ „cały przekrój” był domyślnie włączony). Teraz ⟷ domyślnie wył.; Shift przy przeciąganiu odwraca tryb (przekrój ↔ jeden wierzchołek).

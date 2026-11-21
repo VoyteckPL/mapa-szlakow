@@ -155,7 +155,13 @@
       if (me.ob) return { pt: me.ob.odn, typ: typ, oAuto: -me.ob.cB / r.w, tMin: tMin, odsun: odsun, odsun2: me.ob.pienOdsun, zakret: me.ob.zakret,
         extra: me.ob.K ? { d: me.ob.dK, K: me.ob.K } : null };
       if (me.nw) return { pt: me.nw.odn, typ: typ, oAuto: 0, tMin: tMin, odsun: odsun, extra: me.nw.extra };
-      return { pt: me.f ? function (d) { return me.f(d + me.c - me.cB); } : function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun }; }
+      // odcinek stały odnogi (wzorzec 20:10: R3 na wprost pnia, R2 49,9° obok): odnoga zaczyna zjeżdżać na swoją oś dopiero
+      // za narożnikiem sąsiada na wspólnej granicy pasów – inaczej jej krawędź wchodzi na sąsiednią jezdnię. hN = o ile narożnik
+      // sąsiada leży dalej (wzdłuż odnogi, od węzła) niż jej własny.
+      var mi = cand.indexOf(me), uA = [uR[0] * (tIn ? 1 : -1), uR[1] * (tIn ? 1 : -1)], hN = 0;
+      [[mi - 1, me.hi], [mi + 1, me.lo]].forEach(function (z) { var nb = cand[z[0]]; if (!nb || nb.ob) return;
+        var a = ptT(nb, z[1]), b = ptT(me, z[1]); hN = Math.max(hN, dot([a[0] - b[0], a[1] - b[1]], uA)); });
+      return { pt: me.f ? function (d) { return me.f(d + me.c - me.cB); } : function (d) { return add(me.X, me.S, d); }, typ: typ, oAuto: -me.cB / r.w, tMin: tMin, odsun: odsun, hN: hN }; }
     return { typ: typ, pien: true, oAuto: oT, pt: function (d, h, bezOb) { // koniec pnia: zamknięcie rysują odnogi
       var best = null, bv = Infinity; // h = środek pasa: krawędź pasa kończy się na styku TEJ odnogi, do której pas prowadzi
       cand.forEach(function (k) { if (d < k.lo || d > k.hi || (h != null && (h < k.lo || h > k.hi))) return; var p = k.ob ? (bezOb ? k.ob.hold(d) : k.ob.pien(d)) : ptT(k, d), v = dot([p[0] - N[0], p[1] - N[1]], uIn);

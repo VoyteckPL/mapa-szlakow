@@ -25,7 +25,7 @@
     // odnoga przy Nm (automatyczny offset, nie pień): bez odcinka stałego – od styku od razu prosto na środek
     // (wzorce 2026-11-21 16:57: Wojtek usuwał wierzchołek „styk + 1 m”). Pień i ręczne offsety: jak dotąd.
     var br0 = E0.oAuto != null && !E0.pien, br1 = E1.oAuto != null && !E1.pien;
-    var H0 = o0 && !br0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : 0, H1 = o1 && !br1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : 0;
+    var H0 = o0 && !br0 ? hold(E0, pts[0], unit(pts[0], pts[1]), o0) : o0 ? E0.hN || 0 : 0, H1 = o1 && !br1 ? hold(E1, pts[n - 1], unit(pts[n - 1], pts[n - 2]), o1) : o1 ? E1.hN || 0 : 0; // odnoga: do narożnika sąsiada (hN)
     var nk = (o0 ? 1 : 0) + (o1 ? 1 : 0), T = nk ? Math.max(0, Math.min(PRZEJ, (Ltot - H0 - H1) / nk)) : 0;
     if (nk) T = Math.max(T, Math.min((Ltot - H0 - H1) / nk, Math.max(E0.tMin || 0, E1.tMin || 0))); // odnoga: nie wjeżdża na prostą
     // odnoga przy Nm: przejście na oś przez CAŁY pierwszy odcinek OSM – jeden prosty pas bez wierzchołków po drodze (Wojtek 17:04)

@@ -141,3 +141,4 @@ Wynik: n1 zgodne we wszystkich 19; różnice tylko w środku odnóg ≥ 25 m (wz
 - **Dalej:** wzorce < 45° (jak wygląda długi klin wzdłuż prostej) i > 90°.
 - 19:10 ✎ zaznaczanie wielu wierzchołków: Ctrl/⌘+klik przełącza (turkusowa obwódka; Ctrl+klik w fioletową grupę = cała grupa), przeciągnięcie zaznaczonego przesuwa wszystkie zaznaczone o ten sam wektor (przyciąganie liczone dla chwytanego), każdy ruch w dzienniku operacji. Klik w mapę / Esc czyści.
 - 19:12 ✎ 📐: linie pomocnicze także z SĄSIEDNICH krawędzi – przedłużenie każdego odcinka krawędzi pasa z końcem < 80 px od chwytanego wierzchołka; przyciąganie do przecięć tych linii (wyrównanie wierzchołków w jednej linii na styku).
+- 19:15 ✎ 📐: prostopadłe na zakończeniach pasów (przez pierwszy/ostatni wierzchołek krawędzi, ⟂ do jej skrajnego odcinka); linie sąsiednie zbierane w promieniu 80 px od wierzchołka LUB kursora.

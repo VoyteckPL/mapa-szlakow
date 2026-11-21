@@ -66,16 +66,21 @@
       [[dx / n, dy / n], [-dy / n, dx / n]].forEach(function (u) { if (!o.some(function (g) { return Math.abs(g.u[0] * u[1] - g.u[1] * u[0]) < 1e-3; })) o.push({ p: v.slice(), u: u }); }); });
     return o;
   }
-  // + przedłużenia odcinków SĄSIEDNICH krawędzi (Wojtek 19:08: wyrównanie wierzchołków w jednej linii na styku):
-  // każdy odcinek krawędzi pasa, który ma koniec bliżej niż 80 px od wierzchołka (bez ruszanych), jako nieskończona prosta
-  function guidesNear(v, skip, Gs) {
-    var P0 = px(v);
+  // + przedłużenia odcinków SĄSIEDNICH krawędzi i prostopadłe na końcach pasów (Wojtek 19:08: wyrównanie wierzchołków w jednej linii na styku):
+  // każdy odcinek krawędzi pasa, który ma koniec bliżej niż 80 px od wierzchołka lub kursora (bez ruszanych), jako nieskończona prosta
+  function guidesNear(vs, skip, Gs) { // vs: punkty odniesienia (wyjściowy wierzchołek i kursor)
+    var Ps = vs.map(px), far = function (q) { var Q = px(q); return Ps.every(function (P0) { return P0.distanceTo(Q) > 80; }); };
     all().forEach(function (o) { o.L.forEach(function (l, j) { for (var i = 0; i < l.length - 1; i++) {
       if (skip(o.r.id, j, i) || skip(o.r.id, j, i + 1)) continue;
-      var a = l[i], b = l[i + 1]; if (P0.distanceTo(px(a)) > 80 && P0.distanceTo(px(b)) > 80) continue;
+      var a = l[i], b = l[i + 1]; if (far(a) && far(b)) continue;
       var dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy); if (n < 0.05) continue; var u = [dx / n, dy / n];
       if (Gs.some(function (g) { return Math.abs(g.u[0] * u[1] - g.u[1] * u[0]) < 1e-3 && Math.abs((a[0] - g.p[0]) * u[1] - (a[1] - g.p[1]) * u[0]) < 0.01; })) continue;
-      Gs.push({ p: a.slice(), u: u }); } }); });
+      Gs.push({ p: a.slice(), u: u }); }
+      // prostopadła na zakończeniu pasa (Wojtek 19:11): przez pierwszy/ostatni wierzchołek krawędzi, ⟂ do jej skrajnego odcinka
+      [[0, 1], [l.length - 1, l.length - 2]].forEach(function (e) { var a = l[e[0]], b = l[e[1]]; if (!b || skip(o.r.id, j, e[0]) || far(a)) return;
+        var dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy); if (n < 0.05) return; var u = [-dy / n, dx / n];
+        if (Gs.some(function (g) { return Math.abs(g.u[0] * u[1] - g.u[1] * u[0]) < 1e-3 && Math.abs((a[0] - g.p[0]) * u[1] - (a[1] - g.p[1]) * u[0]) < 0.01; })) return;
+        Gs.push({ p: a.slice(), u: u }); }); }); });
     return Gs;
   }
   function onGuide(q, Gs, skip) {
@@ -199,7 +204,7 @@
       var E = S.sc.edits[r.id], ks = group(E, j, i);
       var q0 = S.xy(map.containerPointToLatLng(map.latLngToContainerPoint(e.target.getLatLng()).subtract(off)));
       var sk = function (id, jj, ii) { return (id === r.id && ii === i && ks.indexOf(jj) >= 0) || inne.some(function (o) { return o.r.id === id && o.j === jj && o.i === ii; }); }, tq = null;
-      if (opt.pom && !(opt.v && snapV(q0, sk))) tq = onGuide(q0, guidesNear(orig[j][i], sk, guides(orig[j], i)), sk); else gG.clearLayers();
+      if (opt.pom && !(opt.v && snapV(q0, sk))) tq = onGuide(q0, guidesNear([orig[j][i], q0], sk, guides(orig[j], i)), sk); else gG.clearLayers();
       if (!tq) tq = snapTo(q0, sk);
       var dx = tq[0] - orig[j][i][0], dy = tq[1] - orig[j][i][1];
       ks.forEach(function (k) { E[k][i] = [orig[k][i][0] + dx, orig[k][i][1] + dy]; });

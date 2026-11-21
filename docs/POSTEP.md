@@ -42,3 +42,6 @@ Dalej: uwagi Wojtka do scen (wkleja ⧉ + numer węzła) → poprawki reguł; po
 ## 2026-11-20 (wieczór) – zmiana kierunku: jedno skrzyżowanie 3 ramion
 Wojtek: lista szablonów nie daje postępu → `skrzyzowanie.html` + `skrz/skrz.js`. Jedno skrzyżowanie, osie na środku, suwaki: R (łuk narożnika kołowy, styczny do obu krawędzi), z (strefa), T (maks. wcięcie), min (cięcie), gap (odstęp linii), Rb (tył węzła), lw (szer. pasa), far (limit „prawie prosto”). Pasy i kierunek per ramię. Kąty pokazane na ekranie. ⧉ kopiuje parametry+węzły+kąty+cięcia; `sweepTest()` w konsoli przemiata kąty (0 błędów).
 Dalej: Wojtek dobiera „złoty środek” suwakami i wkleja ustawienia; potem rozjazdy i reszta (sandbox2 wstrzymany), na końcu offsety.
+
+## 2026-11-21 – porządki
+Na prośbę Wojtka usunięte: `sandbox2.html` + `sandbox2/`, `skrzyzowanie.html` + `skrz/`, `tools/testy-sandbox2.js` (wcześniej też edytor-pasow-v2, presety-zjazdow, rozjazdy, rozjazdy-dziwne, rozpoznawanie-pasow). Kod jest w historii git, gdyby był potrzebny. Następny krok do ustalenia z Wojtkiem.

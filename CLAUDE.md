@@ -5,17 +5,11 @@ Właściciel: Wojtek. Odpowiadaj po polsku, krótko.
 ## Jak pracujemy
 - Małe kroki, oszczędzaj tokeny: czytaj tylko potrzebne fragmenty (grep po nazwie funkcji, potem Read z offset/limit), nie całe pliki.
 - Poprawki jako **reguły ogólne**, nie jednorazowe łaty pod jeden przypadek.
-- Rozwijamy teraz **skrzyzowanie.html** (`skrz/skrz.js`): JEDNO skrzyżowanie 3 ramion z suwakami parametrów (promień narożnika R, strefa z, maks. wcięcie T, min. cięcie, odstęp linii, tył węzła Rb, szer. pasa); silnik `junction()`; przycisk ⧉ kopiuje parametry + węzły + kąty/cięcia. Dopiero gdy będzie dobre – wracamy do rozjazdów (sandbox2). `sandbox2` (zawiera szablony scen, rozjazdy, ciągi) jest wstrzymany.
-- Wstrzymane: **sandbox2** (`sandbox2.html` + folder `sandbox2/`) – nowy silnik od zera. Stary `sandbox-drog.html` + `sandbox/` tylko do podglądu, nie rozwijać. Nie ruszaj `index.html` (główna mapa) ani `edytor-pasow.html` bez wyraźnej prośby.
+- `sandbox2` i `skrzyzowanie.html` usunięte 2026-11-21 (porządki; historia w git). Stary `sandbox-drog.html` + `sandbox/` tylko do podglądu, nie rozwijać. Nie ruszaj `index.html` (główna mapa) ani `edytor-pasow.html` bez wyraźnej prośby.
 - Nigdy nie wysyłaj zmian do OSM. Sandbox rysuje drogi testowe lokalnie.
 - Rozpoznawanie pasów z ortofoto jest porzucone – nie rozwijać.
 - Zmiany commituj i wypychaj na `main` bez pytania (GitHub Pages: https://voyteckpl.github.io/mapa-szlakow/sandbox-drog.html).
 - Wojtek ogląda wynik sam (lokalnie `python -m http.server 8000` → `localhost:8000/sandbox-drog.html`, F5). Zrzuty ekranu rób tylko, gdy to naprawdę potrzebne.
-
-## Budowa sandbox2
-Pliki ładowane po kolei (wspólny zasięg): `1-geom.js` (wektory, łuki `fillet`, linie równoległe `offset` z usuwaniem pętli), `2-model.js` (typy dróg, zapis tekstowy sceny, lista `SCENY`), `3-polaczenia.js` (`buduj()`: CIĄGI → PROFIL → ROZJAZD/WŁĄCZENIE → SKRZYŻOWANIE → KRAWĘDZIE), `4-rysuj.js` (tylko rysowanie), `5-ui.js`, `6-testy.js` (przycisk ✓, `testy2()`; w chmurze `node tools/testy-sandbox2.js`).
-Zapis sceny (Wojtek wkleja go z ⧉): `W1 x y` węzeł; `A gl 3> W1 W2 | x y …` droga: nazwa, typ (au ek gl zb lo lc), pasy (`>` jednokier.), węzły, punkty pośrednie. Wojtek mówi np. „glitch na W2”.
-Etap 1: oś OSM zawsze na środku jezdni. Etap 2: offsety jako reguły przesuwające oś PRZED `buduj()` – kod połączeń o nich nie wie.
 
 ## Budowa starego sandboksu (tylko podgląd)
 `sandbox-drog.html` to sam HTML (panele, przyciski). Kod w `sandbox/`, ładowany po kolei jako zwykłe skrypty (wspólny zasięg globalny – kolejność ma znaczenie):

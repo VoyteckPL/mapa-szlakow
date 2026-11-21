@@ -39,7 +39,11 @@
       return { B: B, lat: lat, al: al, ang: Math.atan2(lat, al) }; }).sort(function (a, b) { return b.ang - a.ang; });
     // offset pnia przy węźle – automatyczny (Wojtek 2026-11-21 16:48, 3-2+1 → +0,5): pasy pnia prowadzące do odnogi
     // „na wprost” (najmniejszy kąt z pniem) mają środek na osi pnia, czyli prosta jedzie dalej bez przesunięcia.
-    var st = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), a0 = 0;
+    // Gdy żadna odnoga nie jest w linii z pniem (najmniejszy kąt > 5°), a kilka ma kąt < 15° większy od najmniejszego
+    // (wzorzec 19:33: pień skręca, R2 2 pasy 26°, R3 1 pas 18°) – na wprost ta z największą liczbą pasów (przy równej –
+    // mniejszy kąt), nie ta, która przypadkiem jest o kilka stopni bliżej. Odnoga w linii z pniem zostaje prostą.
+    var st0 = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), aSt = Math.abs(st0.ang);
+    var st = ord.reduce(function (b, o) { return aSt > 5 * Math.PI / 180 && Math.abs(o.ang) - aSt < 15 * Math.PI / 180 && (o.B.lanes > b.B.lanes || (o.B.lanes === b.B.lanes && o.al > b.al)) ? o : b; }, st0), a0 = 0;
     for (var ii = 0; ord[ii] !== st; ii++) a0 += ord[ii].B.lanes;
     var oT = T.lanes / 2 - a0 - st.B.lanes / 2, cur = (T.lanes / 2 - oT) * T.w;
     // turn:lanes pnia (geom/turn.js): zakresy pasów pnia dla odnóg z tagu; prosta – środek swoich pasów na osi pnia

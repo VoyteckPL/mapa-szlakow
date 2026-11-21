@@ -33,7 +33,10 @@
     var typ = tIn ? 'rozwidlenie' : 'wlaczenie';
     var tDir = tIn ? dirIn(T, P) : dirOut(T, P), nT = left(tDir), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
     var ord = Bs.map(function (B) { var q = P[tIn ? B.pts[1] : B.pts[B.pts.length - 2]], v = unit(N, q);
-      return { B: B, lat: tDir[0] * v[1] - tDir[1] * v[0], al: dot(v, tDir) * (tIn ? 1 : -1) }; }).sort(function (a, b) { return b.lat - a.lat; });
+      // kolejność od lewej po KĄCIE (atan2), nie po sinusie – odnoga > 90° w tę samą stronę co prosta nie przeskakuje
+      // na drugą stronę (wzorzec 19:22: R2 90° w prawo, R3 107,5° w prawo)
+      var lat = tDir[0] * v[1] - tDir[1] * v[0], al = dot(v, tDir) * (tIn ? 1 : -1);
+      return { B: B, lat: lat, al: al, ang: Math.atan2(lat, al) }; }).sort(function (a, b) { return b.ang - a.ang; });
     // offset pnia przy węźle – automatyczny (Wojtek 2026-11-21 16:48, 3-2+1 → +0,5): pasy pnia prowadzące do odnogi
     // „na wprost” (najmniejszy kąt z pniem) mają środek na osi pnia, czyli prosta jedzie dalej bez przesunięcia.
     var st = ord.reduce(function (b, o) { return o.al > b.al ? o : b; }), a0 = 0;

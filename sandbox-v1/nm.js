@@ -320,6 +320,9 @@
     grid: function () { return GRID; }, snapOn: function () { return snap; }, ctl: ctl, btn: btn };
   // --- start ---
   var saved = null; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-  if (saved && saved.roads) { setScene(saved); last = JSON.stringify(sc); map.setView([O.lat, O.lng], 18); draw(); }
+  // widok mapy (środek, zoom) pamiętany po F5
+  var V = null; try { V = JSON.parse(localStorage.getItem('sv1-widok')); } catch (e) {}
+  map.on('moveend', function () { try { var c = map.getCenter(); localStorage.setItem('sv1-widok', JSON.stringify({ lat: c.lat, lng: c.lng, z: map.getZoom() })); } catch (e) {} });
+  if (saved && saved.roads) { setScene(saved); last = JSON.stringify(sc); if (V) map.setView([V.lat, V.lng], V.z); else map.setView([O.lat, O.lng], 18); draw(); }
   else loadTpl('2-2', TPL[0].it[0][1]);
 })();

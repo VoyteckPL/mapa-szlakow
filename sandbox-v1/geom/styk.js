@@ -70,7 +70,7 @@
       }
       if (k > 0) { Xm = add(N, uB, sB); Sm = Sof(B); var e = Infinity;
         [lo, hi].forEach(function (d) { var q = add(Xm, Sm, d - c); e = Math.min(e, sg * dot([q[0] - N[0], q[1] - N[1]], tDir)); });
-        if (e > 1e-6) { var o = onB(add(Xm, tDir, -sg * e), Sm); Xm = o.X; cBm = o.cB; } }
+        if (e > 1e-6) { var oq = onB(add(Xm, tDir, -sg * e), Sm); Xm = oq.X; cBm = oq.cB; } }
       var Cp = add(N, nT, c), S = nT, X = N, cB = c;
       if (k >= 1) { S = Sm; X = Xm; cB = cBm; }
       else if (k > 0) { var Cm = add(Xm, Sm, cBm), C = [Cp[0] + (Cm[0] - Cp[0]) * k, Cp[1] + (Cm[1] - Cp[1]) * k];

@@ -14,6 +14,11 @@
     aS = [sg * aS[0], sg * aS[1]]; if (dot(aB, aS) >= 0) return null;
     var inL = ord.indexOf(st) < ord.indexOf(o), dIn = inL ? hi : lo, dOut = inL ? lo : hi;
     var K = add(N, nT, dIn), Cb = add(N, nT, c), Pn = P[tIn ? B.pts[1] : B.pts[B.pts.length - 2]], aBe = unit(Cb, Pn);
+    // pień pod kątem do prostej (wzorzec 19:43): krawędź pasa pnia od strony prostej kończy się na krawędzi prostej
+    // (narożnik prostej), nie na przekroju prostopadłym w węźle – K = przecięcie granicy pasów dIn z krawędzią prostej
+    var nSt = left(aS); if (dot(nSt, [Cb[0] - N[0], Cb[1] - N[1]]) < 0) nSt = [-nSt[0], -nSt[1]];
+    var Es = add(N, nSt, st.B.lanes * st.B.w / 2), Dk = tDir[0] * aS[1] - tDir[1] * aS[0];
+    if (Math.abs(Dk) > 1e-3) K = add(K, tDir, ((Es[0] - K[0]) * aS[1] - (Es[1] - K[1]) * aS[0]) / Dk);
     var deg = 180 / Math.PI, th = Math.acos(Math.max(-1, Math.min(1, dot(aBe, aS)))) * deg;
     if (th <= 90) return null;
     var e = th <= 100 ? th : th >= 115 ? 90 : 100 - 10 * (th - 100) / 15, zakret = th > 100;

@@ -65,7 +65,7 @@
       L.polygon(g.asfalt[0].concat(g.asfalt[1].slice().reverse()).map(ll), { pane: 'asf', stroke: false, fillColor: '#333', fillOpacity: .75, interactive: false }).addTo(gAsf);
       g.lanes.forEach(function (l, j) { var e = j === 0 || j === r.lanes;
         pl(l, { color: e ? '#ffeb3b' : '#fff', weight: e ? 2 : 1.5, interactive: false }, gEdge); });
-      [0, -1].forEach(function (k) { // poprzeczne krawędzie końców pasów
+      [0, -1].forEach(function (k, e) { if (!g.zamkn[e]) return; // poprzeczne krawędzie końców pasów
         pl(g.lanes.map(function (l) { return l[k < 0 ? l.length - 1 : 0]; }), { color: '#ffeb3b', weight: 2, interactive: false }, gEdge); });
       var isSel = sel && sel.t === 'road' && sel.id === r.id;
       var osmLine = L.polyline(r.pts.map(function (id) { return sc.nodes[id]; }), { color: isSel ? '#ff1744' : '#2979ff', weight: isSel ? 4 : 2.5, dashArray: '8 6' }).addTo(gLin);

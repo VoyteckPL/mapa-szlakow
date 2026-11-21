@@ -1,8 +1,7 @@
 // Sandbox v1 – geometria w lokalnym układzie [m]. Bez łuków: wszystko kanciaste.
 // Droga: pts (id węzłów, kierunek jak w OSM), lanes, w (szer. pasa) – bez poboczy,
-// o0/o1 – offset jezdni przy początku/końcu względem linii OSM, w pasach (+ = w prawo). Reguła (Wojtek 2026-11-21 15:07):
-// offset obowiązuje tylko przy końcu drogi i płynnie (S-krzywa, smoothstep) wraca na środek na odcinku PRZEJ;
-// krótka droga: odcinek skrócony do połowy długości.
+// o0/o1 – offset jezdni przy początku/końcu względem linii OSM, w pasach (+ = w prawo). Reguła (Wojtek 2026-11-21):
+// offset stały tuż przy końcu (aż za skośny styk), potem prosto na środek na krótkim odcinku PRZEJ; stała szerokość, bez łuków.
 // Reguła styku w węźle (Nm), wariant 2 (Wojtek 2026-11-21): każda droga zachowuje szerokość pasa W POPRZEK siebie.
 //  Pień = jedyna droga po jednej stronie węzła (1 wchodzi + kilka wychodzi albo kilka wchodzi + 1 wychodzi).
 //  Każda odnoga styka się z pniem po dwusiecznej kąta pień–odnoga (miter), więc jej pasy trafiają sztywno
@@ -10,7 +9,7 @@
 //  która go pokrywa; granica między odnogami sięga dalej z dwóch przekrojów (bez szczelin). Koniec pnia jest
 //  więc „łamany”, kanciasty. Pas pnia bez odnogi: przekrój prostopadły. Wolny koniec: prostopadły.
 var G = (function () {
-  var R = 6378137, PRZEJ = 25, KROK = 2;
+  var R = 6378137, PRZEJ = 20;
   function toXY(o, ll) {
     return [(ll.lng - o.lng) * Math.PI / 180 * R * Math.cos(o.lat * Math.PI / 180), (ll.lat - o.lat) * Math.PI / 180 * R];
   }
@@ -44,10 +43,11 @@ var G = (function () {
     var typ = Bs.length === 1 ? 'ciag' : tIn ? 'rozwidlenie' : 'wlaczenie';
     var Sof = function (B) { return tIn ? miter(dirIn(T, P), dirOut(B, P)) : miter(dirIn(B, P), dirOut(T, P)); };
     if (r !== T) return { f: konst(Sof(r)), typ: typ };
+    var pien = Bs.length > 1; // koniec pnia na rozwidleniu/włączeniu: zamknięcie rysują odnogi
     var tDir = tIn ? dirIn(T, P) : dirOut(T, P), uIn = tIn ? [-tDir[0], -tDir[1]] : tDir;
     var cand = Bs.map(function (B) { var o = (tIn ? B.o0 : B.o1) || 0; // offset odnogi w węźle
       return { S: Sof(B), lo: (-B.lanes / 2 - o) * B.w - 1e-6, hi: (B.lanes / 2 - o) * B.w + 1e-6 }; });
-    return { typ: typ, f: function (d) {
+    return { typ: typ, pien: pien, f: function (d) {
       var best = null, bv = Infinity;
       cand.forEach(function (c) { if (d < c.lo || d > c.hi) return; var v = (c.S[0] * uIn[0] + c.S[1] * uIn[1]) * d; if (v < bv) { bv = v; best = c.S; } });
       return best || left(tDir);
@@ -59,33 +59,48 @@ var G = (function () {
   }
 
   // Linie drogi: lanes+1 granic pasów (od lewej) i 2 krawędzie asfaltu (lewa, prawa), polilinie XY.
+  // Offset przy końcu: stały na odcinku H (do końca skośnego styku + 1 m), potem PROSTO na środek na PRZEJ m
+  // (kanciasto, bez łuków). Krawędzie = równoległe do osi jezdni (oś OSM przesunięta o offset) z miterami,
+  // więc pas ma stałą szerokość także w przesunięciu.
   function lines(sc, r, P) {
-    var pts = r.pts.map(function (id) { return P[id]; }), n = pts.length, S = [], s = [0];
+    var pts = r.pts.map(function (id) { return P[id]; }), n = pts.length, s = [0];
     for (var i = 1; i < n; i++) s.push(s[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    for (i = 0; i < n; i++) {
-      if (i === 0) S.push(endSection(sc, r, true, P).f);
-      else if (i === n - 1) S.push(endSection(sc, r, false, P).f);
-      else S.push(konst(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1]))));
+    var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w, o0 = r.o0 || 0, o1 = r.o1 || 0;
+    var E0 = endSection(sc, r, true, P), E1 = endSection(sc, r, false, P), e0 = E0.f, e1 = E1.f;
+    function hold(f, u, o) { var m = 0; for (var j = 0; j <= L; j++) { var d = (L / 2 - j - o) * w, v = f(d); m = Math.max(m, Math.abs((v[0] * u[0] + v[1] * u[1]) * d)); } return m + 1; }
+    var H0 = o0 ? hold(e0, unit(pts[0], pts[1]), o0) : 0, H1 = o1 ? hold(e1, unit(pts[n - 1], pts[n - 2]), o1) : 0;
+    var nk = (o0 ? 1 : 0) + (o1 ? 1 : 0), T = nk ? Math.max(0, Math.min(PRZEJ, (Ltot - H0 - H1) / nk)) : 0;
+    function off(x) {
+      var v = 0;
+      if (o0) v += x <= H0 ? o0 : x >= H0 + T ? 0 : o0 * (1 - (x - H0) / T);
+      if (o1) { var y = Ltot - x; v += y <= H1 ? o1 : y >= H1 + T ? 0 : o1 * (1 - (y - H1) / T); }
+      return v;
     }
-    var Ltot = s[n - 1] || 1, L = r.lanes, w = r.w, T = Math.min(PRZEJ, Ltot / 2), o0 = r.o0 || 0, o1 = r.o1 || 0;
-    // gęste punkty w strefach powrotu offsetu (przekrój prostopadły do odcinka)
-    var ks = []; for (var c = KROK; c < T - 1e-6; c += KROK) { if (o0) ks.push(c); if (o1) ks.push(Ltot - c); }
-    if (o0) ks.push(T); if (o1) ks.push(Ltot - T);
-    ks.sort(function (x, y) { return x - y; });
+    var ks = [];
+    if (o0) ks.push(H0, H0 + T); if (o1) ks.push(Ltot - H1 - T, Ltot - H1);
+    ks = ks.filter(function (c) { return c > 0.01 && c < Ltot - 0.01 && s.every(function (v) { return Math.abs(v - c) > 0.01; }); })
+      .sort(function (x, y) { return x - y; }).filter(function (c, i, a) { return !i || c - a[i - 1] > 0.01; });
+    // punkty OSM + punkty załamania offsetu; QS = przekrój w danym punkcie
     var Q = [], QS = [], Qs = [], k = 0;
     for (i = 0; i < n; i++) {
-      for (; k < ks.length && ks[k] < s[i] - 1e-6; k++) if (i > 0 && ks[k] > s[i - 1] + 1e-6) {
+      for (; k < ks.length && ks[k] < s[i]; k++) if (i > 0) {
         var t = (ks[k] - s[i - 1]) / (s[i] - s[i - 1]), p0 = pts[i - 1], p1 = pts[i];
         Q.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]); QS.push(konst(left(unit(p0, p1)))); Qs.push(ks[k]); }
-      Q.push(pts[i]); QS.push(S[i]); Qs.push(s[i]);
+      Q.push(pts[i]); Qs.push(s[i]);
+      QS.push(i === 0 ? e0 : i === n - 1 ? e1 : konst(miter(unit(pts[i - 1], pts[i]), unit(pts[i], pts[i + 1]))));
     }
-    function ss(x) { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); }
-    function off(x) { return T > 0 ? o0 * (1 - ss(x / T)) + o1 * (1 - ss((Ltot - x) / T)) : 0; }
-    function line(dFn) { return Q.map(function (p, i) { var d = dFn(off(Qs[i])); var v = QS[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; }); }
+    var m = Q.length, dc = Qs.map(function (x) { return -off(x) * w; }); // przesunięcie osi jezdni [m, + w lewo]
+    var A = Q.map(function (p, i) { var v = QS[i](dc[i]); return [p[0] + v[0] * dc[i], p[1] + v[1] * dc[i]]; });
     var lanes = [];
-    for (var j = 0; j <= L; j++) (function (j) { lanes.push(line(function (o) { return (L / 2 - j - o) * w; })); })(j);
-    return { lanes: lanes,
-      asfalt: [lanes[0], lanes[L]] }; // bez poboczy
+    for (var j = 0; j <= L; j++) {
+      var rj = (L / 2 - j) * w;
+      lanes.push(Q.map(function (p, i) {
+        if (i === 0 || i === m - 1) { var d = rj + dc[i], v = QS[i](d); return [p[0] + v[0] * d, p[1] + v[1] * d]; } // styk/koniec
+        var M = miter(unit(A[i - 1], A[i]), unit(A[i], A[i + 1]));
+        return [A[i][0] + M[0] * rj, A[i][1] + M[1] * rj];
+      }));
+    }
+    return { lanes: lanes, asfalt: [lanes[0], lanes[L]], zamkn: [!E0.pien, !E1.pien] }; // bez poboczy
   }
   return { toXY: toXY, toLL: toLL, lines: lines, nodeType: nodeType };
 })();

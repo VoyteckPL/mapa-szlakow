@@ -1,6 +1,7 @@
 // Sandbox v1 – ręczna edycja krawędzi pasów (warstwa ✎, domyślnie wyłączona).
 // Nadpisania: sc.edits[idDrogi] = [pas 1 lewa, pas 1 prawa, pas 2 lewa, ...]: [[x,y],...] w metrach od środka sceny (każdy pas ma własne krawędzie).
-// Przeciąganie wierzchołka / odcinka; dwuklik w odcinek dodaje wierzchołek, dwuklik w wierzchołek go usuwa.
+// Przeciąganie wierzchołka / odcinka. Wstawianie: przeciągnij kółko w połowie odcinka (albo dwuklik w krawędź) – na wszystkich
+// krawędziach, które tam przechodzą. Usuwanie: prawy klik (albo dwuklik) w wierzchołek; prawy klik w fioletową grupę usuwa całą grupę.
 // Domyślnie pojedynczy wierzchołek. ⟷ (albo Shift przy przeciąganiu) = cały przekrój (ten sam wierzchołek na wszystkich krawędziach drogi) – szerokość pasów zachowana.
 // Przyciąganie: ⊙ do wierzchołków, ⟋ do krawędzi innych pasów, 🧲 do siatki (rozdzielczość ▦).
 (function () {
@@ -50,14 +51,15 @@
   }
 
   function draw() {
-    gH.clearLayers(); if (!map.hasLayer(gH)) return; var V = [];
+    gH.clearLayers(); if (!map.hasLayer(gH)) return; var V = [], M = [];
     all().forEach(function (o) {
       var r = o.r, ed = !stale() && !!(S.sc.edits && S.sc.edits[r.id]);
       o.L.forEach(function (l, j) {
         for (var i = 0; i < l.length - 1; i++) (function (i) { // odcinki: przeciąganie i dwuklik = nowy wierzchołek
           var seg = L.polyline([S.ll(l[i]), S.ll(l[i + 1])], { weight: 12, opacity: 0, bubblingMouseEvents: false }).addTo(gH);
           seg.on('mousedown', function (e) { L.DomEvent.stop(e); dragSeg(r, j, i, e.latlng); });
-          seg.on('dblclick', function (e) { L.DomEvent.stop(e); insert(r, j, i, S.xy(e.latlng)); });
+          seg.on('dblclick', function (e) { L.DomEvent.stop(e); var q = S.xy(e.latlng); insertAt(hits(q), q); S.commit(); S.draw(); });
+          M.push({ q: [(l[i][0] + l[i + 1][0]) / 2, (l[i][1] + l[i + 1][1]) / 2], len: px(l[i]).distanceTo(px(l[i + 1])) });
         })(i);
         l.forEach(function (v, i) { V.push({ r: r, j: j, i: i, v: v, ed: ed, n: o.L.length / 2, P: px(v) }); });
       });
@@ -75,11 +77,53 @@
         g.lab = op; g.multi = C.length > 1; g.key = key; handle(g);
       });
     });
+    // uchwyty w połowie odcinków (gdy odcinek ≥ 40 px): przeciągnięcie wstawia wierzchołek – na wszystkich krawędziach,
+    // które tu przechodzą (wspólna granica pasów zostaje wspólna; rozdzielić można potem w grupie)
+    var MP = [];
+    M.forEach(function (o) { if (o.len < 40) return; var P0 = px(o.q); if (MP.some(function (z) { return z.distanceTo(P0) < 6; })) return; MP.push(P0); mid(o.q); });
+  }
+  // wszystkie odcinki krawędzi (dowolnej drogi) przechodzące przez punkt q (≤ 3 px): {r, j, i, t}
+  function hits(q) {
+    var P0 = px(q), out = [];
+    all().forEach(function (o) { o.L.forEach(function (l, j) { for (var i = 0; i < l.length - 1; i++) {
+      var a = l[i], b = l[i + 1], dx = b[0] - a[0], dy = b[1] - a[1], t = ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy || 1);
+      if (t <= 0.01 || t >= 0.99) continue;
+      if (P0.distanceTo(px([a[0] + dx * t, a[1] + dy * t])) <= 3) { out.push({ r: o.r, j: j, i: i, t: t }); break; } } }); });
+    return out;
+  }
+  // wstawia wierzchołek w q na trafionych odcinkach (⟷: na całym przekroju ich dróg, w tym samym miejscu odcinka); zwraca [{r, j, i}]
+  function insertAt(H0, q) {
+    var add = [];
+    H0.forEach(function (h) { var E = ensure(h.r); group(E, h.j, h.i).forEach(function (k) {
+      if (h.i + 1 >= E[k].length || add.some(function (x) { return x.r === h.r && x.j === k; })) return;
+      add.push({ r: h.r, j: k, i: h.i, t: h.t, own: k === h.j }); }); });
+    add.forEach(function (x) { var l = S.sc.edits[x.r.id][x.j], p0 = l[x.i], p1 = l[x.i + 1];
+      l.splice(x.i + 1, 0, x.own ? q.slice() : [p0[0] + (p1[0] - p0[0]) * x.t, p0[1] + (p1[1] - p0[1]) * x.t]); x.i++; });
+    return add;
+  }
+  function mid(q) {
+    var m = L.marker(S.ll(q), { draggable: true, title: 'Przeciągnij, żeby wstawić wierzchołek (dwuklik w krawędź też wstawia)',
+      icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-mid"></div>' }) }).addTo(gH), A, orig;
+    m.on('dragstart', function () { A = insertAt(hits(q), q); orig = A.map(function (x) { return S.sc.edits[x.r.id][x.j][x.i].slice(); }); });
+    m.on('drag', function (e) {
+      if (!A.length) return;
+      var tq = snapTo(S.xy(e.target.getLatLng()), function (id, jj, ii) { return A.some(function (x) { return x.r.id === id && x.j === jj && x.i === ii; }); });
+      var dx = tq[0] - q[0], dy = tq[1] - q[1];
+      A.forEach(function (x, k) { S.sc.edits[x.r.id][x.j][x.i] = [orig[k][0] + dx, orig[k][1] + dy]; });
+      S.drawLines();
+    });
+    m.on('dragend', function () { S.commit(); S.draw(); });
   }
   function collapsed(C, key) {
     var m = L.marker(S.ll(C[0].v), { title: C.length + ' wierzchołki w jednym miejscu – kliknij, żeby rozwinąć',
       icon: L.divIcon({ className: '', iconSize: [0, 0], html: '<div class="sv-h sv-multi"></div>' }) }).addTo(gH);
     m.on('click', function (e) { L.DomEvent.stop(e); openKey = key; draw(); });
+    m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); removeAll(C); });
+  }
+  // usuwanie: tylko wierzchołki środkowe (końce krawędzi zostają); od końca listy, żeby indeksy się nie przesunęły
+  function removeAll(C) {
+    C.slice().sort(function (a, b) { return b.i - a.i; }).forEach(function (h) { var l = ensure(h.r)[h.j]; if (h.i > 0 && h.i < l.length - 1) l.splice(h.i, 1); });
+    S.commit(); S.draw();
   }
   function handle(h) {
     var r = h.r, j = h.j, i = h.i, off = h.off, at = h.P.add(off);
@@ -99,6 +143,7 @@
     });
     m.on('dragend', function () { S.commit(); S.draw(); });
     m.on('dblclick', function (e) { L.DomEvent.stop(e); remove(r, j, i); });
+    m.on('contextmenu', function (e) { L.DomEvent.stop(e); L.DomEvent.preventDefault(e.originalEvent); remove(r, j, i); });
     m.on('click', function (e) { L.DomEvent.stop(e); if (!h.multi) { openKey = openKey === h.key ? null : h.key; draw(); } });
   }
   function dragSeg(r, j, i, start) {
@@ -114,16 +159,9 @@
     function up() { map.off('mousemove', mv); map.off('mouseup', up); document.removeEventListener('mouseup', up); map.dragging.enable(); S.commit(); S.draw(); }
     map.on('mousemove', mv); map.on('mouseup', up); document.addEventListener('mouseup', up);
   }
-  function insert(r, j, i, q) { // nowy wierzchołek na odcinku i–i+1 (w trybie ⟷ na wszystkich krawędziach, w tym samym miejscu odcinka)
-    var E = ensure(r), a = E[j][i], b = E[j][i + 1], dx = b[0] - a[0], dy = b[1] - a[1];
-    var t = Math.max(0.05, Math.min(0.95, ((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
-    group(E, j, i).forEach(function (k) { if (i + 1 >= E[k].length) return; var p0 = E[k][i], p1 = E[k][i + 1];
-      E[k].splice(i + 1, 0, k === j && opt.sek === shift ? q : [p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t]); });
-    S.commit(); S.draw();
-  }
-  function remove(r, j, i) {
+  function remove(r, j, i) { // pojedynczy (⟷: cały przekrój); końce krawędzi zostają
     var E = ensure(r);
-    group(E, j, i).forEach(function (k) { if (E[k].length > 2) E[k].splice(i, 1); });
+    group(E, j, i).forEach(function (k) { if (i > 0 && i < E[k].length - 1) E[k].splice(i, 1); });
     S.commit(); S.draw();
   }
 

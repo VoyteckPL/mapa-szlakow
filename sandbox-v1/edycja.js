@@ -10,15 +10,21 @@
   document.addEventListener('keyup', function (e) { if (e.key === 'Shift') shift = false; });
   var cp = function (l) { return l.map(function (q) { return q.slice(); }); };
 
+  // ręczne krawędzie należą do geometrii, przy której je zrobiono: po ruchu linii OSM / zmianie drogi są ignorowane
+  // (krawędzie znów liczone na żywo), a następna edycja zaczyna od świeżej geometrii. Ctrl+Z przywraca.
+  function sig() { var sc = S.sc; return JSON.stringify([sc.nodes, sc.roads]); }
+  function stale() { var sc = S.sc; if (!sc.edits) return false; if (!sc.editSig) sc.editSig = sig(); return sc.editSig !== sig(); } // bez podpisu (stara / wczytana scena) = pasuje
   H.lanes = function (r, g) {
-    var e = S.sc.edits && S.sc.edits[r.id];
+    var e = !stale() && S.sc.edits && S.sc.edits[r.id];
     if (e && e.length === g.lanes.length && e.length > 2) e = S.sc.edits[r.id] = H.split(e); // stary format (wspólne krawędzie)
     if (e && e.length === g.pasy.length) { g.pasy = e.map(cp); g.asfalt = [g.pasy[0], g.pasy[g.pasy.length - 1]]; g.edyt = true; }
     return g;
   };
   function roads() { return S.sc.roads.filter(function (r) { return r.pts.length > 1; }); }
   function ensure(r) { // pierwsza edycja: kopia wyliczonych krawędzi
+    if (stale()) delete S.sc.edits;
     if (!S.sc.edits) S.sc.edits = {};
+    S.sc.editSig = sig();
     var g = H.lanes(r, (function (g) { if (!g.pasy) g.pasy = H.split(g.lanes); return g; })(G.lines(S.sc, r, S.P())));
     if (!S.sc.edits[r.id] || S.sc.edits[r.id].length !== 2 * r.lanes) S.sc.edits[r.id] = g.pasy.map(cp);
     return S.sc.edits[r.id];
@@ -46,7 +52,7 @@
   function draw() {
     gH.clearLayers(); if (!map.hasLayer(gH)) return; var V = [];
     all().forEach(function (o) {
-      var r = o.r, ed = !!(S.sc.edits && S.sc.edits[r.id]);
+      var r = o.r, ed = !stale() && !!(S.sc.edits && S.sc.edits[r.id]);
       o.L.forEach(function (l, j) {
         for (var i = 0; i < l.length - 1; i++) (function (i) { // odcinki: przeciąganie i dwuklik = nowy wierzchołek
           var seg = L.polyline([S.ll(l[i]), S.ll(l[i + 1])], { weight: 12, opacity: 0, bubblingMouseEvents: false }).addTo(gH);

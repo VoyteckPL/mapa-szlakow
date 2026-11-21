@@ -202,6 +202,20 @@
         var o = JSON.parse(t); setScene(o.scena || o); sel = null; drawing = null; commit(); map.setView([O.lat, O.lng]); draw(); ta.value = '';
       }).catch(function () { ta.value = ''; ta.placeholder = 'Wklej tu config i kliknij ⤓'; });
     });
+    // wzorce: zrzuty kolejnych ustawień (kąt, offsety, ręczne krawędzie) zbierane lokalnie, na koniec kopiowane razem
+    var WK = 'sv1-wzorce', wz = function () { try { return JSON.parse(localStorage.getItem(WK)) || []; } catch (e) { return []; } };
+    var row2 = L.DomUtil.create('div', 'sv-row', body), cnt;
+    btn(row2, '💾', 'Zapisz wzorzec (aktualna scena + opis z pola); potem ręczne zmiany są czyszczone', function () {
+      var c = config(ta.value); delete c.scena.edits; delete c.scena.editSig; c.nr = wz().length + 1;
+      var a = wz(); a.push(c); try { localStorage.setItem(WK, JSON.stringify(a)); } catch (e) {}
+      delete sc.edits; ta.value = ''; commit(); draw(); upd();
+    });
+    btn(row2, '📚', 'Kopiuj wszystkie wzorce', function () {
+      var b = this; copy(JSON.stringify({ strona: 'sandbox-v1.html', wzorce: wz() }, null, 1)); b.textContent = '✓'; setTimeout(function () { b.textContent = '📚'; }, 1200);
+    });
+    btn(row2, '🗑', 'Usuń wszystkie zapisane wzorce', function () { if (wz().length && confirm('Usunąć ' + wz().length + ' wzorców?')) { localStorage.removeItem(WK); upd(); } });
+    cnt = L.DomUtil.create('span', 'sv-val', row2);
+    function upd() { cnt.textContent = wz().length + ' wz.'; } upd();
   });
   ctl('topright', function (d) {
     var s = btn(d, '🧲', 'Przyciąganie do siatki', function () { snap = !snap; s.classList.toggle('on', snap); });
